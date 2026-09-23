@@ -27,9 +27,18 @@ export type {
   ProviderSettingsView,
 } from "@zcode/provider";
 
+export interface ProviderModelDiscoveryResult {
+  readonly view: ProviderSettingsView;
+  readonly discovered: number;
+  readonly added: number;
+  readonly skipped: number;
+}
+export type ProviderModelDiscoverer = (config: ProviderConfigObject) => Promise<readonly string[]>;
+
 export interface IProviderSettingsService {
   readonly onDidChange: Event<ProviderSettingsView>;
   getView(): Promise<ProviderSettingsView>;
+  discoverModels(providerId: ProviderId): Promise<ProviderModelDiscoveryResult>;
   refresh(reason: string): Promise<ProviderSettingsView>;
   createPersonalProvider(
     input?: Parameters<ProviderSettingsFacade["createPersonalProvider"]>[0],
@@ -110,9 +119,38 @@ export function createProviderSettingsService(
   facade: ProviderSettingsFacade,
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
+  discoverModels?: ProviderModelDiscoverer,
 ): IProviderSettingsService {
+  const inFlight = new Map<string, Promise<ProviderModelDiscoveryResult>>();
+  const discover = async (providerId: string): Promise<ProviderModelDiscoveryResult> => {
+    await ensureReady();
+    await facade.waitForProviderOperations(providerId);
+    const before = facade.getView();
+    const provider = before.providers.find((item) => item.providerId === providerId);
+    if (!provider || provider.effectiveConfig.group !== "standard-personal")
+      throw new Error("请选择自定义供应商");
+    if (!discoverModels) throw new Error("当前 Host 不支持自动获取模型，请更新 Host");
+    const ids = await discoverModels(provider.effectiveConfig);
+    const existing = new Set(provider.models.map((model) => model.modelId));
+    const added = ids.filter((id) => !existing.has(id)).length;
+    const view = await facade.addDiscoveredModels(providerId, ids, before.revision);
+    return { view, discovered: ids.length, added, skipped: ids.length - added };
+  };
   return {
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
+    discoverModels: (providerId) => {
+      if (typeof providerId !== "string" || !providerId.trim())
+        return Promise.reject(new Error("供应商 ID 无效"));
+      const running = inFlight.get(providerId);
+      if (running) return running;
+      const result = discover(providerId);
+      inFlight.set(providerId, result);
+      const cleanup = () => {
+        if (inFlight.get(providerId) === result) inFlight.delete(providerId);
+      };
+      void result.then(cleanup, cleanup);
+      return result;
+    },
     getView: async () => {
       await ensureReady();
       return facade.getView();

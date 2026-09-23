@@ -65,6 +65,11 @@ export interface ProviderSettingsMutationTarget {
     modelIds: readonly ModelId[],
     membership?: ProviderModelMembership,
   ): Promise<unknown>;
+  addDiscoveredModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+    membership: ProviderModelMembership,
+  ): Promise<unknown>;
   addPersonalModel(
     providerId: ProviderId,
     modelId: ModelId,
@@ -353,6 +358,19 @@ export class ProviderSettingsFacade {
     return this.#mutateProvider(providerId, "reorder-models", (target) =>
       target.reorderPersonalModels(providerId, modelIds, this.#modelMembership(providerId)),
     );
+  }
+
+  addDiscoveredModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+    expectedRevision: number,
+  ): Promise<ProviderSettingsView> {
+    return this.#mutateProvider(providerId, "discover-models", (target) => {
+      // 请求完成之前用户可能修改连接或删除 Provider；禁止把旧服务器结果写入新配置。
+      if (this.getView().revision !== expectedRevision)
+        throw new Error("供应商配置已变化，请重新获取模型");
+      return target.addDiscoveredModels(providerId, modelIds, this.#modelMembership(providerId));
+    });
   }
 
   addPersonalModel(

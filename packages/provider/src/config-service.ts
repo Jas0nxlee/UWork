@@ -319,6 +319,42 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     });
   }
 
+  /** 完整发现列表在一个 Repository 事务内追加；已有模型及手动排序保持原样。 */
+  async addDiscoveredModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+    membership: ProviderModelMembership,
+  ): Promise<ProviderConfigLayerSnapshot> {
+    const id = normalizeId("providerId", providerId);
+    const incoming = [...new Set(modelIds.map((modelId) => normalizeId("modelId", modelId)))];
+    const builtin = await this.#zcodeBuiltinSource.read();
+    return this.#updatePersonal((current) => {
+      assertMembershipCurrent(membership, id, current);
+      const provider = writableProviderOverlay(builtin, current, id);
+      const existing = new Set([
+        ...membership.inheritedModelIds,
+        ...(provider.personalModelIds ?? []),
+      ]);
+      const added = incoming.filter((modelId) => !existing.has(modelId));
+      const members = [...(provider.personalModelIds ?? []), ...added];
+      let models = current.models;
+      for (const modelId of added)
+        models = models.setExact(id, modelId, new ModelConfig({ enabled: true }), true);
+      return {
+        providers: current.providers.set(
+          id,
+          provider
+            .withPersonalModelIds(members)
+            .withModelOrder(
+              normalizeModelOrder(membership.inheritedModelIds, members, provider.modelOrder ?? []),
+            ),
+        ),
+        models,
+        providerOrder: current.providerOrder,
+      };
+    });
+  }
+
   async addPersonalModel(
     providerId: ProviderId,
     modelId: ModelId,

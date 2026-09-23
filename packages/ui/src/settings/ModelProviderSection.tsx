@@ -54,6 +54,7 @@ export function ModelProviderSection({
     refresh,
     saveProvider,
     createPersonalProvider,
+    discoverModels,
     addPersonalModel,
     savePersonalModelDraft,
     setPersonalModelEnabled,
@@ -161,6 +162,7 @@ export function ModelProviderSection({
           onSave={async (provider) => {
             await saveProvider(provider);
           }}
+          onDiscoverModels={discoverModels}
           onAddPersonalModel={addPersonalModel}
           onSavePersonalModelDraft={savePersonalModelDraft}
           onSetPersonalModelEnabled={setPersonalModelEnabled}

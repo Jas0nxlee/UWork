@@ -1,5 +1,5 @@
 import { cn } from "@/components/lib/utils.js";
-import zaiLogoUrl from "@/assets/provider-icons/logo-zai.svg";
+import { UWorkLogo } from "@/components/ui/UWorkLogo.js";
 
 export function WindowsTopLeftLogo({
   className,
@@ -19,11 +19,8 @@ export function WindowsTopLeftLogo({
         className,
       )}
     >
-      <img
-        src={zaiLogoUrl}
-        alt="ZCode"
-        className={cn("pointer-events-none size-5 select-none", imageClassName)}
-        draggable={false}
+      <UWorkLogo
+        className={cn("pointer-events-none size-5 select-none text-foreground", imageClassName)}
       />
     </div>
   );

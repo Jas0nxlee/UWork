@@ -74,6 +74,15 @@ export function useModelProviders(target: {
     }
   }, [commitProviderSettingsView, providerSettingsService]);
 
+  const discoverModels = useCallback(
+    async (providerId: string) => {
+      const result = await providerSettingsService.discoverModels(providerId);
+      commitProviderSettingsView(result.view);
+      return result;
+    },
+    [commitProviderSettingsView, providerSettingsService],
+  );
+
   const saveProvider = useCallback(
     async (provider: ProviderSettingsFormProvider) => {
       // 新建 Provider 尚未进入 Registry，自然也不会出现在当前 Settings View。
@@ -224,6 +233,7 @@ export function useModelProviders(target: {
     refresh,
     saveProvider,
     createPersonalProvider,
+    discoverModels,
     addPersonalModel,
     savePersonalModelDraft,
     setPersonalModelEnabled,

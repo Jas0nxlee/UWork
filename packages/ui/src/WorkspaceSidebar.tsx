@@ -1,3 +1,4 @@
+import { WorkspaceModeHeader } from "@/WorkspaceModeHeader.js";
 /* eslint-disable max-lines -- 归档视图开关沿用现有 sidebar 结构，先保持同文件收口。 */
 import {
   memo,
@@ -1264,6 +1265,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
           aria-hidden={isFileTreeOpen}
         >
           <div className={cn("flex flex-col gap-1 px-2", isWindowsDesktop ? "py-2" : "py-3")}>
+            <WorkspaceModeHeader />
             <WorkspaceNewTaskTooltip disabledReason={workspaceReadOnlyReason}>
               <NewTaskButtonGroup
                 disabled={workspaceReadOnly}

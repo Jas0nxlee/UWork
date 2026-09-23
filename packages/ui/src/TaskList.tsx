@@ -1,3 +1,4 @@
+import { WorkspaceModeHeader } from "@/WorkspaceModeHeader.js";
 /* eslint-disable max-lines -- TaskList 同时承接 workspace 列表渲染、行内操作和外部数据源兼容，先集中收口避免 UI 结构漂移。 */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Settings2 } from "lucide-react";
@@ -411,6 +412,7 @@ export const TaskList = memo(function TaskList({
 
       {showCreateButton ? (
         <div className="border-b p-3">
+          <WorkspaceModeHeader />
           <ControlHintTooltip
             title={readOnlyReason ?? intl.formatMessage({ id: "taskList.newThread" })}
           >
