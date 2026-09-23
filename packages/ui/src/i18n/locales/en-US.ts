@@ -1708,6 +1708,7 @@ const enUS: Record<string, string> = {
   "settings.themeCardTitle": "Theme",
   "settings.themeCardDescription": "Use light, dark, or follow the system setting",
   "chat.empty.greeting.office": "What's on your plate today? Leave it to me.",
+  "settings.interfaceMode.toggle": "Current: {current}. Switch to {next}",
   "settings.interfaceMode": "Interface mode",
   "settings.interfaceMode.office": "Assistant",
   "settings.interfaceMode.coding": "Developer",

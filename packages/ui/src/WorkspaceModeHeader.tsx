@@ -1,4 +1,4 @@
-import { cn } from "@/components/lib/utils.js";
+import { ArrowLeftRight } from "lucide-react";
 import { UWorkWordmark } from "@/components/ui/UWorkLogo.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
@@ -8,32 +8,30 @@ export function WorkspaceModeHeader() {
   const { intl } = useZCodeIntl();
   const mode = useZCodeStore((state) => state.interfaceMode);
   const setMode = useZCodeStore((state) => state.setInterfaceMode);
+  const nextMode = mode === "office" ? "coding" : "office";
+  const currentLabel = intl.formatMessage({ id: `settings.interfaceMode.${mode}` });
+  const toggleLabel = intl.formatMessage(
+    { id: "settings.interfaceMode.toggle" },
+    {
+      current: currentLabel,
+      next: intl.formatMessage({ id: `settings.interfaceMode.${nextMode}` }),
+    },
+  );
   return (
-    <div className="mb-2 min-w-0 space-y-2 px-1" data-testid="workspace-mode-header">
-      <UWorkWordmark className="h-11 w-auto max-w-full text-foreground" />
-      <div
-        role="group"
-        aria-label={intl.formatMessage({ id: "settings.interfaceMode" })}
-        className="flex w-full max-w-48 rounded-lg border border-border bg-surface p-0.5"
+    <div className="mb-2 flex min-w-0 items-center gap-2 px-1" data-testid="workspace-mode-header">
+      <UWorkWordmark className="h-11 w-40 min-w-0 shrink text-foreground" />
+      <button
+        type="button"
+        data-testid="interface-mode-toggle"
+        data-interface-mode={mode}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        onClick={() => setMode(nextMode)}
+        className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 text-ui-base font-bold text-foreground transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {(["office", "coding"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            data-testid={`interface-mode-${value}`}
-            aria-pressed={mode === value}
-            onClick={() => setMode(value)}
-            className={cn(
-              "min-w-0 flex-1 rounded-md px-3 py-1 text-ui-base font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              mode === value
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-foreground hover:bg-hover",
-            )}
-          >
-            {intl.formatMessage({ id: `settings.interfaceMode.${value}` })}
-          </button>
-        ))}
-      </div>
+        <span>{currentLabel}</span>
+        <ArrowLeftRight className="size-3" aria-hidden="true" />
+      </button>
     </div>
   );
 }

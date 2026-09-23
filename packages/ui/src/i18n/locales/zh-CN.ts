@@ -1609,6 +1609,7 @@ const zhCN: Record<string, string> = {
   "settings.themeCardTitle": "主题",
   "settings.themeCardDescription": "使用浅色、深色，或匹配系统设置",
   "chat.empty.greeting.office": "今天有什么工作，交给我吧",
+  "settings.interfaceMode.toggle": "当前：{current}，点击切换为{next}",
   "settings.interfaceMode": "界面模式",
   "settings.interfaceMode.office": "助理",
   "settings.interfaceMode.coding": "开发",

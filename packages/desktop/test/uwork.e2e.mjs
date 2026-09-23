@@ -40,15 +40,23 @@ try {
   const headerBox = await header.boundingBox(),
     taskBox = await page.getByTestId("task-new-button").boundingBox();
   assert.ok(headerBox.y + headerBox.height <= taskBox.y + 1, "字标和模式切换必须位于新建任务上面");
-  const assistant = page.getByTestId("interface-mode-office"),
-    developer = page.getByTestId("interface-mode-coding");
-  await assistant.click();
-  assert.equal(await assistant.getAttribute("aria-pressed"), "true");
+  const toggle = page.getByTestId("interface-mode-toggle");
+  assert.equal(await header.getByRole("button").count(), 1);
+  const logoBox = await header.getByTestId("uwork-wordmark").boundingBox();
+  const toggleBox = await toggle.boundingBox();
+  assert.ok(toggleBox.x >= logoBox.x + logoBox.width, "模式按钮位于 UWork 右侧");
+  assert.ok(Math.abs(toggleBox.y + toggleBox.height / 2 - logoBox.y - logoBox.height / 2) < 2);
+  const initialMode = await toggle.getAttribute("data-interface-mode");
+  await toggle.click();
+  const switchedMode = initialMode === "office" ? "coding" : "office";
+  assert.equal(await toggle.getAttribute("data-interface-mode"), switchedMode);
+  assert.equal((await toggle.innerText()).trim(), switchedMode === "office" ? "助理" : "开发");
   await page.reload();
-  await assistant.waitFor();
-  assert.equal(await assistant.getAttribute("aria-pressed"), "true");
-  await developer.click();
-  assert.equal(await developer.getAttribute("aria-pressed"), "true");
+  await toggle.waitFor();
+  assert.equal(await toggle.getAttribute("data-interface-mode"), switchedMode);
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await toggle.getAttribute("data-interface-mode"), initialMode);
   await page.getByTestId("workspace-help-menu-trigger").click();
   const menu = page.getByRole("menu");
   assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["资源管理器"]);
