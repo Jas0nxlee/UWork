@@ -200,3 +200,34 @@ test("oversized bodies and unsupported URLs fail before any import", async () =>
     /HTTP/,
   );
 });
+
+test("discovered model edits accept current revisions and continue to reject stale drafts", async () => {
+  const fixture = await runtimeFixture(async () => ["discovered-model"]);
+  try {
+    const imported = await fixture.service.discoverModels(fixture.id);
+    const input = {
+      providerId: fixture.id,
+      originalModelId: "discovered-model",
+      nextModelId: "discovered-model",
+      personalConfig: { properties: { contextWindow: 1000000 } },
+      useRecommendedConfig: true,
+      basedOnRevision: imported.view.revision,
+    };
+    const saved = await fixture.service.savePersonalModelDraft(input);
+    assert.equal(saved.providers[0]!.models[0]!.effectiveConfig.properties?.contextWindow, 1000000);
+    await assert.rejects(
+      fixture.service.savePersonalModelDraft({
+        ...input,
+        personalConfig: { properties: { contextWindow: 512000 } },
+      }),
+      /revision conflict/,
+    );
+    assert.equal(
+      (await fixture.service.getView()).providers[0]!.models[0]!.effectiveConfig.properties
+        ?.contextWindow,
+      1000000,
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});

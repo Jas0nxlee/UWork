@@ -46,6 +46,7 @@ export function ModelProviderSection({
   const {
     modelProviders,
     providerTemplates,
+    providerSettingsView,
     displayOrder,
     loading,
     loadError,
@@ -159,6 +160,8 @@ export function ModelProviderSection({
         <InlineEditableProviderCard
           key={selectedProvider.providerId}
           provider={selectedProvider}
+          // 精简设置页时漏传 revision 会让编辑器以默认 0 保存，所有参数修改都被判为版本冲突。
+          settingsRevision={providerSettingsView?.revision}
           onSave={async (provider) => {
             await saveProvider(provider);
           }}

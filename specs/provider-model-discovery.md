@@ -48,3 +48,11 @@ Desktop 与 Web 共用同一服务边界；不改 workspaceIdentity、Host owner
 2026-09-23：服务测试 23 项、UI 测试 6 项通过；其中发现协议与原子导入测试覆盖分页/认证、重复项、旧配置保留、请求合并和修订冲突。Electron E2E 使用独立本地接口完成模型获取、加载态、自动追加、重复点击不新增、401 后模型保留。未使用真实供应商密钥运行自动化测试。
 
 `pnpm typecheck`、架构检查通过；Lint 为 0 错误、57 项既有警告。产物使用 macOS arm64 `.app` 目录打包，不依赖 DMG。
+
+## 导入后编辑参数的版本传递
+
+ModelProviderSection 必须把 useModelProviders 返回的 ProviderSettingsView.revision 传给模型编辑卡片。打开弹窗时记录该版本，保存时由原有 facade 校验；不得使用默认 0，也不能在保存瞬间用最新版本覆盖草稿版本以绕过冲突检查。真实并发修改仍应拒绝旧草稿。
+
+回归场景：自动获取模型 → 修改上下文窗口并保存 → 重新打开确认；再修改一次，验证保存后的新版本继续生效。
+
+该场景已用修复前 Electron 构建复现 `expected 0, current 8`，修复后两次参数编辑、保存、重开均通过。新增服务回归确认过期 basedOnRevision 仍会被拒绝，已保存的上下文不会被旧草稿覆盖。代码修复仅补充设置页到编辑卡片的 revision 传递，不修改服务端并发校验。

@@ -99,9 +99,29 @@ try {
   await page.getByTestId("model-provider-api-key-input").fill("e2e-uwork-key");
   await button.click();
   await result.filter({ hasText: "已有 2 个" }).waitFor();
+  // 导入会提升 Registry revision；编辑必须使用打开弹窗时的真实版本，而非默认 0。
+  const editModel = page.getByRole("button", { name: "编辑模型配置", exact: true }).first();
+  for (const contextWindow of ["1000000", "512000"]) {
+    await editModel.click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("上下文窗口", { exact: true }).fill(contextWindow);
+    await dialog.getByRole("button", { name: "保存", exact: true }).click();
+    try {
+      await dialog.waitFor({ state: "hidden", timeout: 5000 });
+    } catch (error) {
+      console.error("Model edit failed:", await dialog.innerText());
+      throw error;
+    }
+    await editModel.click();
+    assert.equal(
+      await dialog.getByLabel("上下文窗口", { exact: true }).inputValue(),
+      contextWindow,
+    );
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  }
   await page.screenshot({ path: "/tmp/uwork-model-discovery.png" });
   console.log(
-    "PASS: SVG wordmark and modes above New Task; persistence; discovery loading, import, deduplication and 401 preservation",
+    "PASS: SVG wordmark and modes above New Task; persistence; discovery loading, import, deduplication, 401 preservation and post-discovery parameter edits",
   );
 } finally {
   await browser.close();
