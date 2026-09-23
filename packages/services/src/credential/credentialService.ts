@@ -92,6 +92,14 @@ export function createCredentialService(
   return {
     async load(key: string): Promise<string | null> {
       const validatedKey = credentialKeySchema.parse(key);
+      // 登录退役后，旧 JWT/账号 Key 也不能被其它服务直接读取并带到后台请求。
+      // 只隔离已保留的账号命名空间，不删除磁盘凭据，不影响自定义供应商 Key。
+      if (
+        validatedKey.startsWith("oauth:") ||
+        validatedKey.startsWith("account-provider:") ||
+        validatedKey === "zcodejwttoken"
+      )
+        return null;
       const creds = await readAll();
       const rawValue = creds[validatedKey];
       if (rawValue === undefined) {

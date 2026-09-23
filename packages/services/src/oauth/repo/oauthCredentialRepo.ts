@@ -157,16 +157,8 @@ export class OAuthCredentialRepo {
   }
 
   async loadActiveProvider(): Promise<OAuthProviderId | null> {
-    try {
-      return await this.credentialService.load(ACTIVE_PROVIDER_KEY);
-    } catch (error) {
-      if (!isCredentialDecryptError(error)) {
-        throw error;
-      }
-
-      await this.clearCorruptOAuthSession();
-      return null;
-    }
+    // 登录已移除，历史凭据不再作为运行态事实；保留磁盘数据以支持回退。
+    return null;
   }
 
   async saveActiveProvider(provider: OAuthProviderId | null): Promise<void> {
@@ -289,33 +281,8 @@ export class OAuthCredentialRepo {
     await this.credentialService.delete(ACTIVE_PROVIDER_KEY);
   }
 
-  async loadTokenSet(provider: OAuthProviderId): Promise<OAuthTokenSet | null> {
-    try {
-      const accessToken = await this.credentialService.load(accessTokenKey(provider));
-      if (!accessToken) {
-        return null;
-      }
-
-      const refreshToken = await this.credentialService.load(refreshTokenKey(provider));
-
-      const zcodeJwtToken =
-        provider === ZAI_PROVIDER_ID || provider === BIGMODEL_PROVIDER_ID
-          ? await this.credentialService.load(ZCODE_JWT_TOKEN_KEY)
-          : null;
-
-      return {
-        accessToken,
-        ...(refreshToken ? { refreshToken } : {}),
-        ...(zcodeJwtToken ? { zcodeJwtToken } : {}),
-      };
-    } catch (error) {
-      if (!isCredentialDecryptError(error)) {
-        throw error;
-      }
-
-      await this.clearCorruptOAuthSession();
-      return null;
-    }
+  async loadTokenSet(_provider: OAuthProviderId): Promise<OAuthTokenSet | null> {
+    return null;
   }
 
   async saveTokenSet(provider: OAuthProviderId, tokenSet: OAuthTokenSet): Promise<void> {
@@ -339,8 +306,8 @@ export class OAuthCredentialRepo {
     }
   }
 
-  async loadUserProfile(provider: OAuthProviderId): Promise<OAuthUserProfile | null> {
-    return this.loadUserProfileFromKey(userInfoKey(provider), provider);
+  async loadUserProfile(_provider: OAuthProviderId): Promise<OAuthUserProfile | null> {
+    return null;
   }
 
   private async loadUserProfileFromKey(

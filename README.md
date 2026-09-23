@@ -221,3 +221,9 @@ node dist/zcode/debug/zcode/bin/zcode.mjs --web \
 ## 项目声明
 
 功能与优惠范围、维护规则、执行与数据风险，以及许可和第三方版权说明，详见 [NOTICE.md](NOTICE.md)。
+
+## 本地自定义供应商版本
+
+当前分支移除了应用登录、智谱/Z.ai 内置模型与套餐入口，只使用用户配置的模型供应商。历史个人配置和会话保留；旧账号凭据不再读取，套餐 API 与内置配置远程刷新已停用。官方自动更新已停用，更新需重新编译安装。
+
+行为与验收说明见 [specs/custom-providers-only.md](specs/custom-providers-only.md)。桌面构建使用 `ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 pnpm bundle:desktop -- --os mac --arch arm64`。
