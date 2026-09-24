@@ -1,213 +1,180 @@
-# UWork
-
 <div align="center">
-  <img src="packages/desktop/build/icon.png" alt="UWork" width="128" height="128" />
+  <img src="packages/desktop/build/uwork.svg" alt="UWork" width="96" height="96" />
+  <h1>UWork</h1>
+  <p>Bring your own model service to everyday tasks and software development.</p>
+  <p><a href="README.md">简体中文</a> · English</p>
+  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">Source</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
-<p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=47ag983c-8fcb-4d6d-814b-5395193a712c&amp;qr_code=true">Feishu community</a> ·
-  <a href="https://discord.gg/z9aBcQXZQ3">Discord</a>
-</p>
-<p align="center">
-  <a href="README.md">简体中文</a> | English
-</p>
 
-UWork is an AI coding workspace with desktop, browser, and terminal interfaces. This repository contains the clients, backend services, shared UI, and Agent CLI and runtime source code.
+UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). This version centers on user-configured model providers, removes desktop account login and built-in Zhipu subscription entries, and updates branding, mode switching, and model settings.
 
-| Interface                    | Purpose                                                                                   | Development command            |
-| ---------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------ |
-| Desktop                      | Electron desktop application                                                              | `pnpm dev:desktop`             |
-| Web / UWork CLI distribution | Terminal and browser workspace; packages the TUI, Web client, backend, and Agent together | `pnpm dev:web`                 |
-| Agent CLI                    | The `zcode` terminal interface, which also provides the Agent runtime for Desktop and Web | `pnpm --filter @zcode/cli dev` |
+This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization.
 
-## Setup
+## Features
 
-Install Git, Node.js **24.14.0**, and pnpm **10.33.2**. [mise.toml](mise.toml) is the source of truth for tool versions. Run all development and packaging commands below from the repository root.
+| Feature                | Description                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Custom model providers | Configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                                                 |
+| Model discovery        | Fetch model IDs and add new entries in a batch. Existing parameters, enabled states, and ordering are preserved.                                                                                                   |
+| Model configuration    | Edit context windows, output limits, input types, and reasoning options. The missing revision that prevented saving imported model settings has been fixed.                                                        |
+| Assistant / Developer  | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Assistant emphasizes summaries and results; Developer shows more code, commands, and change details. |
+| Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                               |
+| Updated interface      | UWork SVG wordmark, U app icon, fading UCAS background, light and dark themes, and a top-right Help menu containing only Resource Manager.                                                                         |
+
+Interface modes do not change tool permissions or model-service access. Official automatic updates are disabled; update this customized version by rebuilding and installing it.
+
+## Connect a model service
+
+1. Open **Settings → Model Settings → Add Provider**, then choose a template or create a custom provider.
+2. Enter the provider's **complete API Base URL**, select the matching API format, and supply your API key.
+3. Use **Fetch models**, or enter a model ID manually with **Add Model**.
+4. Configure parameters according to the provider's actual capabilities, then select the provider and model in chat.
+
+These are fictional examples; replace them with your service's endpoints:
+
+| API format         | Example Base URL             | Chat request path      |
+| ------------------ | ---------------------------- | ---------------------- |
+| Chat Completions   | `https://api.example.com/v1` | `/v1/chat/completions` |
+| Responses          | `https://api.example.com/v1` | `/v1/responses`        |
+| Anthropic Messages | `https://api.example.com/v1` | `/v1/messages`         |
+
+Access to the model list does not prove that every listed model supports inference or tool calling. Check your provider's documentation and permissions, then verify with a simple conversation.
+
+### Known issue: discovery succeeds but chat returns no content
+
+Discovery currently tries `/v1/models` for a root URL, but **does not write the discovered API prefix back to the Base URL**. If your provider requires `/v1` and you entered only its domain, a Chat Completions request may receive a website page instead of a model response.
+
+Set the complete API prefix required by your provider, such as `https://api.example.com/v1`. A code fix to keep discovery and chat paths consistent is not included in the current version.
+
+## Run from source
+
+This customized version has been built and visually checked on **macOS Apple Silicon**. Windows, Linux, Web, and CLI entry points remain in the repository; this does not imply equivalent release validation on every platform.
+
+Install Git, Node.js **24.14.0**, and pnpm **10.33.2**. [mise.toml](mise.toml) defines the tool versions. Building native components on macOS also requires Xcode Command Line Tools. Run the following commands from the repository root.
 
 ```bash
+git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
+cd UWork
 pnpm bootstrap
-```
-
-`pnpm bootstrap` installs workspace dependencies, prepares local desktop runtime assets, and runs `build:bootstrap`.
-
-The Agent CLI and runtime source code lives in [apps/zcode-cli/](apps/zcode-cli/) as a regular directory included when you clone this repository. No separate checkout or Git submodule initialization is required.
-
-Additional setup and build commands:
-
-| Command                        | Purpose                                                                                                                             |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`                 | Install dependencies                                                                                                                |
-| `pnpm prepare:desktop-runtime` | Prepare desktop runtime assets, including remote assets by default                                                                  |
-| `pnpm prepare:remote-assets`   | Prepare remote runtime assets separately                                                                                            |
-| `pnpm bootstrap:with-remote`   | Set up dependencies and local and remote assets, then build the relevant packages sequentially; skip the desktop application bundle |
-| `pnpm build`                   | Recursively run each workspace package's build script, including its asset preparation steps                                        |
-
-The default `bootstrap` skips remote asset preparation and is suitable for local desktop development. Run the corresponding preparation command when working with remote workspaces or validating remote distribution assets.
-
-## Development and Usage
-
-### Desktop
-
-```bash
 pnpm dev:desktop
-
-# Use the test environment
-pnpm dev:desktop:test
 ```
 
-`pnpm dev:desktop` defaults to `pnpm dev:desktop:prod` and uses production service configuration. The startup script prepares local runtime assets, builds the desktop Agent, then starts Electron and source watchers.
+`bootstrap` installs dependencies, prepares local runtime assets, and builds the relevant packages. It skips remote assets by default. Agent source is included in `apps/zcode-cli/`.
 
-Set `ZCODE_DATA_BASE_DIR` to use a separate development data directory. For example, on macOS / Linux:
+Use a separate data directory during development to keep test data apart from your regular configuration. The environment-variable syntax below is for macOS / Linux:
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 ```
 
-### Web Development
+| Entry point                             | Command                        |
+| --------------------------------------- | ------------------------------ |
+| Desktop development                     | `pnpm dev:desktop`             |
+| Desktop with test service configuration | `pnpm dev:desktop:test`        |
+| Web and backend development             | `pnpm dev:web`                 |
+| CLI source development                  | `pnpm --filter @zcode/cli dev` |
+| Remote workspace asset preparation      | `pnpm bootstrap:with-remote`   |
 
-Use development mode when editing Web or backend source code:
+`dev:desktop` uses production service configuration; `dev:desktop:test` uses test configuration. These environment names do not indicate signing, notarization, or release status.
+
+## Build the macOS application
+
+After setting up dependencies, build the `.app` directly without the DMG packaging step:
 
 ```bash
-pnpm dev:web
+ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+  pnpm --filter @zcode/desktop build
 
-# Set the backend workspace (macOS / Linux)
+ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 \
+  pnpm --filter @zcode/desktop exec electron-builder \
+  --config electron-builder.config.js --mac --arm64 --dir
+```
+
+The output is `packages/desktop/dist/mac-arm64/UWork.app`. Quit the old application and back up or move `/Applications/UWork.app` before installing your build:
+
+```bash
+ditto packages/desktop/dist/mac-arm64/UWork.app /Applications/UWork.app
+xattr -cr /Applications/UWork.app
+codesign --force --deep --sign - /Applications/UWork.app
+codesign --verify --deep --strict /Applications/UWork.app
+open /Applications/UWork.app
+```
+
+This is local ad hoc signing, not Apple Developer ID signing or notarization. Use these attribute-cleanup and signing commands only for an application you built yourself.
+
+For DMG / ZIP output, use the full packaging entry point:
+
+```bash
+ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+  pnpm bundle:desktop -- --os mac --arch arm64
+```
+
+Run `pnpm bundle:desktop -- --help` for other platform and architecture options. Application building and installer packaging are separate steps; success in one does not verify the other.
+
+To change the app icon, edit the [SVG source](packages/desktop/build/uwork.svg), then regenerate native icon assets:
+
+```bash
+pnpm exec electron packages/desktop/scripts/build-uwork-icons.cjs
+```
+
+## Web and CLI
+
+`pnpm dev:web` starts the frontend and backend. The default browser address is `http://localhost:5173`; the backend defaults to port `3030`. To choose a workspace:
+
+```bash
 ZCODE_SERVER_WORKSPACE=/path/to/project pnpm dev:web
 ```
 
-This starts both the Web development server (default: `http://localhost:5173`) and the backend (default: `http://localhost:3030`). Open the Web development server in your browser. `/ws` and general `/api` requests are proxied to the local backend; `/api/v1/oauth/token` is proxied separately to the configured product service.
-
-After changing Agent source code, run `pnpm --filter @zcode/cli... build` and restart the service. To validate the complete distribution, extract and run it as described under Packaging → UWork CLI distribution below.
-
-### UWork CLI distribution
-
-The command-line distribution includes the TUI, Web client, and Agent behind one `zcode` command. With no arguments it starts the TUI; a leading `--web` starts Web mode; all other arguments go to the existing Agent CLI. Both modes run locally without Electron.
+The unified CLI distribution builder remains available. Replace this placeholder download URL with your own hosting location:
 
 ```bash
-# Start the terminal UI by default
-zcode
-
-# Start the Web interface
-zcode --web
-
-# Set the project and port without opening a browser automatically
-zcode --web --workspace /path/to/project --port 3030 --no-open
-
-# Show CLI or Web options
-zcode --help
-zcode --web --help
+pnpm build:zcode --base-url https://downloads.example.com/uwork/
 ```
 
-In Web mode, it uses the current directory as the workspace, listens on `127.0.0.1` without token authentication by default, selects an available port, and opens a browser. Use the URL printed in the terminal and press `Ctrl+C` to stop the service. For LAN access, use `--host 0.0.0.0`; listening on a non-local address generates an access token by default. Use the token-bearing URL printed in the terminal. Set a token with `--token`, or disable token authentication with `--no-token`.
+Output defaults to `dist/zcode/`. The distribution command is still `zcode`: no arguments start the TUI, and `zcode --web` starts Web mode. Building does not install or replace a system CLI. Run `pnpm build:zcode --help` for options.
 
-When starting the general Web service's HTTP entry directly, configure API/WebSocket authentication with `ZCODE_SERVER_AUTH_TOKEN`. When creating the service programmatically, use the `authToken` option.
+## Data and network boundaries
 
-See Packaging below for build instructions. `pnpm build:zcode` only creates the distribution; it does not replace an existing `zcode` on `PATH`. If the command still points to an older installation or another checkout, check it with `command -v zcode` on macOS / Linux or `where.exe zcode` on Windows.
+- Internal names such as `@zcode/*`, `ZCODE_*`, the `zcode` command, and `.zcode` data directories are retained for compatibility.
+- The packaged macOS application preserves the previous Electron userData location. Renaming the app does not intentionally migrate or clear provider and conversation data.
+- Historical app-account credentials are no longer used to restore login. Removing app login does not remove remote-connection or MCP authentication.
+- This is not a fully offline edition. Model requests go to your configured provider; plugins, remote workspaces, diagnostics, and other services have their own network behavior. Never commit real API keys, configuration, logs, or conversations to a public repository.
 
-### CLI Source Development
+See [NOTICE.md](NOTICE.md) for execution and data-handling details. Assistant / Developer modes are not operating-system sandboxes or permission levels.
 
-Use the source entry when developing the TUI or Agent:
+## Development checks
 
 ```bash
-pnpm --filter @zcode/cli dev --help
-pnpm --filter @zcode/cli dev
-
-# Build the CLI and its workspace dependencies
-pnpm --filter @zcode/cli... build
-node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
+pnpm typecheck
+pnpm lint
+pnpm architecture:check --changed
+pnpm exec tsx --test packages/services/test/*.test.ts
+pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/*.test.ts
 ```
 
-This entry runs the Agent CLI directly and does not handle the distribution's `--web` switch. Use `pnpm dev:web` for Web development, or the extracted `bin/zcode.mjs` shown below to test the unified command.
+The [Electron E2E script](packages/desktop/test/uwork.e2e.mjs) covers mode switching, discovery, deduplication, error handling, and editing imported models. First launch a source build with isolated data directories, then set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The test creates providers; do not connect it to your everyday configuration.
 
-## Configuration
+## Source layout and design notes
 
-The root [.env.example](.env.example) provides sample service URLs and build configuration. Copy it to `.env` as needed and place local overrides in `.env.local`. Select the Desktop development environment with `dev:desktop:test` or `dev:desktop:prod`.
+| Directory                                            | Responsibility                                                   |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| `packages/desktop`                                   | Electron Main, Host, Renderer, and desktop packaging             |
+| `packages/ui`                                        | Shared React UI, hooks, and state                                |
+| `packages/services`                                  | Business services and persistence                                |
+| `packages/provider`, `packages/provider-node`        | Provider configuration, model registry, and Node implementations |
+| `packages/web`, `packages/server`                    | Web client and HTTP / WebSocket services                         |
+| `packages/shared`, `packages/rpc`, `packages/client` | Protocols, RPC, and Agent client                                 |
+| `apps/zcode-cli`                                     | Agent, TUI, tools, and execution runtime                         |
 
-| Setting                              | Purpose                                                                                 |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `ZCODE_DATA_BASE_DIR`                | Base directory for application data, stored under its `.zcode/` subdirectory            |
-| `ZCODE_SERVER_WORKSPACE`             | Workspace path for the Web backend                                                      |
-| `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | Path to a local provider configuration file; uses the built-in configuration when unset |
-| `ZCODE_DIST_BASE_URL`                | Download base URL used by the CLI distribution installer                                |
+- [Custom providers and account removal](specs/custom-providers-only.md)
+- [Model discovery and parameter editing](specs/provider-model-discovery.md)
+- [UWork branding, mode switching, and interface rules](specs/uwork-branding.md)
+- [UI design system](DESIGN.md) · [Development conventions](AGENTS.md)
 
-Runtime variables can be set explicitly in the environment of the startup command. See [config/README.md](config/README.md) for the default configuration shipped with the client.
+For troubleshooting, record your operating system, commit version, API format, redacted endpoint path, and reproduction steps. Do not include real credentials.
 
-## Packaging
+## Upstream and license
 
-See [third-party/README.md](third-party/README.md) for notice generation, distribution checks, and where the notices are included in each distribution.
+Thanks to [ZCode](https://github.com/zai-org/ZCode) and its contributors for the foundation. UWork customizations are maintained on this fork's `uwork` branch and do not represent upstream product features, services, or support commitments.
 
-### Desktop
-
-```bash
-pnpm bundle:desktop
-
-# Set the target platform and CPU architecture
-pnpm bundle:desktop -- --os win --arch x64
-
-pnpm bundle:desktop -- --help
-```
-
-The default target is macOS arm64, and the default output directory is `packages/desktop/dist/`. `--os` accepts `mac`, `win`, or `linux`; `--arch` accepts `x64` or `arm64`. Packaging and signing require the tools and configuration for the target platform.
-
-### UWork CLI distribution
-
-Run `pnpm build:zcode` to build the CLI/TUI, backend, and Web client, collect the TUI native libraries, workers, and runtime dependencies, then assemble the distribution. Running the distribution still requires Node.js; use the version specified in `mise.toml`.
-
-Before packaging, set the download base URL with `ZCODE_DIST_BASE_URL` in `.env`, `.env.local`, or the process environment, or pass it through `--base-url`. The URL below is a placeholder; replace it with your hosting URL when publishing:
-
-```bash
-pnpm build:zcode --base-url https://downloads.example.com/zcode/
-
-# When ZCODE_DIST_BASE_URL is already configured
-pnpm build:zcode
-
-# Repackage existing Agent, backend, and Web build outputs
-pnpm build:zcode --skip-build
-
-# Show options for the version, output directory, and more
-pnpm build:zcode --help
-```
-
-The version defaults to the root `package.json` version. Output is written to `dist/zcode/`:
-
-- `releases/<version>/zcode-<version>.tar.gz`: runtime package.
-- `releases/<version>/sha256.txt`: checksum file.
-- `latest.json` and `install.sh`: version index and installer.
-
-Upload the entire directory to the configured download base URL. The installer downloads the runtime package from that URL, installs it to `~/.zcode/runtime` by default, and creates the `zcode` command in `~/.local/bin`. Override these directories with `ZCODE_DIST_HOME` and `ZCODE_DIST_BIN_DIR`, respectively.
-
-Existing Lite users should switch to the new build command, environment variables, and installer. Installation does not remove old Lite directories or migrate/delete session data.
-
-To test a packaged build locally, extract and run it directly without uploading or installing it:
-
-```bash
-zcode_version=$(node -p "require('./dist/zcode/latest.json').version")
-mkdir -p dist/zcode/debug
-tar -xzf "dist/zcode/releases/$zcode_version/zcode-$zcode_version.tar.gz" \
-  -C dist/zcode/debug
-# Start the TUI by default
-node dist/zcode/debug/zcode/bin/zcode.mjs
-
-# Start Web mode
-node dist/zcode/debug/zcode/bin/zcode.mjs --web \
-  --workspace "$PWD" --port 3030 --no-open
-```
-
-Open `http://127.0.0.1:3030` to validate the complete flow, with one backend serving the Web pages and running the Agent. The port must be available; if `pnpm dev:web` is already running, choose another `--port`.
-
-## Repository Structure
-
-| Directory                                            | Responsibility                                                                          |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `packages/desktop`                                   | Electron Main, Host, Renderer, and desktop packaging                                    |
-| `packages/web`                                       | Web client                                                                              |
-| `packages/server`                                    | HTTP / WebSocket services and remote connections                                        |
-| `packages/zcode-server-cli`                          | Standalone server startup and process management                                        |
-| `packages/ui`                                        | Shared React components, hooks, and Zustand state                                       |
-| `packages/services`                                  | Business services and persistence                                                       |
-| `packages/shared`, `packages/rpc`, `packages/client` | Shared protocols and types, RPC framework, and Agent client SDK                         |
-| `packages/provider`, `packages/provider-node`        | Common provider capabilities and Node implementations                                   |
-| `apps/zcode-cli`                                     | Agent CLI, TUI, runtime, and tools                                                      |
-| `scripts`, `config`, `third-party`                   | Build and maintenance scripts, built-in configuration, and third-party notice materials |
-
-## Project Notice
-
-See [NOTICE.md](NOTICE.md) for feature and promotion scope, maintenance policy, execution and data risks, licensing, and third-party copyright information.
+First-party code is licensed under [Apache License 2.0](LICENSE). Original attribution and third-party license notices are retained in [NOTICE.md](NOTICE.md), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), and the [third-party materials guide](third-party/).

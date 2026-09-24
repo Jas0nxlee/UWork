@@ -1,231 +1,180 @@
-# UWork
-
 <div align="center">
-  <img src="packages/desktop/build/icon.png" alt="UWork" width="128" height="128" />
+  <img src="packages/desktop/build/uwork.svg" alt="UWork" width="96" height="96" />
+  <h1>UWork</h1>
+  <p>使用自己的模型服务，在同一个工作区中处理日常任务与代码开发。</p>
+  <p>简体中文 · <a href="README.en.md">English</a></p>
+  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">源码</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
-<p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=47ag983c-8fcb-4d6d-814b-5395193a712c&amp;qr_code=true">飞书社群</a> ·
-  <a href="https://discord.gg/z9aBcQXZQ3">Discord</a>
-</p>
-<p align="center">
-  简体中文 | <a href="README.en.md">English</a>
-</p>
 
-UWork 是 AI 编程工作台，提供桌面应用、浏览器界面和终端 Agent。本仓库包含客户端、后端服务、共享 UI，以及 Agent CLI 与运行时源码。
+UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。当前版本以自定义模型供应商为中心，移除了桌面应用账号登录和智谱内置套餐入口，并调整了品牌、模式切换与模型设置流程。
 
-| 入口                 | 用途                                                           | 开发命令                       |
-| -------------------- | -------------------------------------------------------------- | ------------------------------ |
-| Desktop              | Electron 桌面应用                                              | `pnpm dev:desktop`             |
-| Web / UWork 命令行版 | 终端与浏览器工作台；将 TUI、Web、后端和 Agent 组装为独立运行包 | `pnpm dev:web`                 |
-| Agent CLI            | 在终端中使用 `zcode`，也为 Desktop 和 Web 提供 Agent 运行时    | `pnpm --filter @zcode/cli dev` |
+本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。
 
-## 初始化
+## 当前功能
 
-准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**，版本以 [mise.toml](mise.toml) 为准。以下开发和打包命令均在仓库根目录执行。
+| 功能           | 说明                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 自定义模型服务 | 配置 Base URL、API Key 和 API 格式，支持 Chat Completions、Responses、Anthropic Messages。                                |
+| 自动获取模型   | 从供应商读取模型 ID，去重后批量添加；已有模型的参数、启停状态和顺序保持不变。                                             |
+| 模型参数编辑   | 编辑上下文窗口、输出上限、输入类型及推理选项；已修复导入模型后保存参数时漏传版本号的问题。                                |
+| 助理 / 开发    | UWork Logo 右侧显示当前模式，点击同一个按钮切换，选择会被记住。助理侧重过程摘要与结果，开发展示更多代码、命令和修改细节。 |
+| 工作区与任务   | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                |
+| 定制界面       | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                        |
+
+模式切换只改变界面呈现，不改变工具权限或模型服务权限。官方自动更新已停用，更新本定制版需要重新构建安装。
+
+## 配置模型并开始使用
+
+1. 打开 **设置 → 模型设置 → 添加供应商**，选择模板或创建自定义供应商。
+2. 填写服务商提供的 **完整 API Base URL**，选择对应 API 格式并填写 API Key。
+3. 点击 **自动获取**，或通过 **添加模型** 手动输入模型 ID。
+4. 按服务商实际能力调整模型参数，再在聊天窗口选择供应商和模型。
+
+以下为虚构地址示例，使用时替换成自己的服务地址：
+
+| API 格式           | Base URL 示例                | 对话请求路径           |
+| ------------------ | ---------------------------- | ---------------------- |
+| Chat Completions   | `https://api.example.com/v1` | `/v1/chat/completions` |
+| Responses          | `https://api.example.com/v1` | `/v1/responses`        |
+| Anthropic Messages | `https://api.example.com/v1` | `/v1/messages`         |
+
+模型列表可访问，不代表每个模型都能执行推理或支持工具调用。请以服务商文档、权限与一次实际对话结果为准。
+
+### 已知问题：自动获取成功，对话却返回空内容
+
+当前自动获取会为根地址尝试 `/v1/models`，但**不会把探测出的 API 前缀写回 Base URL**。如果服务商实际要求 `/v1`，而配置里只填写了域名，Chat Completions 对话可能请求到网站页面，最终显示“模型未返回任何内容”。
+
+请将 Base URL 改为服务商要求的完整 API 前缀，例如 `https://api.example.com/v1`。自动发现与对话路径的一致性修复尚未包含在当前版本中。
+
+## 从源码运行
+
+当前定制版已在 **macOS Apple Silicon** 上完成构建和界面验证。仓库仍包含 Windows、Linux、Web 与 CLI 入口；这些平台不等于已经完成相同范围的发布验收。
+
+准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**。工具版本以 [mise.toml](mise.toml) 为准；macOS 编译原生组件还需要 Xcode Command Line Tools。以下命令从仓库根目录执行。
 
 ```bash
+git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
+cd UWork
 pnpm bootstrap
-```
-
-`pnpm bootstrap` 安装 workspace 依赖、准备桌面本地运行资源，再执行 `build:bootstrap`。
-
-Agent CLI 与运行时源码位于 [apps/zcode-cli/](apps/zcode-cli/)，作为普通目录随本仓库一起克隆，无需单独拉取或初始化 Git submodule。
-
-根据需要选择其他初始化或构建入口：
-
-| 命令                           | 用途                                                              |
-| ------------------------------ | ----------------------------------------------------------------- |
-| `pnpm install`                 | 安装依赖                                                          |
-| `pnpm prepare:desktop-runtime` | 准备桌面运行资源，默认包含远程资源准备                            |
-| `pnpm prepare:remote-assets`   | 单独准备远程运行资源                                              |
-| `pnpm bootstrap:with-remote`   | 初始化依赖、本地与远程资源，并串行构建相关包；跳过桌面应用 bundle |
-| `pnpm build`                   | 递归执行各 workspace 包的构建脚本，包括包内的资源准备步骤         |
-
-默认 `bootstrap` 跳过远程资源准备，适合本地桌面开发。使用远程工作区或验证远程发行资源时，再运行对应准备命令。
-
-## 开发与运行
-
-### 桌面版
-
-```bash
 pnpm dev:desktop
-
-# 使用测试环境
-pnpm dev:desktop:test
 ```
 
-`pnpm dev:desktop` 默认等同于 `pnpm dev:desktop:prod`，使用生产服务配置。启动脚本会准备本地运行资源、构建桌面 Agent，再启动 Electron 和源码监听。
+`bootstrap` 安装依赖、准备本机运行资源并构建相关包，默认跳过远程资源。Agent 源码已包含在 `apps/zcode-cli/` 中。
 
-需要独立开发数据目录时，可设置 `ZCODE_DATA_BASE_DIR`。例如在 macOS / Linux 中：
+开发时建议使用独立数据目录，避免混入日常使用数据。以下环境变量写法适用于 macOS / Linux：
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 ```
 
-### 远程功能（SSH/WSL）
+| 入口               | 命令                           |
+| ------------------ | ------------------------------ |
+| 桌面开发           | `pnpm dev:desktop`             |
+| 测试环境桌面开发   | `pnpm dev:desktop:test`        |
+| Web 与后端开发     | `pnpm dev:web`                 |
+| CLI 源码开发       | `pnpm --filter @zcode/cli dev` |
+| 准备远程工作区资源 | `pnpm bootstrap:with-remote`   |
 
-先执行 `pnpm bootstrap:with-remote` 准备远程资源（mock-cdn），再 `pnpm dev:desktop`；连接远程项目时资源选择「本地下载后上传」。开发态资源取自本地 `packages/desktop/mock-cdn` 和本地构建产物，经 SFTP 上传到远程，不访问 CDN。
+`dev:desktop` 使用 production 服务配置；`dev:desktop:test` 使用 test 配置。这里的环境名不代表应用已经完成签名、公证或发布。
 
-### Web 开发
+## 构建 macOS 应用
 
-修改 Web 或后端源码时，使用开发模式：
+完成依赖初始化后，可以直接生成 `.app`，不依赖 DMG 包装步骤：
 
 ```bash
-pnpm dev:web
+ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+  pnpm --filter @zcode/desktop build
 
-# 指定后端工作区（macOS / Linux）
+ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 \
+  pnpm --filter @zcode/desktop exec electron-builder \
+  --config electron-builder.config.js --mac --arm64 --dir
+```
+
+产物位于 `packages/desktop/dist/mac-arm64/UWork.app`。退出旧版并备份或移走 `/Applications/UWork.app` 后，可安装自己构建的应用：
+
+```bash
+ditto packages/desktop/dist/mac-arm64/UWork.app /Applications/UWork.app
+xattr -cr /Applications/UWork.app
+codesign --force --deep --sign - /Applications/UWork.app
+codesign --verify --deep --strict /Applications/UWork.app
+open /Applications/UWork.app
+```
+
+这是本机临时签名，不等同于 Apple 开发者签名或公证。上述属性清理和签名命令只用于自己构建的应用。
+
+如需 DMG / ZIP，使用仓库的完整打包入口：
+
+```bash
+ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+  pnpm bundle:desktop -- --os mac --arch arm64
+```
+
+其他平台与架构参数可通过 `pnpm bundle:desktop -- --help` 查看。完整打包与 `.app` 构建是不同步骤，某一步成功不代表其它步骤已通过。
+
+修改应用图标时，编辑 [SVG 源文件](packages/desktop/build/uwork.svg)，然后生成原生图标资源：
+
+```bash
+pnpm exec electron packages/desktop/scripts/build-uwork-icons.cjs
+```
+
+## Web 与 CLI
+
+`pnpm dev:web` 同时启动前端和后端，默认访问 `http://localhost:5173`；后端默认监听 `3030`。需要指定工作区时：
+
+```bash
 ZCODE_SERVER_WORKSPACE=/path/to/project pnpm dev:web
 ```
 
-该命令同时启动 Web 开发服务器（默认 `http://localhost:5173`）和后端（默认 `http://localhost:3030`）；浏览器访问前者。`/ws` 和一般 `/api` 请求代理到本地后端，`/api/v1/oauth/token` 单独代理到当前配置的产品服务。
-
-Agent 源码修改后，执行 `pnpm --filter @zcode/cli... build` 并重启服务。需要验证完整发行包时，按下方“UWork 命令行版”打包章节解压运行。
-
-### UWork 命令行版
-
-命令行发行包包含 TUI、Web 和 Agent，统一使用 `zcode` 启动：无参数进入 TUI；第一个参数为 `--web` 时启动 Web；其他参数交给现有 Agent CLI 处理。两种模式都在本机运行，无需 Electron。
+仓库还保留统一 CLI 发行包构建入口。下面的下载地址是占位地址，打包时替换为自己的托管地址：
 
 ```bash
-# 默认进入终端交互界面
-zcode
-
-# 启动 Web 界面
-zcode --web
-
-# 指定项目和端口，不自动打开浏览器
-zcode --web --workspace /path/to/project --port 3030 --no-open
-
-# 查看 CLI 或 Web 参数
-zcode --help
-zcode --web --help
+pnpm build:zcode --base-url https://downloads.example.com/uwork/
 ```
 
-Web 模式默认工作目录为当前目录，监听 `127.0.0.1`，默认不启用访问令牌，自动选择空闲端口并打开浏览器。访问终端输出的地址，按 `Ctrl+C` 停止服务。局域网访问可使用 `--host 0.0.0.0`；监听非本机地址时默认生成访问令牌，使用终端输出的带令牌链接。可通过 `--token` 指定令牌或 `--no-token` 关闭令牌认证。
+产物默认写入 `dist/zcode/`。发行包命令仍为 `zcode`：无参数进入 TUI，`zcode --web` 启动 Web。构建本身不会安装或替换系统中的 CLI。查看参数可运行 `pnpm build:zcode --help`。
 
-直接启动通用 Web 服务的 HTTP 入口时，通过 `ZCODE_SERVER_AUTH_TOKEN` 配置 API／WebSocket 认证；通过程序接口创建服务时，使用 `authToken` 选项。
+## 数据与网络边界
 
-构建方式见下方打包章节。`pnpm build:zcode` 只生成发行包，不会替换 `PATH` 中已有的 `zcode`。如果命令仍指向旧安装或其他源码目录，macOS / Linux 可用 `command -v zcode` 检查，Windows 可用 `where.exe zcode` 检查。
+- 为兼容原有数据，内部包名 `@zcode/*`、`ZCODE_*` 环境变量、`zcode` 命令和 `.zcode` 数据目录继续保留。
+- macOS 正式版沿用原 Electron userData 路径；更改显示名称不会主动搬迁或清空供应商与会话配置。
+- 历史应用账号凭据不再用于登录恢复；移除应用登录不等于取消远程连接或 MCP 的鉴权。
+- 本项目并非完全离线版本。模型请求会发送到配置的供应商，插件、远程工作区、诊断等能力仍有各自的网络行为。不要在公开仓库中提交 API Key、真实配置、日志或会话数据。
 
-### CLI 源码开发
+运行与执行边界详见 [NOTICE.md](NOTICE.md)。不要把“助理 / 开发”的显示模式当作操作系统沙箱或权限级别。
 
-直接开发 TUI 或 Agent 时，运行源码入口：
+## 开发检查
 
 ```bash
-pnpm --filter @zcode/cli dev --help
-pnpm --filter @zcode/cli dev
-
-# 构建 CLI 及其 workspace 依赖
-pnpm --filter @zcode/cli... build
-node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
+pnpm typecheck
+pnpm lint
+pnpm architecture:check --changed
+pnpm exec tsx --test packages/services/test/*.test.ts
+pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/*.test.ts
 ```
 
-这个入口直接运行 Agent CLI，不经过发行包的 `--web` 分流。开发 Web 用 `pnpm dev:web`；验证统一的 `zcode` 命令，用下方解压后的 `bin/zcode.mjs`。
+[Electron E2E 脚本](packages/desktop/test/uwork.e2e.mjs)覆盖模式切换、模型获取、去重、错误处理及导入后的参数编辑。运行它需要单独启动使用隔离数据目录的源码构建，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点；测试会创建供应商，不能连接日常使用的配置目录。
 
-## 配置
+## 源码与设计说明
 
-根目录 [.env.example](.env.example) 提供服务地址与构建配置示例，可按需复制到 `.env`，本地覆盖放入 `.env.local`。Desktop 的开发环境通过 `dev:desktop:test` / `dev:desktop:prod` 选择。
+| 目录                                                 | 职责                                     |
+| ---------------------------------------------------- | ---------------------------------------- |
+| `packages/desktop`                                   | Electron Main、Host、Renderer 和桌面打包 |
+| `packages/ui`                                        | 共享 React 界面、hooks 和状态            |
+| `packages/services`                                  | 业务服务与持久化                         |
+| `packages/provider`、`packages/provider-node`        | 供应商配置、模型注册与 Node 实现         |
+| `packages/web`、`packages/server`                    | Web 客户端及 HTTP / WebSocket 服务       |
+| `packages/shared`、`packages/rpc`、`packages/client` | 协议、RPC 与 Agent 客户端                |
+| `apps/zcode-cli`                                     | Agent、TUI、工具与执行运行时             |
 
-| 配置                                 | 用途                                             |
-| ------------------------------------ | ------------------------------------------------ |
-| `ZCODE_DATA_BASE_DIR`                | 应用数据基目录，数据写入其下的 `.zcode/`         |
-| `ZCODE_SERVER_WORKSPACE`             | Web 后端的工作区路径                             |
-| `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | 本地 Provider 配置文件路径；未设置时使用内置配置 |
-| `ZCODE_DIST_BASE_URL`                | 命令行安装脚本使用的下载根地址                   |
+- [自定义供应商与账号入口调整](specs/custom-providers-only.md)
+- [模型自动获取与参数编辑](specs/provider-model-discovery.md)
+- [UWork 品牌、模式切换和界面规范](specs/uwork-branding.md)
+- [UI 设计规范](DESIGN.md) · [开发约定](AGENTS.md)
 
-运行时变量可在启动命令的环境中显式设置。随客户端发布的默认配置见 [config/README.md](config/README.md)。
+复现和排查问题时，请记录系统版本、提交版本、API 格式、脱敏后的路径和操作步骤，不要附带真实密钥。
 
-## 打包
+## 上游与许可
 
-第三方声明生成、发行校验流程及声明在发行物中的位置见 [third-party/README.md](third-party/README.md)。
+感谢 [ZCode](https://github.com/zai-org/ZCode) 及其贡献者提供基础实现。UWork 的定制功能在本 fork 的 `uwork` 分支维护，不代表上游产品的功能、服务或支持承诺。
 
-### 桌面版
-
-```bash
-pnpm bundle:desktop
-
-# 指定目标平台与 CPU 架构
-pnpm bundle:desktop -- --os win --arch x64
-
-pnpm bundle:desktop -- --help
-```
-
-默认目标为 macOS arm64，默认输出目录为 `packages/desktop/dist/`。`--os` 支持 `mac`、`win`、`linux`，`--arch` 支持 `x64`、`arm64`；实际打包与签名需要目标平台对应的工具和配置。
-
-安装：双击打开产物 DMG，将 UWork 拖入"应用程序"。本地构建未签名，首次打开若被 macOS 拦截，执行：
-
-```bash
-sudo xattr -rd com.apple.quarantine /Applications/UWork.app
-```
-
-### UWork 命令行版
-
-构建入口为 `pnpm build:zcode`。脚本会依次构建 CLI/TUI、后端和 Web，收集 TUI 的原生库、worker 与运行时依赖，再组装发行包；运行发行包仍需要 Node.js，版本以 `mise.toml` 为准。
-
-打包前必须设置下载根地址 `ZCODE_DIST_BASE_URL`（可放在 `.env`、`.env.local` 或环境变量中），也可以通过 `--base-url` 传入。以下地址是占位示例，发布时替换为实际托管地址：
-
-```bash
-pnpm build:zcode --base-url https://downloads.example.com/zcode/
-
-# 已配置 ZCODE_DIST_BASE_URL 时
-pnpm build:zcode
-
-# 仅重新组包，复用已有的 Agent、后端和 Web 构建产物
-pnpm build:zcode --skip-build
-
-# 查看版本、输出目录等可选参数
-pnpm build:zcode --help
-```
-
-默认版本取根目录 `package.json`，输出目录为 `dist/zcode/`：
-
-- `releases/<version>/zcode-<version>.tar.gz`：运行包。
-- `releases/<version>/sha256.txt`：校验摘要。
-- `latest.json`、`install.sh`：版本索引和安装脚本。
-
-完整目录可上传到配置的下载根地址。安装脚本从该地址下载运行包，默认安装到 `~/.zcode/runtime`，并在 `~/.local/bin` 创建 `zcode` 命令。安装目录可通过 `ZCODE_DIST_HOME` 修改，命令目录可通过 `ZCODE_DIST_BIN_DIR` 修改。
-
-旧 Lite 用户需要改用上述构建命令、环境变量和新的安装脚本。新安装不会删除旧 Lite 目录，也不会迁移或删除已有会话数据。
-
-本地调试打包产物时，可直接解压运行，无需上传或安装：
-
-```bash
-zcode_version=$(node -p "require('./dist/zcode/latest.json').version")
-mkdir -p dist/zcode/debug
-tar -xzf "dist/zcode/releases/$zcode_version/zcode-$zcode_version.tar.gz" \
-  -C dist/zcode/debug
-# 默认启动 TUI
-node dist/zcode/debug/zcode/bin/zcode.mjs
-
-# 启动 Web
-node dist/zcode/debug/zcode/bin/zcode.mjs --web \
-  --workspace "$PWD" --port 3030 --no-open
-```
-
-浏览器打开 `http://127.0.0.1:3030`，即可验证同一后端服务托管 Web 页面和 Agent 的完整链路。该端口需要空闲；如正在运行 `pnpm dev:web`，可改用其他 `--port`。
-
-## 仓库结构
-
-| 目录                                                 | 职责                                       |
-| ---------------------------------------------------- | ------------------------------------------ |
-| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包   |
-| `packages/web`                                       | Web 客户端                                 |
-| `packages/server`                                    | HTTP / WebSocket 服务与远程连接            |
-| `packages/zcode-server-cli`                          | 独立 Server 启动与进程管理                 |
-| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态     |
-| `packages/services`                                  | 业务服务与持久化                           |
-| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK |
-| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现              |
-| `apps/zcode-cli`                                     | Agent CLI、TUI、运行时与工具               |
-| `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料     |
-
-## 项目声明
-
-功能与优惠范围、维护规则、执行与数据风险，以及许可和第三方版权说明，详见 [NOTICE.md](NOTICE.md)。
-
-## 本地自定义供应商版本
-
-当前分支移除了应用登录、智谱/Z.ai 内置模型与套餐入口，只使用用户配置的模型供应商。历史个人配置和会话保留；旧账号凭据不再读取，套餐 API 与内置配置远程刷新已停用。官方自动更新已停用，更新需重新编译安装。
-
-行为与验收说明见 [specs/custom-providers-only.md](specs/custom-providers-only.md)。桌面构建使用 `ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 pnpm bundle:desktop -- --os mac --arch arm64`。
-
-本地增强：模型设置支持“自动获取”供应商模型并去重追加；主侧栏提供 UWork SVG 字标及“助理/开发”模式切换，主界面背景为 UCAS，右上角帮助只保留资源管理器。见 [模型发现规格](specs/provider-model-discovery.md) 与 [品牌和界面规格](specs/uwork-branding.md)。
+第一方代码采用 [Apache License 2.0](LICENSE)。原项目归属和第三方许可继续保留，参见 [NOTICE.md](NOTICE.md)、[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 与 [第三方材料说明](third-party/)。
