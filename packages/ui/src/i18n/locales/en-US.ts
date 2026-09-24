@@ -2426,6 +2426,8 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.catalogProviderSearch": "Search providers",
   "settings.modelProvider.catalogProviderEmpty": "No providers found",
   "settings.modelProvider.addProviderAction": "Add provider",
+  "settings.modelProvider.addProviderUnlockHint":
+    "Click 20 times in a row to unlock adding providers",
   "settings.modelProvider.templatePickerTitle": "Add provider",
   "settings.modelProvider.templateGroup.zhipu": "Zhipu",
   "settings.modelProvider.templateGroup.other": "Other",

@@ -5,7 +5,12 @@ import {
 import {
   ProviderRegistryService,
   ProviderSettingsFacade,
+  UCAS_DEFAULT_MODEL_IDS,
+  UCAS_PROVIDER_ID,
+  UCAS_PROVIDER_NAME,
+  UCAS_PROVIDER_TEMPLATE_ID,
   createFailClosedAccountProviderConfigSnapshot,
+  createUcasDefaultModelConfig,
   type AccountProviderConfigSnapshot,
   type ProviderConfigSnapshot,
   type ProviderSettingsMutationTarget,
@@ -121,7 +126,16 @@ export class ProviderRuntime {
   start(): Promise<void> {
     if (this.#disposed) throw new Error("ProviderRuntime 已 dispose");
     if (this.#startPromise) return this.#startPromise;
-    const startPromise = this.#configRuntime.start().then(() => this.registryService.start());
+    const startPromise = this.#configRuntime.start().then(async () => {
+      await this.configService.ensureSeededPersonalProvider({
+        providerId: UCAS_PROVIDER_ID,
+        templateId: UCAS_PROVIDER_TEMPLATE_ID,
+        providerName: UCAS_PROVIDER_NAME,
+        modelIds: UCAS_DEFAULT_MODEL_IDS,
+        modelConfig: createUcasDefaultModelConfig(),
+      });
+      await this.registryService.start();
+    });
     this.#startPromise = startPromise;
     void startPromise.catch(() => {
       if (this.#startPromise === startPromise) this.#startPromise = null;

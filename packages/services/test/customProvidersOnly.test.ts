@@ -52,7 +52,7 @@ test("historical OAuth account reads do not feed provider APIs or mutate persona
   assert.equal(await credentials.load("custom-api-key"), "personal-test-key");
 });
 
-test("bundled catalog has no account providers or Zhipu templates and retains other templates", async () => {
+test("bundled catalog keeps UCAS and other templates without account providers or Zhipu templates", async () => {
   const release = JSON.parse(
     await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
   );
@@ -61,6 +61,13 @@ test("bundled catalog has no account providers or Zhipu templates and retains ot
   assert.ok(
     rules.templateRules.some((rule: { templateId: string }) => rule.templateId === "openai"),
   );
+  const ucas = rules.templateRules.find(
+    (rule: { templateId: string }) => rule.templateId === "ucas",
+  );
+  assert.ok(ucas);
+  assert.equal(ucas.config.api.baseUrl, "https://lm.ucas.com.cn:15000/v1");
+  assert.equal(ucas.config.api.type, "openai-chat-completions");
+  assert.equal(ucas.config.access.apiKey, undefined);
   assert.equal(
     rules.templateRules.some((rule: { templateId: string }) =>
       /bigmodel|zai/.test(rule.templateId),

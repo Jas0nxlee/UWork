@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { UCAS_PROVIDER_ID } from "@zcode/provider";
 import { Button } from "@/components/ui/button.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useModelProviders } from "@/hooks/useModelProviders.js";
@@ -76,6 +77,8 @@ export function ModelProviderSection({
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [creatingProvider, setCreatingProvider] = useState(false);
+  const [addProviderUnlocked, setAddProviderUnlocked] = useState(false);
+  const addProviderClickCount = useRef(0);
   const providers = useMemo(
     () =>
       sortModelProvidersForDisplay(
@@ -86,6 +89,17 @@ export function ModelProviderSection({
   );
   const selectedProvider =
     providers.find((provider) => provider.providerId === selectedProviderId) ?? providers[0];
+  const handleAddProvider = () => {
+    if (!addProviderUnlocked) {
+      addProviderClickCount.current += 1;
+      if (addProviderClickCount.current >= 20) setAddProviderUnlocked(true);
+      return;
+    }
+    setTemplatePickerOpen(true);
+  };
+  const resetAddProviderClickSequence = () => {
+    if (!addProviderUnlocked) addProviderClickCount.current = 0;
+  };
   const navigationGroups: ModelProviderNavGroup[] = [
     {
       id: "custom",
@@ -136,7 +150,12 @@ export function ModelProviderSection({
       customLoading={loading || refreshing}
       onRefresh={() => void refresh()}
       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
-      onAddProvider={() => setTemplatePickerOpen(true)}
+      addProviderLocked={!addProviderUnlocked}
+      addProviderLockedLabel={intl.formatMessage({
+        id: "settings.modelProvider.addProviderUnlockHint",
+      })}
+      onAddProvider={handleAddProvider}
+      onResetAddProviderClickSequence={resetAddProviderClickSequence}
       navigationGroups={navigationGroups}
       selectedNodeKey={
         selectedProvider ? createCustomProviderNodeKey(selectedProvider.providerId) : null
@@ -170,20 +189,23 @@ export function ModelProviderSection({
           onSavePersonalModelDraft={savePersonalModelDraft}
           onSetPersonalModelEnabled={setPersonalModelEnabled}
           onDeletePersonalModel={deletePersonalModel}
-          onDelete={() =>
-            confirmAndDeleteModelProvider({
-              provider: selectedProvider,
-              confirmDialog,
-              intl,
-              deleteProvider,
-            })
+          onDelete={
+            selectedProvider.providerId === UCAS_PROVIDER_ID
+              ? undefined
+              : () =>
+                  confirmAndDeleteModelProvider({
+                    provider: selectedProvider,
+                    confirmDialog,
+                    intl,
+                    deleteProvider,
+                  })
           }
           onTestModel={testModelConnectivity}
           onReorderModelIds={(ids) => reorderProviderModels(selectedProvider.providerId, ids)}
           presetApiKeyUrl={keyUrl}
           onOpenPresetApiKey={keyUrl ? () => platform.openExternal(keyUrl) : undefined}
-          readOnlyEndpoints={false}
-          nameEditable
+          readOnlyEndpoints={selectedProvider.providerId === UCAS_PROVIDER_ID}
+          nameEditable={selectedProvider.providerId !== UCAS_PROVIDER_ID}
         />
       ) : (
         <p className="text-ui-base text-foreground-subtle">

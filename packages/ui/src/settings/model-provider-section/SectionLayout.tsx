@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { TID_MODEL_PROVIDER_ADD_PROVIDER_BUTTON } from "@zcode/shared";
 import type { ModelProviderNavGroup } from "@/settings/model-provider-section/constants.js";
 import { ModelProviderSectionNavigation } from "@/settings/model-provider-section/Navigation.js";
@@ -13,7 +13,10 @@ interface ModelProviderSectionLayoutProps {
   customLoading: boolean;
   onRefresh: () => void;
   addProviderLabel: string;
+  addProviderLocked: boolean;
+  addProviderLockedLabel: string;
   onAddProvider: () => void;
+  onResetAddProviderClickSequence: () => void;
   navigationGroups: ModelProviderNavGroup[];
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;
@@ -37,7 +40,10 @@ export function ModelProviderSectionLayout({
   customLoading,
   onRefresh,
   addProviderLabel,
+  addProviderLocked,
+  addProviderLockedLabel,
   onAddProvider,
+  onResetAddProviderClickSequence,
   navigationGroups,
   selectedNodeKey,
   onSelectNavItem,
@@ -51,7 +57,18 @@ export function ModelProviderSectionLayout({
   });
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      onClickCapture={(event: MouseEvent<HTMLDivElement>) => {
+        const target = event.target;
+        if (
+          !(target instanceof Element) ||
+          !target.closest('[data-settings-create-locked="true"]')
+        ) {
+          onResetAddProviderClickSequence();
+        }
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         <p className="text-ui-base leading-6 text-foreground-subtle">{description}</p>
         <SettingsResourceHeaderActions
@@ -60,6 +77,8 @@ export function ModelProviderSectionLayout({
           refreshing={refreshButtonLoading}
           refreshLabel={refreshButtonLoading ? loadingLabel : refreshLabel}
           newLabel={addProviderLabel}
+          newLocked={addProviderLocked}
+          newLockedLabel={addProviderLockedLabel}
           newTestId={TID_MODEL_PROVIDER_ADD_PROVIDER_BUTTON}
         />
       </div>

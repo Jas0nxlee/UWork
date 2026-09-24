@@ -26,6 +26,8 @@ interface SettingsResourceHeaderActionsProps {
   importDisabled?: boolean;
   exportDisabled?: boolean;
   newDisabled?: boolean;
+  newLocked?: boolean;
+  newLockedLabel?: string;
   refreshTestId?: string;
   newTestId?: string;
   refreshLabel?: string;
@@ -45,6 +47,8 @@ export function SettingsResourceHeaderActions({
   importDisabled = false,
   exportDisabled = false,
   newDisabled = false,
+  newLocked = false,
+  newLockedLabel,
   refreshTestId,
   newTestId,
   refreshLabel,
@@ -122,11 +126,14 @@ export function SettingsResourceHeaderActions({
       {onNew ? (
         <Button
           type="button"
-          variant="default"
+          variant={newLocked ? "secondary" : "default"}
           size="default"
           className="rounded-lg"
           data-settings-create-action={newActionId}
+          data-settings-create-locked={newLocked ? "true" : undefined}
           aria-label={newLabel}
+          aria-description={newLocked ? newLockedLabel : undefined}
+          title={newLocked ? newLockedLabel : undefined}
           data-testid={newTestId}
           disabled={newDisabled}
           onClick={onNew}

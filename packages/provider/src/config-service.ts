@@ -12,11 +12,19 @@ import {
   ApiKeyAccessConfig,
   ModelConfig,
   ProviderConfigMap,
+  ProviderApiConfig,
   ProviderConfig as ProviderConfigValue,
   ProviderTemplateMap,
   resolveProviderTemplateName,
 } from "./config/index.js";
 import { resolveOwnedOrder } from "./owned-order.js";
+import {
+  UCAS_API_TYPE,
+  UCAS_BASE_URL,
+  UCAS_PROVIDER_ID,
+  UCAS_PROVIDER_TEMPLATE_ID,
+  createUcasDefaultModelConfig,
+} from "./ucas-defaults.js";
 import type { ModelSelection } from "@zcode/shared/model-selection";
 import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
 
@@ -57,6 +65,14 @@ export interface CreatePersonalProviderInput {
   readonly providerName?: string;
   readonly locale?: ProviderTemplateLocale;
   readonly initialConfig?: ProviderConfig;
+}
+
+export interface EnsureSeededPersonalProviderInput {
+  readonly providerId: ProviderId;
+  readonly templateId: ProviderTemplateId;
+  readonly providerName: string;
+  readonly modelIds: readonly ModelId[];
+  readonly modelConfig: ModelConfig;
 }
 
 /** Facade 提供的 Host 内部成员事实；不得接受 Renderer 自报的模型名单。 */
@@ -153,6 +169,22 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
       assertMembershipCurrent(membership, providerId, current);
       const builtin = zcodeBuiltin.providers.get(providerId);
       const currentPersonal = current.providers.get(providerId);
+      const currentRule = current.providers.getRule(providerId);
+      if (
+        providerId === UCAS_PROVIDER_ID &&
+        currentRule?.templateId === UCAS_PROVIDER_TEMPLATE_ID
+      ) {
+        const baseline = zcodeBuiltin.providerTemplates?.get(UCAS_PROVIDER_TEMPLATE_ID)?.config;
+        if (
+          !baseline ||
+          (config.api?.type !== undefined && config.api.type !== baseline.api?.type) ||
+          (config.api?.baseUrl !== undefined && config.api.baseUrl !== baseline.api?.baseUrl) ||
+          (metadata?.providerName !== undefined && metadata.providerName !== "ucas") ||
+          (metadata?.templateId !== undefined && metadata.templateId !== UCAS_PROVIDER_TEMPLATE_ID)
+        ) {
+          throw new Error("UCAS 供应商名称、Base URL 和 API 格式固定");
+        }
+      }
       const currentEffectiveProviders = zcodeBuiltin.providers.overlay(current.providers);
       // 账号总禁用已撤销；在公共写入边界拒绝新操作，避免隐藏 UI 后仍能写出无效状态。
       if (builtin?.access?.type === "zhipu-account" && metadata?.enabled === false) {
@@ -193,7 +225,6 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
           membership?.inheritedModelIds,
         ),
       );
-      const currentRule = current.providers.getRule(providerId);
       const providers = current.providers.setRule({
         ...currentRule,
         providerId,
@@ -216,6 +247,178 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
         providers,
         models: current.models,
         providerOrder: current.providerOrder,
+      };
+    });
+  }
+
+  /** 多 Host 并发启动时仍以固定 ID 单次播种；已有个人记录和模型配置一律保留。 */
+  async ensureSeededPersonalProvider(input: EnsureSeededPersonalProviderInput): Promise<void> {
+    const providerId = normalizeId("providerId", input.providerId);
+    const templateId = normalizeId("templateId", input.templateId);
+    const providerName = normalizeId("providerName", input.providerName);
+    const modelIds = [...new Set(input.modelIds.map((modelId) => normalizeId("modelId", modelId)))];
+    const zcodeBuiltin = await this.#zcodeBuiltinSource.read();
+    if (!zcodeBuiltin.providerTemplates?.has(templateId)) {
+      throw new Error(`Provider Template 不存在: ${templateId}`);
+    }
+
+    await this.#updatePersonal((current) => {
+      const currentRule = current.providers.getRule(providerId);
+      const currentConfig = current.providers.get(providerId);
+      const legacyAliases = current.providers
+        .rules()
+        .filter(
+          (rule) =>
+            rule.providerId !== providerId &&
+            rule.templateId !== templateId &&
+            rule.config.group === "standard-personal" &&
+            rule.providerName?.trim().toLocaleLowerCase() === providerName.toLocaleLowerCase(),
+        );
+      const aliasIds = new Set(legacyAliases.map((rule) => rule.providerId));
+      const aliasConfigs = legacyAliases.map((rule) => ({
+        rule,
+        config: current.providers.get(rule.providerId)!,
+      }));
+      // 固定 ID 可能已被旧版用户手工建成普通供应商。将它迁移到 UCAS 模板；已经
+      // 绑定 UCAS 模板的记录则保留模型成员，避免重启时复活用户删除的默认模型。
+      // 旧版还可能用随机 Provider ID、仅以 ucas 为显示名；将这些别名并入固定 ID，
+      // 以免首次播种留下两个同名入口，并保留旧 API Key 和模型设置。
+      const shouldSeedModels = !currentRule || currentRule.templateId !== templateId;
+      const modelsToSeed = shouldSeedModels ? modelIds : [];
+      const personalModelIds = [
+        ...new Set([
+          ...aliasConfigs.flatMap(({ config }) => config.personalModelIds ?? []),
+          ...(currentConfig?.personalModelIds ?? []),
+          ...modelsToSeed,
+        ]),
+      ];
+      const modelOrder = normalizeModelOrder([], personalModelIds, [
+        ...aliasConfigs.flatMap(({ config }) => config.modelOrder ?? []),
+        ...(currentConfig?.modelOrder ?? []),
+        ...modelsToSeed,
+      ]);
+      let models = current.models;
+      for (const { rule, config: aliasConfig } of aliasConfigs) {
+        for (const modelId of aliasConfig.personalModelIds ?? []) {
+          const exactRule = models.getExactRule(rule.providerId, modelId);
+          if (exactRule) {
+            // 合并时旧个人规则优先于新播种的建议默认值，保留用户已有的固定/智能参数。
+            models = models.setExact(
+              providerId,
+              modelId,
+              exactRule.config,
+              exactRule.type !== "manual-provider-model",
+            );
+          }
+        }
+        models = models.deleteExactForProvider(rule.providerId);
+      }
+      for (const modelId of modelsToSeed) {
+        if (!models.getExactRule(providerId, modelId)) {
+          models = models.setExact(providerId, modelId, input.modelConfig, true);
+        }
+      }
+      const aliasAccessConfigs = aliasConfigs
+        .map(({ config }) => config.access)
+        .filter((access): access is ApiKeyAccessConfig => access?.type === "api-key");
+      const aliasAccessWithKey = aliasAccessConfigs.find((access) =>
+        Boolean(access.apiKey?.trim()),
+      );
+      const access =
+        currentConfig?.access?.type === "api-key" && currentConfig.access.apiKey?.trim()
+          ? currentConfig.access
+          : (aliasAccessWithKey ??
+            (currentConfig?.access?.type === "api-key"
+              ? currentConfig.access
+              : (aliasAccessConfigs[0] ?? new ApiKeyAccessConfig())));
+      const headers = Object.assign(
+        {},
+        ...aliasConfigs.map(({ config }) => config.api?.headers ?? {}),
+        currentConfig?.api?.headers ?? {},
+      );
+      const config = new ProviderConfigValue({
+        group: "standard-personal",
+        logo: currentConfig?.logo ?? aliasConfigs.find(({ config }) => config.logo)?.config.logo,
+        access,
+        api: new ProviderApiConfig({
+          type: UCAS_API_TYPE,
+          baseUrl: UCAS_BASE_URL,
+          ...(Object.keys(headers).length === 0 ? {} : { headers }),
+        }),
+        personalModelIds,
+        modelOrder,
+        visibility: "visible",
+      });
+      const defaultModelSelection = current.defaultModelSelection
+        ? {
+            ...current.defaultModelSelection,
+            ...(aliasIds.has(current.defaultModelSelection.providerId) ? { providerId } : {}),
+          }
+        : undefined;
+      const enabled =
+        currentRule?.enabled ?? legacyAliases.find((rule) => rule.enabled !== undefined)?.enabled;
+      const providerRule = {
+        ...currentRule,
+        ...(enabled === undefined ? {} : { enabled }),
+        providerId,
+        templateId,
+        providerName,
+        config,
+      };
+      const providerRules = current.providers
+        .rules()
+        .filter((rule) => rule.providerId !== providerId && !aliasIds.has(rule.providerId));
+      const insertionIndex = current.providers
+        .rules()
+        .findIndex((rule) => rule.providerId === providerId || aliasIds.has(rule.providerId));
+      providerRules.splice(
+        insertionIndex < 0 ? providerRules.length : Math.min(insertionIndex, providerRules.length),
+        0,
+        providerRule,
+      );
+      const providers = new ProviderConfigMap(providerRules);
+      let providerOrder = current.providerOrder;
+      if (providerOrder && aliasIds.size > 0) {
+        const targetIds = new Set([...aliasIds, providerId]);
+        const insertionIndex = providerOrder.findIndex((candidate) => targetIds.has(candidate));
+        const normalizedOrder = providerOrder.filter((candidate) => !targetIds.has(candidate));
+        normalizedOrder.splice(
+          insertionIndex < 0
+            ? normalizedOrder.length
+            : Math.min(insertionIndex, normalizedOrder.length),
+          0,
+          providerId,
+        );
+        providerOrder = normalizedOrder;
+      } else if (!currentRule) {
+        providerOrder = appendCurrentProviderOrder(
+          zcodeBuiltin.providers,
+          providers,
+          current.providerOrder,
+          providerId,
+        );
+      }
+      if (
+        aliasIds.size === 0 &&
+        currentRule?.templateId === templateId &&
+        currentRule.providerName === providerName &&
+        JSON.stringify(currentConfig?.toJSON()) === JSON.stringify(config.toJSON()) &&
+        models === current.models &&
+        JSON.stringify(providerOrder) === JSON.stringify(current.providerOrder) &&
+        JSON.stringify(defaultModelSelection) === JSON.stringify(current.defaultModelSelection)
+      ) {
+        return {
+          providers: current.providers,
+          models: current.models,
+          providerOrder: current.providerOrder,
+          defaultModelSelection: current.defaultModelSelection,
+        };
+      }
+      return {
+        providers,
+        models,
+        providerOrder,
+        defaultModelSelection,
       };
     });
   }
@@ -275,6 +478,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
 
   deletePersonalProvider(providerId: ProviderId): Promise<ProviderConfigLayerSnapshot> {
     assertNonEmptyId("providerId", providerId);
+    if (providerId === UCAS_PROVIDER_ID) throw new Error("UCAS 默认供应商不可删除");
     return this.#updatePersonal((current) => ({
       providers: current.providers.delete(providerId),
       models: current.models.deleteExactForProvider(providerId),
@@ -338,8 +542,16 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
       const added = incoming.filter((modelId) => !existing.has(modelId));
       const members = [...(provider.personalModelIds ?? []), ...added];
       let models = current.models;
-      for (const modelId of added)
-        models = models.setExact(id, modelId, new ModelConfig({ enabled: true }), true);
+      for (const modelId of added) {
+        models = models.setExact(
+          id,
+          modelId,
+          id === UCAS_PROVIDER_ID
+            ? createUcasDefaultModelConfig()
+            : new ModelConfig({ enabled: true }),
+          true,
+        );
+      }
       return {
         providers: current.providers.set(
           id,

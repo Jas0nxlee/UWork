@@ -2275,6 +2275,7 @@ const zhCN: Record<string, string> = {
   "settings.modelProvider.catalogProviderSearch": "搜索供应商",
   "settings.modelProvider.catalogProviderEmpty": "未找到供应商",
   "settings.modelProvider.addProviderAction": "添加供应商",
+  "settings.modelProvider.addProviderUnlockHint": "连续点击 20 次以解锁添加供应商",
   "settings.modelProvider.templatePickerTitle": "添加供应商",
   "settings.modelProvider.templateGroup.zhipu": "智谱",
   "settings.modelProvider.templateGroup.other": "其他",

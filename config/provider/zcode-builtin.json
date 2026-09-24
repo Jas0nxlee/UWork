@@ -1,9 +1,25 @@
 {
   "schemaVersion": 1,
-  "revision": 31,
+  "revision": 32,
   "config": {
     "providerConfigRules": {
       "templateRules": [
+        {
+          "templateId": "ucas",
+          "templateNameMap": {
+            "zh-CN": "ucas",
+            "en-US": "ucas"
+          },
+          "config": {
+            "access": {
+              "type": "api-key"
+            },
+            "api": {
+              "type": "openai-chat-completions",
+              "baseUrl": "https://lm.ucas.com.cn:15000/v1"
+            }
+          }
+        },
         {
           "templateId": "moonshot-kimi",
           "templateNameMap": {
