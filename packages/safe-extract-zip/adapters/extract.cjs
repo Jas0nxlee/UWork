@@ -21,7 +21,8 @@ function entryPath(root, name) {
   if (
     typeof name !== "string" ||
     !name ||
-    /[\\\0:]/.test(name) ||
+    /[\\:]/.test(name) ||
+    name.includes("\0") ||
     path.posix.isAbsolute(name) ||
     path.win32.isAbsolute(name)
   )
@@ -52,7 +53,8 @@ async function validateLink(root, destination, target) {
   const partsOf = (value) => {
     if (
       !value ||
-      /[\\\0:]/.test(value) ||
+      /[\\:]/.test(value) ||
+      value.includes("\0") ||
       path.posix.isAbsolute(value) ||
       path.win32.isAbsolute(value)
     )
