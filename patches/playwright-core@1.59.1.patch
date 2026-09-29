@@ -1,0 +1,23 @@
+diff --git a/lib/server/registry/oopDownloadBrowserMain.js b/lib/server/registry/oopDownloadBrowserMain.js
+index 34d23f86a49514010fb3a22a7f02392cba0f2d8e..8655a4b6bdd45537757a175422ccc7dd0e8f53bc 100644
+--- a/lib/server/registry/oopDownloadBrowserMain.js
++++ b/lib/server/registry/oopDownloadBrowserMain.js
+@@ -28,7 +28,8 @@ var import_fs = __toESM(require("fs"));
+ var import_path = __toESM(require("path"));
+ var import_manualPromise = require("../../utils/isomorphic/manualPromise");
+ var import_network = require("../utils/network");
+-var import_zipBundle = require("../../zipBundle");
++// 统一使用校验符号链接与目标路径的解压边界，不能沿用旧 extract-zip 的内嵌副本。
++var import_safeExtract = require("@uwork/safe-extract-zip");
+ var import_fileUtils = require("../utils/fileUtils");
+ function log(message) {
+   process.send?.({ method: "log", params: { message } });
+@@ -103,7 +104,7 @@ async function main(options) {
+   log(`removing existing browser directory if any`);
+   await (0, import_fileUtils.removeFolders)([options.browserDirectory]);
+   log(`extracting archive`);
+-  await (0, import_zipBundle.extract)(options.zipPath, { dir: options.browserDirectory });
++  await import_safeExtract(options.zipPath, { dir: options.browserDirectory });
+   if (options.executablePath) {
+     log(`fixing permissions at ${options.executablePath}`);
+     await import_fs.default.promises.chmod(options.executablePath, 493);

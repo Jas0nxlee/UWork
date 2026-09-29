@@ -3,19 +3,6 @@ packages:
   - apps/zcode-cli
   - apps/zcode-cli/packages/*
   - apps/zcode-cli/tools/*
-supportedArchitectures:
-  os:
-    - current
-    - darwin
-    - linux
-    - win32
-  cpu:
-    - current
-    - x64
-    - arm64
-  libc:
-    - current
-    - glibc
 allowBuilds:
   cpu-features: true
   edgedriver: true
@@ -29,3 +16,50 @@ allowBuilds:
   protobufjs: true
   ssh2: true
   unsafe-pointer: true
+overrides:
+  axios: ^1.16.0
+  basic-ftp: ^5.3.1
+  brace-expansion@^5: ^5.0.9
+  browserslist: ^4.28.7
+  builder-util-runtime: ^9.7.0
+  extract-zip: workspace:@uwork/safe-extract-zip@*
+  fast-uri: ^3.1.7
+  form-data@^4: ^4.0.6
+  hono: ^4.12.25
+  ip-address: ^10.3.1
+  js-yaml@^4: ^4.3.2
+  linkify-it: ^5.0.2
+  nanoid@^3: ^3.3.18
+  nanoid@^5: ^5.1.16
+  postcss: ^8.5.18
+  protobufjs@^7: ^7.6.1
+  react: 19.2.7
+  react-dom: 19.2.7
+  shell-quote: ^1.9.0
+  smol-toml: ^1.7.1
+  undici@^6: ^6.27.0
+  undici@^7: ^7.29.0
+  ws@8.18.0: ^8.21.0
+  ws@^8: ^8.21.0
+patchedDependencies:
+  "@ai-sdk/anthropic@3.0.81": patches/@ai-sdk__anthropic@3.0.81.patch
+  "@ai-sdk/openai-compatible@2.0.60": patches/@ai-sdk__openai-compatible@2.0.60.patch
+  "@arms/rum-electron@0.0.3": patches/@arms__rum-electron@0.0.3.patch
+  playwright-core@1.59.1: patches/playwright-core@1.59.1.patch
+supportedArchitectures:
+  cpu:
+    - current
+    - x64
+    - arm64
+  libc:
+    - current
+    - glibc
+  os:
+    - current
+    - darwin
+    - linux
+    - win32
+packageExtensions:
+  "playwright-core@1.59.1":
+    dependencies:
+      "@uwork/safe-extract-zip": workspace:*
