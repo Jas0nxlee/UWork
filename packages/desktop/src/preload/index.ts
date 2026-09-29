@@ -570,8 +570,10 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 打开外部 URL（用于 OAuth 跳转浏览器） */
   openExternal: (url: string) => ipcRenderer.send(PlatformChannels.OpenExternal, url),
   openEnterpriseLogin: (
-    request: import("@zcode/shared").EnterpriseLoginPopupRequest,
+    request: import("@zcode/shared").EnterpriseLoginRequest,
   ): Promise<string | null> => ipcRenderer.invoke(PlatformChannels.OpenEnterpriseLogin, request),
+  updateEnterpriseLogin: (update: import("@zcode/shared").EnterpriseLoginSurfaceUpdate) =>
+    ipcRenderer.send(PlatformChannels.UpdateEnterpriseLogin, update),
   cancelEnterpriseLogin: (attemptId: string) =>
     ipcRenderer.send(PlatformChannels.CancelEnterpriseLogin, attemptId),
   /** 查询当前语言下是否存在可用的用户社群入口 */

@@ -10,14 +10,16 @@ import {
 import type { IEnterpriseIdentityService } from "@zcode/services";
 import {
   enterpriseIdentityAttemptSchema,
-  enterpriseLoginPopupRequestSchema,
+  enterpriseLoginRequestSchema,
   enterpriseIdentityViewSchema,
   type EnterpriseIdentityView,
+  type EnterpriseLoginSurface,
 } from "@zcode/shared";
 import { useEnterpriseIdentityStore } from "@/store/enterpriseIdentityStore.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { EnterpriseLoginPage } from "@/login/EnterpriseLoginPage.js";
 import { logger } from "@/logger.js";
+import { createEnterpriseLoginSurfaceGate } from "./enterpriseLoginSurfaceGate.js";
 
 interface IdentityContextValue {
   view: EnterpriseIdentityView | null;
@@ -46,7 +48,17 @@ export function EnterpriseIdentityProvider({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const actionGeneration = useRef(0);
-  const popupAttempt = useRef<string | null>(null);
+  const nativeAttemptId = useRef<string | null>(null);
+  const [surfaceGate] = useState(createEnterpriseLoginSurfaceGate);
+  const surfaceController = useRef<AbortController | null>(null);
+  const onSurface = useCallback(
+    (surface: EnterpriseLoginSurface | null) => {
+      surfaceGate.publish(surface);
+      if (nativeAttemptId.current)
+        platform.updateEnterpriseLogin?.({ id: nativeAttemptId.current, surface });
+    },
+    [platform, surfaceGate],
+  );
 
   useEffect(() => {
     const store = useEnterpriseIdentityStore.getState();
@@ -75,8 +87,10 @@ export function EnterpriseIdentityProvider({
     return () => {
       active = false;
       actionGeneration.current++;
-      if (popupAttempt.current) platform.cancelEnterpriseLogin?.(popupAttempt.current);
-      popupAttempt.current = null;
+      surfaceController.current?.abort();
+      surfaceController.current = null;
+      if (nativeAttemptId.current) platform.cancelEnterpriseLogin?.(nativeAttemptId.current);
+      nativeAttemptId.current = null;
       subscription.dispose();
     };
   }, [owner, allowLogin, platform]);
@@ -87,10 +101,12 @@ export function EnterpriseIdentityProvider({
       setBusy(false);
       setError(false);
     }
-    if (view?.status !== "waiting" && popupAttempt.current) {
+    if (view?.status !== "waiting" && surfaceController.current) {
       actionGeneration.current++;
-      platform.cancelEnterpriseLogin?.(popupAttempt.current);
-      popupAttempt.current = null;
+      surfaceController.current.abort();
+      surfaceController.current = null;
+      if (nativeAttemptId.current) platform.cancelEnterpriseLogin?.(nativeAttemptId.current);
+      nativeAttemptId.current = null;
       setBusy(false);
     }
   }, [view?.status, platform]);
@@ -124,47 +140,60 @@ export function EnterpriseIdentityProvider({
 
   const skip = useCallback(() => {
     actionGeneration.current++;
+    surfaceController.current?.abort();
+    surfaceController.current = null;
     setBusy(false);
     setOpen(false);
-    if (popupAttempt.current) platform.cancelEnterpriseLogin?.(popupAttempt.current);
-    popupAttempt.current = null;
+    if (nativeAttemptId.current) platform.cancelEnterpriseLogin?.(nativeAttemptId.current);
+    nativeAttemptId.current = null;
     if (owner && allowLogin)
       void owner.cancelLogin().catch(() => logger.warn("Enterprise login cancellation failed"));
   }, [owner, allowLogin, platform]);
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
     const generation = ++actionGeneration.current;
+    surfaceController.current?.abort();
+    const controller = new AbortController();
+    surfaceController.current = controller;
     setBusy(true);
     setError(false);
+    let startedAttemptId: string | null = null;
     try {
       const attempt = enterpriseIdentityAttemptSchema.parse(await owner.beginLogin());
+      startedAttemptId = attempt.id;
       if (generation !== actionGeneration.current) return;
       if (attempt.callbackUrl) {
         if (!platform.openEnterpriseLogin)
           throw new Error("Desktop enterprise login is unavailable");
-        popupAttempt.current = attempt.id;
+        const surface = await surfaceGate.wait(controller.signal);
+        if (generation !== actionGeneration.current) return;
+        nativeAttemptId.current = attempt.id;
         const callback = await platform.openEnterpriseLogin(
-          enterpriseLoginPopupRequestSchema.parse(attempt),
+          enterpriseLoginRequestSchema.parse({ ...attempt, surface }),
         );
         if (generation !== actionGeneration.current) return;
-        popupAttempt.current = null;
+        nativeAttemptId.current = null;
         if (callback === null) await owner.cancelLogin(attempt.id);
         else await owner.completeLogin(attempt.id, callback);
       } else platform.openExternal(attempt.authorizationUrl);
     } catch {
       if (generation === actionGeneration.current) {
         setError(true);
-        if (popupAttempt.current) {
-          platform.cancelEnterpriseLogin?.(popupAttempt.current);
-          popupAttempt.current = null;
-          void owner.cancelLogin().catch(() => logger.warn("Enterprise login cancellation failed"));
+        if (startedAttemptId) {
+          // 就绪握手或 native 打开也可能失败；所有已开始的尝试都要取消，不能只清理已经显示的 view。
+          platform.cancelEnterpriseLogin?.(startedAttemptId);
+          nativeAttemptId.current = null;
+          void owner
+            .cancelLogin(startedAttemptId)
+            .catch(() => logger.warn("Enterprise login cancellation failed"));
         }
         logger.warn("Enterprise login failed");
       }
     } finally {
+      if (surfaceController.current === controller) surfaceController.current = null;
       if (generation === actionGeneration.current) setBusy(false);
     }
-  }, [owner, allowLogin, platform, busy]);
+  }, [owner, allowLogin, platform, busy, surfaceGate]);
   const logout = useCallback(async () => {
     if (!owner || !allowLogin) return;
     actionGeneration.current++;
@@ -199,6 +228,7 @@ export function EnterpriseIdentityProvider({
           expired={view?.error === "expired"}
           onLogin={() => void login()}
           onSkip={skip}
+          onSurface={onSurface}
         />
       ) : null}
     </IdentityContext.Provider>

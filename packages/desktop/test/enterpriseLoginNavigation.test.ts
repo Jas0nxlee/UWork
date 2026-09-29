@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enterpriseLoginPopupRequestSchema, readEnterpriseIdentityCallback } from "@zcode/shared";
+import { enterpriseLoginAuthorizationSchema, readEnterpriseIdentityCallback } from "@zcode/shared";
 import { classifyEnterpriseLoginNavigation } from "../src/main/enterpriseLoginNavigation.js";
 const id = "fixture-random-state";
 const callbackUrl = "https://auth.example.com:9443/callback";
@@ -17,15 +17,15 @@ const request = {
   authorizationUrl: `https://login.work.weixin.qq.com/wwlogin/sso/login?${query}`,
   expiresAt: 2000,
 };
-test("popup request accepts only official login route and bound redirect/state", () => {
-  assert.equal(enterpriseLoginPopupRequestSchema.safeParse(request).success, true);
+test("authorization request accepts only official login route and bound redirect/state", () => {
+  assert.equal(enterpriseLoginAuthorizationSchema.safeParse(request).success, true);
   for (const patch of [
     { authorizationUrl: "https://attacker.example/login" },
     { callbackUrl: "https://attacker.example/callback" },
     { id: "wrong" },
   ])
     assert.equal(
-      enterpriseLoginPopupRequestSchema.safeParse({ ...request, ...patch }).success,
+      enterpriseLoginAuthorizationSchema.safeParse({ ...request, ...patch }).success,
       false,
     );
 });
@@ -73,7 +73,7 @@ test("organization state compatibility requires unique unpredictable callback no
     callbackUrl: callback,
     authorizationUrl: `https://login.work.weixin.qq.com/wwlogin/sso/login?${query}`,
   };
-  assert.equal(enterpriseLoginPopupRequestSchema.safeParse(compatible).success, true);
+  assert.equal(enterpriseLoginAuthorizationSchema.safeParse(compatible).success, true);
   assert.equal(
     readEnterpriseIdentityCallback(compatible, `${callback}&code=c&state=fixture-org`),
     "c",
@@ -87,7 +87,7 @@ test("organization state compatibility requires unique unpredictable callback no
   ])
     assert.throws(() => readEnterpriseIdentityCallback(compatible, url));
   assert.equal(
-    enterpriseLoginPopupRequestSchema.safeParse({ ...compatible, id: "wrong" }).success,
+    enterpriseLoginAuthorizationSchema.safeParse({ ...compatible, id: "wrong" }).success,
     false,
   );
 });

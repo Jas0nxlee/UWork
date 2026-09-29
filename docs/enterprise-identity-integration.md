@@ -4,7 +4,7 @@
 
 服务前端将回调 state 传给 login(code, org_id)，因此 state 使用服务的组织 ID。CorpID 与 orgId 不是同一标识：必须配置 orgId，并在后台 code 交换时发送它。只在公开组织列表中存在唯一匹配 CorpID 的组织时自动绑定。
 
-每次桌面尝试仍生成随机 UUID；redirect_uri 在原有 HTTPS 回调地址后携带唯一的 uwork_nonce，UWork 校验该值、state=orgId、精确 origin/端口/path 和唯一 code。Native 窗口在顶层或 iframe 回调加载前截获，防止受控窗口中的网页先消费 code。后台服务与网页不做任何修改。
+每次桌面尝试仍生成随机 UUID；redirect_uri 在原有 HTTPS 回调地址后携带唯一的 uwork_nonce，UWork 校验该值、state=orgId、精确 origin/端口/path 和唯一 code。主窗口内的独立 sandbox WebContentsView 在顶层或 iframe 回调加载前截获，防止受控页面先消费 code。后台服务与网页不做任何修改。
 
 独立企微客户端或系统浏览器中的回调不受 UWork 控制，网页可能自行登录；只有测试进程确认接回绑定回调并完成后台 code 交换，才能报 UWork 真实认证通过。
 
@@ -29,7 +29,7 @@ UWork 提供可跳过的企业登录入口与姓名展示，模型 API Key 和�
 
 这些是公开前端的实际调用，并非完整服务端契约；尚未验证真实登录响应、有效期、稳定用户 ID、签名、会话吊销或桌面扫码链路。不能把网页自己的浏览器存储当作 UWork 登录凭据。
 
-Desktop 使用独立 sandbox 登录窗口截获严格绑定的 HTTPS 回调，在网页消费 code 前阻止加载，然后由 Host 调用现有登录接口。因此不需要读取网页存储的 Token，也不需要新增业务轮询接口。接入前需要确认：
+Desktop 使用内嵌 sandbox 扫码视图截获严格绑定的 HTTPS 回调，在网页消费 code 前阻止加载，然后由 Host 调用现有登录接口。因此不需要读取网页存储的 Token，也不需要新增业务轮询接口。接入前需要确认：
 
 - 自建应用的 CorpID、AgentID，以及企业后台实际生效的回调域和端口。
 - 服务端的 code 交换支持该自建应用，后台实际回调端口匹配；不能仅使用姓名、企业微信用户 ID 或公共 URL 作为登录证明。
@@ -59,7 +59,11 @@ IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共�
 }
 ```
 
-配置修改后重启 App。apiBaseUrl 必须为 HTTPS 根地址，callbackUrl 必须同源且无 query/hash。普通 Web 没有原生窗口能力，本轮不自动启用此适配器；手机远控继续只读。
+配置修改后重启 App。apiBaseUrl 必须为 HTTPS 根地址，callbackUrl 必须同源且无 query/hash。普通 Web 没有原生视图能力，本轮不自动启用此适配器；手机远控继续只读。
+
+## 内嵌扫码展示
+
+登录页通过平台接口发送已挂载二维码槽位的 bounds、主题颜色、字体和语言，Main 挂载独立 WebContentsView，不创建第二个窗口。内嵌地址沿用官方 [WwLogin 1.2.7 SDK](https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wwLogin-1.2.7.js) 的 sso iframe 路由。固定 CSS 只移除装饰性标题与外卡片，保持二维码对比度和授权状态；远端页没有应用 preload 或 Node 权限。授权文档切换后重新应用 UI zoom/CSS，窗口尺寸和主题更新不会重载二维码。规范与事件顺序见 [spec](../specs/enterprise-identity.md)。
 
 ## 验证边界
 

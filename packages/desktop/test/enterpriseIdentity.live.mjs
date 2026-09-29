@@ -12,7 +12,7 @@ import {
 } from "../../services/src/enterprise-identity/enterpriseIdentityService.ts";
 import { createSharedIdentitySessionStore } from "../../services/src/enterprise-identity/identitySessionStore.ts";
 import { loadWeComIdentityAdapter } from "../../services/src/enterprise-identity/wecomIdentityConfig.ts";
-import { openEnterpriseLoginWindow } from "../src/main/enterpriseLoginWindow.ts";
+import { openEnterpriseLoginView } from "../src/main/enterpriseLoginView.ts";
 
 const dir = await mkdtemp(join(tmpdir(), "uwork-live-identity-"));
 app.setName("UWork Identity Verification");
@@ -44,13 +44,29 @@ async function run() {
       return;
     }
     const owner = new BrowserWindow({
-      show: false,
+      show: true,
+      width: 460,
+      height: 540,
       webPreferences: { nodeIntegration: false, sandbox: true },
     });
     await owner.loadURL("data:text/html,<body>UWork identity verification owner</body>");
     const attempt = await identity.beginLogin();
-    console.log("READY: scan and confirm in the isolated UWork enterprise login window");
-    const callback = await openEnterpriseLoginWindow({ sender: owner.webContents }, attempt);
+    console.log("READY: scan and confirm in the UWork embedded enterprise login view");
+    const callback = await openEnterpriseLoginView(
+      { sender: owner.webContents },
+      {
+        ...attempt,
+        surface: {
+          bounds: { x: 80, y: 80, width: 300, height: 320 },
+          appearance: {
+            backgroundColor: "rgb(43,43,43)",
+            foregroundColor: "rgb(230,230,230)",
+            fontFamily: "Inter, sans-serif",
+            fontSize: 14,
+          },
+        },
+      },
+    );
     if (callback === null) {
       await identity.cancelLogin(attempt.id);
       console.log("CANCELLED: no login completed");

@@ -1,16 +1,14 @@
 /** English translations */
 const enUS: Record<string, string> = {
-  "enterpriseIdentity.title": "Sign in to UWork",
-  "enterpriseIdentity.description":
-    "Use your work identity, or skip to continue using local features.",
+  "enterpriseIdentity.title": "Sign in",
+  "enterpriseIdentity.scanHint": "Scan with WeCom",
+  "enterpriseIdentity.qrLabel": "WeCom sign-in QR code",
   "enterpriseIdentity.wecomLogin": "Sign in with WeCom",
   "enterpriseIdentity.waiting": "Waiting for confirmation…",
   "enterpriseIdentity.unconfigured": "WeCom sign-in is not configured yet. You can skip for now.",
   "enterpriseIdentity.failed": "Sign-in did not complete. Please retry or skip.",
   "enterpriseIdentity.expired": "Your sign-in expired. Sign in again or continue locally.",
   "enterpriseIdentity.skip": "Skip sign-in and continue",
-  "enterpriseIdentity.localUsage":
-    "Local workspaces and model settings are available without signing in.",
   "enterpriseIdentity.signedOut": "Signed out · Sign in",
   "enterpriseIdentity.source": "Signed in with WeCom",
   "enterpriseIdentity.logout": "Sign out",

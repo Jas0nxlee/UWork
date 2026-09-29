@@ -1,14 +1,14 @@
 /** 中文翻译 */
 const zhCN: Record<string, string> = {
-  "enterpriseIdentity.title": "登录 UWork",
-  "enterpriseIdentity.description": "使用企业身份登录，也可以跳过并继续使用本地功能。",
+  "enterpriseIdentity.title": "登录",
+  "enterpriseIdentity.scanHint": "使用企业微信扫一扫",
+  "enterpriseIdentity.qrLabel": "企业微信登录二维码",
   "enterpriseIdentity.wecomLogin": "企业微信登录",
   "enterpriseIdentity.waiting": "等待扫码确认…",
   "enterpriseIdentity.unconfigured": "企业微信登录暂未配置，您可以先跳过。",
   "enterpriseIdentity.failed": "登录未完成，请重试或跳过登录。",
   "enterpriseIdentity.expired": "登录已过期，请重新登录或继续本地使用。",
   "enterpriseIdentity.skip": "跳过登录，继续使用",
-  "enterpriseIdentity.localUsage": "跳过登录不影响本地工作区和模型配置。",
   "enterpriseIdentity.signedOut": "未登录 · 点击登录",
   "enterpriseIdentity.source": "通过企业微信登录",
   "enterpriseIdentity.logout": "退出登录",

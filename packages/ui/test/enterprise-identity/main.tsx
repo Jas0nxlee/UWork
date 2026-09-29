@@ -1,7 +1,12 @@
 // 仅测试页面：不进入应用入口，不提供生产环境的虚假登录能力。
 import { createRoot } from "react-dom/client";
 import { Emitter } from "@zcode/rpc";
-import type { EnterpriseIdentityView, IPlatformService } from "@zcode/shared";
+import {
+  enterpriseLoginRequestSchema,
+  enterpriseLoginSurfaceUpdateSchema,
+  type EnterpriseIdentityView,
+  type IPlatformService,
+} from "@zcode/shared";
 import type { IBroadcastService, IEnterpriseIdentityService } from "@zcode/services";
 import { EnterpriseIdentityProvider } from "@/hooks/useEnterpriseIdentity.js";
 import { PlatformProvider } from "@/hooks/usePlatform.js";
@@ -100,12 +105,23 @@ const broadcast = {
 let cancelNative: (() => void) | null = null;
 const platform = {
   openExternal: () => {},
-  openEnterpriseLogin: async () =>
-    params.has("cancel")
+  openEnterpriseLogin: async (request: unknown) => {
+    enterpriseLoginRequestSchema.parse(request);
+    document.documentElement.dataset.nativeOpened = "true";
+    if (params.has("native_fail")) throw new Error("Fixture native view unavailable");
+    return params.has("cancel") || params.has("scan")
       ? new Promise<string | null>((resolve) => {
           cancelNative = () => resolve(null);
         })
-      : `${nativeCallback}?code=fixture-code&state=${nativeId}`,
+      : `${nativeCallback}?code=fixture-code&state=${nativeId}`;
+  },
+  updateEnterpriseLogin: (update: unknown) => {
+    const parsed = enterpriseLoginSurfaceUpdateSchema.parse(update);
+    document.documentElement.dataset.nativeUpdates = String(
+      Number(document.documentElement.dataset.nativeUpdates ?? 0) + 1,
+    );
+    document.documentElement.dataset.nativeSurface = JSON.stringify(parsed.surface);
+  },
   cancelEnterpriseLogin: () => {
     cancelNative?.();
     cancelNative = null;

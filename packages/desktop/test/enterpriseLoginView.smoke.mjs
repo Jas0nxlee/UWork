@@ -1,16 +1,17 @@
-// 用 Electron 的真实窗口和 302 导航验证回调桥，协议响应为 fixture，不执行真实企业微信登录。
+// 用 Electron 的真实内嵌 view 和 302 导航验证回调桥，协议响应为 fixture，不执行真实企业微信登录。
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 import {
-  openEnterpriseLoginWindow,
-  cancelEnterpriseLoginWindow,
-} from "../src/main/enterpriseLoginWindow.ts";
+  openEnterpriseLoginView,
+  cancelEnterpriseLoginView,
+  updateEnterpriseLoginView,
+} from "../src/main/enterpriseLoginView.ts";
 
 const data = await mkdtemp(join(tmpdir(), "uwork-native-identity-"));
-app.setName("UWork Identity Window Test");
+app.setName("UWork Identity View Test");
 app.setPath("userData", data);
 let redirect = null;
 let iframeMode = false;
@@ -21,7 +22,7 @@ app.on("session-created", (session) => {
       callbackLoads++;
       return new Response("Callback fixture loaded");
     }
-    if (iframeMode && new URL(request.url).hostname === "login.work.weixin.qq.com")
+    if (iframeMode && new URL(request.url).pathname === "/wwopen/sso/qrConnect")
       return new Response(
         '<html><body><iframe src="https://open.work.weixin.qq.com/fixture"></iframe></body></html>',
         { headers: { "Content-Type": "text/html" } },
@@ -60,11 +61,20 @@ async function run() {
         callbackUrl,
         authorizationUrl: `https://login.work.weixin.qq.com/wwlogin/sso/login?${query}`,
         expiresAt: Date.now() + 60000,
+        surface: {
+          bounds: { x: 50, y: 50, width: 280, height: 320 },
+          appearance: {
+            backgroundColor: "rgb(43,43,43)",
+            foregroundColor: "rgb(230,230,230)",
+            fontFamily: "Inter, sans-serif",
+            fontSize: 14,
+          },
+        },
       };
     };
     const valid = createRequest();
     redirect = `${valid.callbackUrl}?code=fixture-code&state=${valid.id}`;
-    assert.equal(await openEnterpriseLoginWindow({ sender: owner.webContents }, valid), redirect);
+    assert.equal(await openEnterpriseLoginView({ sender: owner.webContents }, valid), redirect);
     assert.equal(BrowserWindow.getAllWindows().length, 1);
     const compatible = createRequest();
     compatible.expectedState = "fixture-org";
@@ -76,25 +86,52 @@ async function run() {
     iframeMode = true;
     redirect = `${compatible.callbackUrl}&code=fixture-code&state=fixture-org`;
     assert.equal(
-      await openEnterpriseLoginWindow({ sender: owner.webContents }, compatible),
+      await openEnterpriseLoginView({ sender: owner.webContents }, compatible),
       redirect,
     );
     assert.equal(callbackLoads, 0, "绑定的 iframe 回调不能先加载网页消费 code");
     iframeMode = false;
     const wrong = createRequest();
     redirect = `${wrong.callbackUrl}?code=fixture-code&state=wrong`;
-    await assert.rejects(openEnterpriseLoginWindow({ sender: owner.webContents }, wrong));
+    await assert.rejects(openEnterpriseLoginView({ sender: owner.webContents }, wrong));
     const blocked = createRequest();
     redirect = "https://attacker.example/callback?code=fixture-code";
-    await assert.rejects(openEnterpriseLoginWindow({ sender: owner.webContents }, blocked));
+    await assert.rejects(openEnterpriseLoginView({ sender: owner.webContents }, blocked));
     redirect = null;
     const cancel = createRequest();
-    const result = openEnterpriseLoginWindow({ sender: owner.webContents }, cancel);
-    cancelEnterpriseLoginWindow(owner.webContents.id + 999, cancel.id);
-    assert.equal(BrowserWindow.getAllWindows().length, 2);
-    cancelEnterpriseLoginWindow(owner.webContents.id, cancel.id);
-    assert.equal(await result, null);
+    const result = openEnterpriseLoginView({ sender: owner.webContents }, cancel);
+    cancelEnterpriseLoginView(owner.webContents.id + 999, cancel.id);
     assert.equal(BrowserWindow.getAllWindows().length, 1);
+    assert.equal(owner.contentView.children.length, 1);
+    cancelEnterpriseLoginView(owner.webContents.id, cancel.id);
+    assert.equal(await result, null);
+    assert.equal(owner.contentView.children.length, 0);
+    assert.equal(BrowserWindow.getAllWindows().length, 1);
+    const styled = createRequest();
+    owner.webContents.setZoomFactor(1.25);
+    const styleResult = openEnterpriseLoginView({ sender: owner.webContents }, styled);
+    const guest = owner.contentView.children[0].webContents;
+    await new Promise((done) => guest.once("did-finish-load", done));
+    const assertTheme = async () => {
+      await guest.executeJavaScript(
+        `new Promise(resolve => { const check = () => { if (getComputedStyle(document.body).backgroundColor === 'rgb(43, 43, 43)') resolve(true); else requestAnimationFrame(check); }; check(); })`,
+      );
+      assert.equal(guest.getZoomFactor(), 1.25);
+      assert.equal(
+        await guest.executeJavaScript("getComputedStyle(document.body).fontSize"),
+        "14px",
+      );
+    };
+    await assertTheme();
+    await guest.loadURL("https://open.work.weixin.qq.com/fixture-next");
+    await assertTheme();
+    updateEnterpriseLoginView(owner.webContents.id, { id: styled.id, surface: null });
+    assert.equal(owner.contentView.children[0].getVisible(), false);
+    updateEnterpriseLoginView(owner.webContents.id, { id: styled.id, surface: styled.surface });
+    assert.equal(owner.contentView.children[0].getVisible(), true);
+    cancelEnterpriseLoginView(owner.webContents.id, styled.id);
+    assert.equal(await styleResult, null);
+    owner.webContents.setZoomFactor(1);
     owner.destroy();
     console.log(
       "PASS: native callback interception, wrong state, blocked navigation and owner-scoped cancellation",

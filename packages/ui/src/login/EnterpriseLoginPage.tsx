@@ -1,8 +1,9 @@
-import { Building2, LoaderCircle } from "lucide-react";
-import { UWorkLogo, UWorkWordmark } from "@/components/ui/UWorkLogo.js";
+import { Building2 } from "lucide-react";
+import type { EnterpriseLoginSurface } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
+import { EnterpriseQrSurface } from "./EnterpriseQrSurface.js";
 
 export function EnterpriseLoginPage({
   configured,
@@ -11,6 +12,7 @@ export function EnterpriseLoginPage({
   expired,
   onLogin,
   onSkip,
+  onSurface,
 }: {
   configured: boolean;
   waiting: boolean;
@@ -18,6 +20,7 @@ export function EnterpriseLoginPage({
   expired: boolean;
   onLogin(): void;
   onSkip(): void;
+  onSurface(surface: EnterpriseLoginSurface | null): void;
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `enterpriseIdentity.${id}` });
@@ -35,29 +38,35 @@ export function EnterpriseLoginPage({
         data-testid="enterprise-login-page"
       >
         <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" aria-hidden="true" />
-        <section className="w-full max-w-sm space-y-6 rounded-xl border border-border bg-card p-6 [app-region:no-drag]">
-          <div className="flex items-center gap-3">
-            <UWorkLogo className="size-10" />
-            <UWorkWordmark className="h-11 w-40" />
-          </div>
-          <div className="space-y-2">
-            <DialogTitle className="text-ui-lg font-medium">{t("title")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
+        <section
+          className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-card p-6 [app-region:no-drag]"
+          data-testid="enterprise-login-card"
+        >
+          <div>
+            <DialogTitle className="text-ui-lg font-medium">
+              {waiting ? t("wecomLogin") : t("title")}
+            </DialogTitle>
+            <DialogDescription className="sr-only">{t("scanHint")}</DialogDescription>
           </div>
           <div className="space-y-3">
-            <Button
-              className="w-full"
-              onClick={onLogin}
-              disabled={!configured || waiting}
-              data-testid="enterprise-wecom-login"
-            >
-              {waiting ? (
-                <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
+            {waiting ? (
+              <>
+                <EnterpriseQrSurface onSurface={onSurface} label={t("qrLabel")} />
+                <p className="text-center text-ui-caption text-foreground-subtle">
+                  {t("scanHint")}
+                </p>
+              </>
+            ) : (
+              <Button
+                className="w-full"
+                onClick={onLogin}
+                disabled={!configured || waiting}
+                data-testid="enterprise-wecom-login"
+              >
                 <Building2 className="size-4" aria-hidden="true" />
-              )}
-              {waiting ? t("waiting") : t("wecomLogin")}
-            </Button>
+                {t("wecomLogin")}
+              </Button>
+            )}
             {!configured ? (
               <p className="text-ui-sm text-foreground-subtle" role="status">
                 {t("unconfigured")}
@@ -82,7 +91,6 @@ export function EnterpriseLoginPage({
               {t("skip")}
             </Button>
           </div>
-          <p className="text-ui-sm text-foreground-subtlest">{t("localUsage")}</p>
         </section>
       </DialogContent>
     </Dialog>

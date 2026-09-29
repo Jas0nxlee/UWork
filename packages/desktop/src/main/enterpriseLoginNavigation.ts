@@ -1,4 +1,4 @@
-import type { EnterpriseLoginPopupRequest } from "@zcode/shared";
+import type { EnterpriseLoginAuthorization } from "@zcode/shared";
 
 const AUTH_HOSTS = new Set([
   "login.work.weixin.qq.com",
@@ -9,7 +9,7 @@ const AUTH_HOSTS = new Set([
 /** 导航路由只识别协议/精确域名/回调地址，不包含登录业务状态。 */
 export function classifyEnterpriseLoginNavigation(
   value: string,
-  request: EnterpriseLoginPopupRequest,
+  request: EnterpriseLoginAuthorization,
 ): "callback" | "authorization" | "blocked" {
   try {
     const url = new URL(value);
