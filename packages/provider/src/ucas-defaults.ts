@@ -9,7 +9,7 @@ import {
 export const UCAS_PROVIDER_ID = "ucas";
 export const UCAS_PROVIDER_TEMPLATE_ID = "ucas";
 export const UCAS_PROVIDER_NAME = "ucas";
-export const UCAS_BASE_URL = "https://lm.ucas.com.cn:15000/v1";
+export const UCAS_BASE_URL = "https://llm.ucas.com.cn:15000/v1";
 export const UCAS_API_TYPE = "openai-chat-completions" as const;
 
 export const UCAS_DEFAULT_MODEL_IDS = Object.freeze([
