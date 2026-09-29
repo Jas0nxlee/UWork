@@ -6,29 +6,37 @@
   <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">源码</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。当前版本以自定义模型供应商为中心，移除了桌面应用账号登录和智谱内置套餐入口，并调整了品牌、模式切换与模型设置流程。
+UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。当前版本预置 UCAS 模型供应商，支持自定义模型服务、助理 / 开发模式切换，以及可跳过的企业微信身份登录。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
 
 本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。
 
 ## 当前功能
 
-| 功能           | 说明                                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 自定义模型服务 | 配置 Base URL、API Key 和 API 格式，支持 Chat Completions、Responses、Anthropic Messages。                                |
-| 自动获取模型   | 从供应商读取模型 ID，去重后批量添加；已有模型的参数、启停状态和顺序保持不变。                                             |
-| 模型参数编辑   | 编辑上下文窗口、输出上限、输入类型及推理选项；已修复导入模型后保存参数时漏传版本号的问题。                                |
-| 助理 / 开发    | UWork Logo 右侧显示当前模式，点击同一个按钮切换，选择会被记住。助理侧重过程摘要与结果，开发展示更多代码、命令和修改细节。 |
-| 工作区与任务   | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                |
-| 定制界面       | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                        |
+| 功能            | 说明                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| UCAS 默认供应商 | 首次启动预置六个模型，名称、连接地址和 Chat Completions 格式固定；可编辑 API Key、模型参数与启停状态，并自动获取模型。    |
+| 自定义模型服务  | 解锁添加入口后，可配置 Base URL、API Key 和 API 格式，支持 Chat Completions、Responses、Anthropic Messages。              |
+| 自动获取模型    | 从供应商读取模型 ID，去重后批量添加；已有模型的参数、启停状态和顺序保持不变。                                             |
+| 模型参数编辑    | 编辑上下文窗口、输出上限、输入类型及推理选项；已修复导入模型后保存参数时漏传版本号的问题。                                |
+| 助理 / 开发     | UWork Logo 右侧显示当前模式，点击同一个按钮切换，选择会被记住。助理侧重过程摘要与结果，开发展示更多代码、命令和修改细节。 |
+| 企业微信身份    | 桌面登录卡片内扫码，可跳过；认证后在 UWork 字标下显示姓名。同一设备各窗口共享企业账号，工作区和未提交草稿仍由各窗口管理。 |
+| 工作区与任务    | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                |
+| 定制界面        | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                        |
 
 模式切换只改变界面呈现，不改变工具权限或模型服务权限。官方自动更新已停用，更新本定制版需要重新构建安装。
 
 ## 配置模型并开始使用
 
-1. 打开 **设置 → 模型设置 → 添加供应商**，选择模板或创建自定义供应商。
-2. 填写服务商提供的 **完整 API Base URL**，选择对应 API 格式并填写 API Key。
+1. 启动桌面应用；如不使用企业身份，点击 **跳过登录，继续使用**。
+2. 打开 **设置 → 模型设置**，选择默认的 `ucas` 供应商并填写自己的 API Key。该供应商的名称、Base URL 和 API 格式固定，不能删除；升级时会同步随包连接配置并保留密钥和已有模型参数。
 3. 点击 **自动获取**，或通过 **添加模型** 手动输入模型 ID。
-4. 按服务商实际能力调整模型参数，再在聊天窗口选择供应商和模型。
+4. 按服务商实际能力调整模型参数，再在聊天窗口选择供应商和模型。UCAS 的六个默认模型及自动获取的新模型预设 1M 上下文、文本 / 图片输入和 `low` / `high` / `max` 推理等级；这些是客户端配置默认值，实际能力以服务端为准。
+
+### 使用其他模型供应商
+
+**添加供应商**初始呈灰色。在同一次打开模型设置期间，连续点击该按钮 **20 次**即可解锁，再点击一次打开模板选择器；解锁前点击其他区域会清零计数，离开并重新打开模型设置需重新解锁。这是界面规则，不是权限控制。
+
+选择模板或创建自定义供应商后，填写服务商提供的**完整 API Base URL**、对应 API 格式及 API Key，再获取或添加模型。
 
 以下为虚构地址示例，使用时替换成自己的服务地址：
 
@@ -40,15 +48,23 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 
 模型列表可访问，不代表每个模型都能执行推理或支持工具调用。请以服务商文档、权限与一次实际对话结果为准。
 
-### 已知问题：自动获取成功，对话却返回空内容
+### 自定义供应商的 Base URL
 
-当前自动获取会为根地址尝试 `/v1/models`，但**不会把探测出的 API 前缀写回 Base URL**。如果服务商实际要求 `/v1`，而配置里只填写了域名，Chat Completions 对话可能请求到网站页面，最终显示“模型未返回任何内容”。
+当前自动获取会为根地址尝试 `/v1/models`，但**不会把探测出的 API 前缀写回 Base URL**。如果自定义服务商实际要求 `/v1`，而配置里只填写了域名，Chat Completions 对话可能请求到网站页面，最终显示“模型未返回任何内容”。
 
-请将 Base URL 改为服务商要求的完整 API 前缀，例如 `https://api.example.com/v1`。自动发现与对话路径的一致性修复尚未包含在当前版本中。
+请将自定义供应商的 Base URL 设置为服务商要求的完整 API 前缀，例如 `https://api.example.com/v1`。UCAS 随包地址已包含 `/v1`，不需要手工修改。
+
+## 可选企业微信登录
+
+桌面启动时，未认证用户可以在登录卡片内扫码，也可以跳过并继续使用。跳过只对当前窗口生效，重启后仍可选择登录；工作区内可通过 UWork 字标下的入口再次打开登录页，认证后点击姓名查看来源或退出。
+
+此身份用于本地姓名展示，不引入账号数据隔离、云同步或额外操作权限。企业登录不提供模型 API Key，登录或退出也不会迁移、认领或删除已有工作区、会话与模型配置。退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
+
+企业管理员需配置已有认证服务，客户端不内置企业微信 Secret。未配置时显示“企业微信登录暂未配置”，仍可跳过。配置文件位置、占位示例与接口要求见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
 
 ## 从源码运行
 
-当前定制版已在 **macOS Apple Silicon** 上完成构建和界面验证。仓库仍包含 Windows、Linux、Web 与 CLI 入口；这些平台不等于已经完成相同范围的发布验收。
+当前定制版的本机构建与安装验证以 **macOS Apple Silicon** 为主。仓库仍包含 Windows、Linux、Web 与 CLI 入口；这些平台不等于已经完成相同范围的发布验收。
 
 准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**。工具版本以 [mise.toml](mise.toml) 为准；macOS 编译原生组件还需要 Xcode Command Line Tools。以下命令从仓库根目录执行。
 
@@ -56,12 +72,14 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
 cd UWork
 pnpm bootstrap
-pnpm dev:desktop
+ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
 ```
 
 `bootstrap` 安装依赖、准备本机运行资源并构建相关包，默认跳过远程资源。Agent 源码已包含在 `apps/zcode-cli/` 中。
 
-开发时建议使用独立数据目录，避免混入日常使用数据。以下环境变量写法适用于 macOS / Linux：
+上述开发命令使用测试配置和独立数据目录，并跳过远程资源准备。环境变量写法适用于 macOS / Linux；Windows 需使用对应 shell 的环境变量语法。已安装 mise 时，也可按 [mise.toml](mise.toml) 执行 `mise install`、`mise run bootstrap` 和 `mise run dev`；其中 `dev` 任务已指定独立数据目录。
+
+需要使用 production 服务配置时，继续指定独立数据目录：
 
 ```bash
 ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
@@ -82,7 +100,7 @@ ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 完成依赖初始化后，可以直接生成 `.app`，不依赖 DMG 包装步骤：
 
 ```bash
-ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 ZCODE_SKIP_REMOTE_ASSETS=1 \
   pnpm --filter @zcode/desktop build
 
 ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 \
@@ -137,7 +155,7 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 
 - 为兼容原有数据，内部包名 `@zcode/*`、`ZCODE_*` 环境变量、`zcode` 命令和 `.zcode` 数据目录继续保留。
 - macOS 正式版沿用原 Electron userData 路径；更改显示名称不会主动搬迁或清空供应商与会话配置。
-- 历史应用账号凭据不再用于登录恢复；移除应用登录不等于取消远程连接或 MCP 的鉴权。
+- 历史智谱 / Z.ai 模型账号凭据不再用于登录恢复；可选企业身份使用独立凭据与设备会话，远程连接和 MCP 仍保留各自的鉴权。
 - 本项目并非完全离线版本。模型请求会发送到配置的供应商，插件、远程工作区、诊断等能力仍有各自的网络行为。不要在公开仓库中提交 API Key、真实配置、日志或会话数据。
 
 运行与执行边界详见 [NOTICE.md](NOTICE.md)。不要把“助理 / 开发”的显示模式当作操作系统沙箱或权限级别。
@@ -147,12 +165,15 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 ```bash
 pnpm typecheck
 pnpm lint
+pnpm fmt:check
 pnpm architecture:check --changed
-pnpm exec tsx --test packages/services/test/*.test.ts
-pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/*.test.ts
+pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
+pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 ```
 
-[Electron E2E 脚本](packages/desktop/test/uwork.e2e.mjs)覆盖模式切换、模型获取、去重、错误处理及导入后的参数编辑。运行它需要单独启动使用隔离数据目录的源码构建，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点；测试会创建供应商，不能连接日常使用的配置目录。
+测试入口与环境依赖以目标包的 `package.json` 和实际测试文件为准。上述 Node 测试使用本地测试数据验证模型发现、UCAS 配置及身份生命周期，不代表真实模型推理或企业微信认证通过。
+
+[企业身份 Electron E2E 脚本](packages/desktop/test/enterpriseIdentity.e2e.mjs)用于未配置认证服务的隔离源码实例，覆盖启动、跳过、再次打开、Esc、模式切换和重载。运行前需单独启动该实例，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点。[共享 UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs)使用测试适配器，并依赖 browser-harness。真实扫码与服务端续期需要另行验证。
 
 ## 源码与设计说明
 
@@ -168,6 +189,8 @@ pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/*.tes
 
 - [自定义供应商与账号入口调整](specs/custom-providers-only.md)
 - [模型自动获取与参数编辑](specs/provider-model-discovery.md)
+- [UCAS 默认供应商与添加入口规则](specs/ucas-default-provider.md)
+- [可选企业身份与跨窗口同步](specs/enterprise-identity.md) · [认证服务对接](docs/enterprise-identity-integration.md)
 - [UWork 品牌、模式切换和界面规范](specs/uwork-branding.md)
 - [UI 设计规范](DESIGN.md) · [开发约定](AGENTS.md)
 

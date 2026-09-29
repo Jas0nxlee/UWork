@@ -6,7 +6,7 @@
   <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">Source</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). This version centers on user-configured model providers, removes desktop account login and built-in Zhipu subscription entries, and updates branding, mode switching, and model settings.
+UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). This version includes a default UCAS model provider, custom model services, Assistant / Developer modes, and optional WeCom identity login. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
 
 This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization.
 
@@ -14,10 +14,12 @@ This fork is maintained independently and is not an official upstream distributi
 
 | Feature                | Description                                                                                                                                                                                                        |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Custom model providers | Configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                                                 |
+| Default UCAS provider  | Six initial models with a fixed name, endpoint, and Chat Completions format. Edit the API key, model parameters, and enabled states, or fetch more models.                                                         |
+| Custom model providers | Unlock the add-provider entry to configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                |
 | Model discovery        | Fetch model IDs and add new entries in a batch. Existing parameters, enabled states, and ordering are preserved.                                                                                                   |
 | Model configuration    | Edit context windows, output limits, input types, and reasoning options. The missing revision that prevented saving imported model settings has been fixed.                                                        |
 | Assistant / Developer  | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Assistant emphasizes summaries and results; Developer shows more code, commands, and change details. |
+| WeCom identity         | Scan inside the desktop login card or skip login. Verified users see their name below UWork. Windows on the same device share one enterprise account; workspaces and unsent drafts remain window-local.            |
 | Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                               |
 | Updated interface      | UWork SVG wordmark, U app icon, fading UCAS background, light and dark themes, and a top-right Help menu containing only Resource Manager.                                                                         |
 
@@ -25,10 +27,16 @@ Interface modes do not change tool permissions or model-service access. Official
 
 ## Connect a model service
 
-1. Open **Settings → Model Settings → Add Provider**, then choose a template or create a custom provider.
-2. Enter the provider's **complete API Base URL**, select the matching API format, and supply your API key.
+1. Start the desktop app. If you do not need enterprise identity, choose **Skip login and continue**.
+2. Open **Settings → Model Settings**, select the default `ucas` provider, and enter your API key. Its name, Base URL, and API format are fixed, and it cannot be deleted. Upgrades apply the bundled connection configuration while preserving your key and existing model parameters.
 3. Use **Fetch models**, or enter a model ID manually with **Add Model**.
-4. Configure parameters according to the provider's actual capabilities, then select the provider and model in chat.
+4. Configure parameters according to the provider's actual capabilities, then select the provider and model in chat. The six initial UCAS models and newly discovered models default to a 1M context window, text / image input, and `low` / `high` / `max` reasoning levels. These are client configuration defaults; actual capabilities depend on the service.
+
+### Use another model provider
+
+**Add Provider** initially appears gray. Click it **20 consecutive times** during the same visit to Model Settings to unlock it, then click once more to open the template picker. Clicking elsewhere before unlocking resets the counter. Leaving and reopening Model Settings requires unlocking again. This is an interface rule, not an access-control mechanism.
+
+Choose a template or create a custom provider, enter its **complete API Base URL**, matching API format, and API key, then fetch or add models.
 
 These are fictional examples; replace them with your service's endpoints:
 
@@ -40,15 +48,23 @@ These are fictional examples; replace them with your service's endpoints:
 
 Access to the model list does not prove that every listed model supports inference or tool calling. Check your provider's documentation and permissions, then verify with a simple conversation.
 
-### Known issue: discovery succeeds but chat returns no content
+### Base URLs for custom providers
 
-Discovery currently tries `/v1/models` for a root URL, but **does not write the discovered API prefix back to the Base URL**. If your provider requires `/v1` and you entered only its domain, a Chat Completions request may receive a website page instead of a model response.
+Discovery currently tries `/v1/models` for a root URL, but **does not write the discovered API prefix back to the Base URL**. If your custom provider requires `/v1` and you entered only its domain, a Chat Completions request may receive a website page instead of a model response.
 
-Set the complete API prefix required by your provider, such as `https://api.example.com/v1`. A code fix to keep discovery and chat paths consistent is not included in the current version.
+Set the complete API prefix required by your custom provider, such as `https://api.example.com/v1`. The bundled UCAS endpoint already includes `/v1` and needs no manual adjustment.
+
+## Optional WeCom login
+
+Unauthenticated desktop users can scan inside the login card or skip login and continue. Skipping applies only to the current window; login remains available after restarting. Use the entry below the UWork wordmark to reopen login, or click your verified name to view its source and sign out.
+
+This identity provides a local name label. It does not add account-based data isolation, cloud sync, or extra permissions. Enterprise login does not supply a model API key. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
+
+An administrator must configure an existing authentication service. The client includes no WeCom application Secret. Without configuration, the app shows that WeCom login is not configured and still allows skipping. See [WeCom integration](docs/enterprise-identity-integration.md) for the configuration location, placeholder example, and interface requirements. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
 
 ## Run from source
 
-This customized version has been built and visually checked on **macOS Apple Silicon**. Windows, Linux, Web, and CLI entry points remain in the repository; this does not imply equivalent release validation on every platform.
+Local build and installation validation for this customized version primarily targets **macOS Apple Silicon**. Windows, Linux, Web, and CLI entry points remain in the repository; this does not imply equivalent release validation on every platform.
 
 Install Git, Node.js **24.14.0**, and pnpm **10.33.2**. [mise.toml](mise.toml) defines the tool versions. Building native components on macOS also requires Xcode Command Line Tools. Run the following commands from the repository root.
 
@@ -56,12 +72,14 @@ Install Git, Node.js **24.14.0**, and pnpm **10.33.2**. [mise.toml](mise.toml) d
 git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
 cd UWork
 pnpm bootstrap
-pnpm dev:desktop
+ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
 ```
 
 `bootstrap` installs dependencies, prepares local runtime assets, and builds the relevant packages. It skips remote assets by default. Agent source is included in `apps/zcode-cli/`.
 
-Use a separate data directory during development to keep test data apart from your regular configuration. The environment-variable syntax below is for macOS / Linux:
+The development command above uses test configuration, a separate data directory, and skips remote asset preparation. This environment-variable syntax is for macOS / Linux; use the equivalent shell syntax on Windows. With mise installed, you can also run `mise install`, `mise run bootstrap`, and `mise run dev` as defined in [mise.toml](mise.toml). The `dev` task already specifies a separate data directory.
+
+To use production service configuration, keep specifying a separate data directory:
 
 ```bash
 ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
@@ -82,7 +100,7 @@ ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 After setting up dependencies, build the `.app` directly without the DMG packaging step:
 
 ```bash
-ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 \
+ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 ZCODE_SKIP_REMOTE_ASSETS=1 \
   pnpm --filter @zcode/desktop build
 
 ZCODE_ENV=production ZCODE_TARGET_OS=mac ZCODE_TARGET_ARCH=arm64 \
@@ -137,7 +155,7 @@ Output defaults to `dist/zcode/`. The distribution command is still `zcode`: no 
 
 - Internal names such as `@zcode/*`, `ZCODE_*`, the `zcode` command, and `.zcode` data directories are retained for compatibility.
 - The packaged macOS application preserves the previous Electron userData location. Renaming the app does not intentionally migrate or clear provider and conversation data.
-- Historical app-account credentials are no longer used to restore login. Removing app login does not remove remote-connection or MCP authentication.
+- Historical Zhipu / Z.ai model-account credentials are no longer used to restore login. Optional enterprise identity uses separate credentials and a device session. Remote connections and MCP retain their own authentication.
 - This is not a fully offline edition. Model requests go to your configured provider; plugins, remote workspaces, diagnostics, and other services have their own network behavior. Never commit real API keys, configuration, logs, or conversations to a public repository.
 
 See [NOTICE.md](NOTICE.md) for execution and data-handling details. Assistant / Developer modes are not operating-system sandboxes or permission levels.
@@ -147,12 +165,15 @@ See [NOTICE.md](NOTICE.md) for execution and data-handling details. Assistant / 
 ```bash
 pnpm typecheck
 pnpm lint
+pnpm fmt:check
 pnpm architecture:check --changed
-pnpm exec tsx --test packages/services/test/*.test.ts
-pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/*.test.ts
+pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
+pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 ```
 
-The [Electron E2E script](packages/desktop/test/uwork.e2e.mjs) covers mode switching, discovery, deduplication, error handling, and editing imported models. First launch a source build with isolated data directories, then set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The test creates providers; do not connect it to your everyday configuration.
+Test entry points and environment dependencies are defined by each package's `package.json` and test files. The Node tests above use local test data to check model discovery, UCAS configuration, and identity lifecycle; they do not establish real inference or WeCom authentication.
+
+The [enterprise identity Electron E2E script](packages/desktop/test/enterpriseIdentity.e2e.mjs) targets an isolated source instance without authentication-service configuration. It covers startup, skipping, reopening, Esc, mode switching, and reload. Launch that instance separately and set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The [shared UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs) uses a test adapter and requires browser-harness. Real scanning and server-side session refresh need separate validation.
 
 ## Source layout and design notes
 
@@ -168,6 +189,8 @@ The [Electron E2E script](packages/desktop/test/uwork.e2e.mjs) covers mode switc
 
 - [Custom providers and account removal](specs/custom-providers-only.md)
 - [Model discovery and parameter editing](specs/provider-model-discovery.md)
+- [Default UCAS provider and add-provider rules](specs/ucas-default-provider.md)
+- [Optional enterprise identity and cross-window sync](specs/enterprise-identity.md) · [Authentication-service integration](docs/enterprise-identity-integration.md)
 - [UWork branding, mode switching, and interface rules](specs/uwork-branding.md)
 - [UI design system](DESIGN.md) · [Development conventions](AGENTS.md)
 
