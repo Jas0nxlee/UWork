@@ -17,6 +17,7 @@ import {
   IConversationShareService,
   IFileWatcherService,
   IOAuthService,
+  IEnterpriseIdentityService,
   IModelSelectionService,
   IProviderSettingsService,
   IProviderProvisioningTargetService,
@@ -68,6 +69,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly conversationShareService: IConversationShareService;
   readonly fileWatcherService: IFileWatcherService;
   readonly oauthService: IOAuthService;
+  readonly enterpriseIdentityService: IEnterpriseIdentityService;
   readonly providerSettingsService: IProviderSettingsService;
   readonly modelSelectionService: IModelSelectionService;
   /** Host-only target proxy；不属于 IServiceAccessor，避免向 Renderer 暴露 Secret 写入接口。 */
@@ -92,6 +94,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly promptAttachmentTransferService: IPromptAttachmentTransferService;
 
   constructor(channelClient: IChannelClient) {
+    this.enterpriseIdentityService = ProxyChannel.toService<IEnterpriseIdentityService>(
+      channelClient.getChannel(IEnterpriseIdentityService.channelName),
+    );
     this.fileService = ProxyChannel.toService<IFileService>(
       channelClient.getChannel(IFileService.channelName),
     );
