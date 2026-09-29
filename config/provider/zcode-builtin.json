@@ -16,7 +16,7 @@
             },
             "api": {
               "type": "openai-chat-completions",
-              "baseUrl": "https://lm.ucas.com.cn:15000/v1"
+              "baseUrl": "https://llm.ucas.com.cn:15000/v1"
             }
           }
         },

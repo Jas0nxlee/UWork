@@ -65,7 +65,7 @@ test("bundled catalog keeps UCAS and other templates without account providers o
     (rule: { templateId: string }) => rule.templateId === "ucas",
   );
   assert.ok(ucas);
-  assert.equal(ucas.config.api.baseUrl, "https://lm.ucas.com.cn:15000/v1");
+  assert.equal(ucas.config.api.baseUrl, "https://llm.ucas.com.cn:15000/v1");
   assert.equal(ucas.config.api.type, "openai-chat-completions");
   assert.equal(ucas.config.access.apiKey, undefined);
   assert.equal(

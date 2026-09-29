@@ -245,13 +245,13 @@ test("discovered model edits accept current revisions and continue to reject sta
 
 test("default UCAS provider is seeded and discovered models receive fixed metadata", async () => {
   const fixture = await runtimeFixture(async (providerConfig) => {
-    assert.equal(providerConfig.api?.baseUrl, "https://lm.ucas.com.cn:15000/v1");
+    assert.equal(providerConfig.api?.baseUrl, "https://llm.ucas.com.cn:15000/v1");
     assert.equal(providerConfig.api?.type, "openai-chat-completions");
     return ["ucas-new-model", "ucas-gpt-max"];
   });
   try {
     const initial = requireProvider(await fixture.service.getView(), "ucas");
-    assert.equal(initial.effectiveConfig.api?.baseUrl, "https://lm.ucas.com.cn:15000/v1");
+    assert.equal(initial.effectiveConfig.api?.baseUrl, "https://llm.ucas.com.cn:15000/v1");
     assert.equal(initial.effectiveConfig.api?.type, "openai-chat-completions");
     assert.deepEqual(
       initial.models.map((model) => model.modelId),
@@ -369,7 +369,7 @@ test("legacy UCAS provider migrates to fixed connection and preserves its key, m
     assert.equal(migrated.templateId, UCAS_PROVIDER_TEMPLATE_ID);
     assert.equal(migrated.providerName, UCAS_PROVIDER_NAME);
     assert.equal(migrated.effectiveConfig.api?.type, "openai-chat-completions");
-    assert.equal(migrated.effectiveConfig.api?.baseUrl, "https://lm.ucas.com.cn:15000/v1");
+    assert.equal(migrated.effectiveConfig.api?.baseUrl, "https://llm.ucas.com.cn:15000/v1");
     assert.equal(migrated.personalConfig?.access?.apiKey, "preserved-test-key");
     assert.equal(migrated.personalConfig?.api?.headers?.["x-legacy"], "preserved");
     assert.deepEqual(
