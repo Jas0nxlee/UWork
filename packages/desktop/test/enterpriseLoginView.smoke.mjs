@@ -17,8 +17,19 @@ let redirect = null;
 let iframeMode = false;
 let callbackLoads = 0;
 let layoutMode = false;
+let modernLayoutMode = false;
 app.on("session-created", (session) => {
   session.protocol.handle("https", (request) => {
+    if (modernLayoutMode)
+      return new Response(
+        `<html><body class="wwLogin_standalone"><div id="app"><div class="wwLogin_frame"><div class="wwLogin_panel"><div class="wwLogin_content"><div class="wwLogin_qrcode">
+<header class="wwLogin_panel_header"><h2 class="wwLogin_panel_header_title">Vendor decoration</h2></header>
+<div class="wwLogin_qrcode_head"><h2>Vendor scanner heading</h2></div>
+<section class="wwLogin_qrcode_content"><div class="wwLogin_qrcode_box"><svg class="wwLogin_qrcode_img" width="192" height="192"><rect width="192" height="192" fill="black"/></svg><div class="wwLogin_qrcode_tips" hidden><span>Expired fixture</span><a href="#refresh">Refresh fixture</a></div></div></section>
+<div class="wwLogin_qrcode_desc">Confirm scanner fixture</div></div></div></div><footer class="wwLogin_frame_footer">Vendor footer</footer></div></div>
+<style>body{margin:0;background:#eee}.wwLogin_standalone .wwLogin_frame{padding-top:120px}.wwLogin_panel{width:480px;height:480px;margin:0 auto;background:white;border:1px solid #ddd;border-radius:8px}.wwLogin_content{display:flex;justify-content:center;height:100%;width:100%}.wwLogin_qrcode{position:relative;width:100%}.wwLogin_panel_header{padding:18px 24px;border-bottom:1px solid #ddd}.wwLogin_panel_header_title{margin:0;line-height:28px}.wwLogin_qrcode_head{display:flex;justify-content:center;height:24px;padding:40px 0}.wwLogin_qrcode_head h2{margin:0;line-height:24px}.wwLogin_qrcode_content{display:flex;justify-content:center}.wwLogin_qrcode_box{position:relative;display:inline-flex;padding:8px;background:white;border:1px solid #eee;border-radius:8px;box-sizing:border-box}.wwLogin_qrcode_img{display:block;width:192px;height:192px}.wwLogin_qrcode_desc{margin-top:24px;line-height:20px;text-align:center}.wwLogin_qrcode_tips{position:absolute;inset:0;background:white;align-items:center;justify-content:center}.wwLogin_qrcode_tips:not([hidden]){display:flex}.wwLogin_frame_footer{margin-top:40px}</style></body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
     if (layoutMode) {
       const nested = new URL(request.url).pathname === "/layout-frame";
       return new Response(
@@ -161,6 +172,51 @@ async function run() {
     assert.ok(boxes.status.height > 0 && boxes.status.bottom <= boxes.height);
     cancelEnterpriseLoginView(owner.webContents.id, layout.id);
     await layoutResult;
+    layoutMode = false;
+    modernLayoutMode = true;
+    for (const zoom of [1, 1.25]) {
+      owner.webContents.setZoomFactor(zoom);
+      for (const width of [224, 280, 336]) {
+        const modern = createRequest();
+        modern.surface.bounds.width = width;
+        if (width === 336) {
+          modern.surface.appearance.backgroundColor = "rgb(250,250,250)";
+          modern.surface.appearance.foregroundColor = "rgb(25,25,25)";
+        }
+        const pending = openEnterpriseLoginView({ sender: owner.webContents }, modern);
+        const modernGuest = owner.contentView.children[0].webContents;
+        await new Promise((done) => modernGuest.once("did-finish-load", done));
+        const layout = await modernGuest.executeJavaScript(`new Promise(resolve => {
+          const read = () => {
+            if (!document.getElementById('uwork-enterprise-presentation')) return requestAnimationFrame(read);
+            const qr=document.querySelector('.wwLogin_qrcode_img'), box=document.querySelector('.wwLogin_qrcode_box'), desc=document.querySelector('.wwLogin_qrcode_desc'), panel=document.querySelector('.wwLogin_panel');
+            resolve({qr:qr.getBoundingClientRect().toJSON(),box:box.getBoundingClientRect().toJSON(),desc:desc.getBoundingClientRect().toJSON(),panel:panel.getBoundingClientRect().toJSON(),width:innerWidth,height:innerHeight,background:getComputedStyle(panel).backgroundColor,header:getComputedStyle(document.querySelector('.wwLogin_panel_header')).display});
+          }; read();
+        })`);
+        assert.ok(
+          Math.abs(layout.box.x + layout.box.width / 2 - layout.width / 2) < 2,
+          JSON.stringify(layout),
+        );
+        assert.ok(layout.box.y >= 0 && layout.box.bottom <= layout.height, JSON.stringify(layout));
+        assert.ok(layout.qr.width >= 160 && layout.qr.width === layout.qr.height);
+        assert.ok(layout.desc.height > 0 && layout.desc.bottom <= layout.height);
+        assert.ok(Math.abs((layout.box.y + layout.desc.bottom) / 2 - layout.height / 2) < 2);
+        assert.equal(layout.header, "none");
+        assert.equal(layout.background, "rgba(0, 0, 0, 0)");
+        const status = await modernGuest.executeJavaScript(
+          `(() => { const tips=document.querySelector('.wwLogin_qrcode_tips');tips.hidden=false;const r=tips.getBoundingClientRect(),link=tips.querySelector('a').getBoundingClientRect();return {visible:getComputedStyle(tips).display!=='none',rect:r.toJSON(),link:link.toJSON(),height:innerHeight};})()`,
+        );
+        assert.ok(status.visible && status.rect.y >= 0 && status.rect.bottom <= status.height);
+        assert.ok(status.link.width > 0 && status.link.height > 0);
+        const controls = await modernGuest.executeJavaScript(
+          `(() => { const header=document.querySelector('.wwLogin_panel_header'); const button=document.createElement('button');button.className='wwLogin_panel_header_operate';button.textContent='Switch fixture';header.appendChild(button);const r=button.getBoundingClientRect();return {display:getComputedStyle(header).display,width:r.width,height:r.height};})()`,
+        );
+        assert.ok(controls.display !== "none" && controls.width > 0 && controls.height > 0);
+        cancelEnterpriseLoginView(owner.webContents.id, modern.id);
+        await pending;
+      }
+    }
+    console.log("PASS: modern standalone QR layout, theme, zoom and expiry/refresh visibility");
     owner.destroy();
     console.log(
       "PASS: native callback interception, wrong state, blocked navigation and owner-scoped cancellation",
