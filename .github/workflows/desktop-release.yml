@@ -1,0 +1,163 @@
+name: UWork desktop release
+
+on:
+  push:
+    branches: [uwork]
+    tags: ["v*"]
+  pull_request:
+    branches: [uwork]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified installers as a GitHub Release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uwork-release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+env:
+  ZCODE_ENV: production
+  ZCODE_PREVIEW_IDENTITY: "0"
+  ZCODE_SKIP_REMOTE_ASSETS: "1"
+  ZCODE_MAC_ADHOC_SIGN: "1"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+  ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+  ZCODE_NODE_DIST_MIRROR: https://nodejs.org/dist
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: mise.toml
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm architecture:check
+      - name: Validate release contracts and archive security
+        run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs
+      - name: Validate provider and enterprise login behavior
+        run: >-
+          pnpm exec tsx --test
+          packages/services/test/providerModelDiscovery.test.ts
+          packages/services/test/customProvidersOnly.test.ts
+          packages/services/test/enterpriseIdentity.test.ts
+          packages/services/test/enterpriseIdentityNative.test.ts
+          packages/services/test/enterpriseIdentitySharedStore.test.ts
+          packages/services/test/wecomIdentityAdapter.test.ts
+          packages/desktop/test/enterpriseLoginSurface.test.ts
+          packages/desktop/test/enterpriseLoginNavigation.test.ts
+          packages/ui/test/enterpriseLoginSurfaceGate.test.ts
+      - name: Dependency release gate
+        run: pnpm audit --prod --audit-level=high --json > dependency-audit.json
+      - name: Preserve dependency audit
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-audit
+          path: dependency-audit.json
+          if-no-files-found: warn
+
+  build:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    needs: checks
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, platform: mac, arch: arm64 }
+          - { runner: macos-15-intel, platform: mac, arch: x64 }
+          - { runner: windows-2022, platform: win, arch: x64 }
+          - { runner: ubuntu-24.04, platform: linux, arch: x64 }
+          - { runner: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: mise.toml
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          cache: true
+      - name: Linux packaging dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools zstd libfuse2t64
+      - run: pnpm install --frozen-lockfile
+      - name: Build native desktop installers
+        run: pnpm --dir packages/desktop exec node scripts/bundle.mjs --os ${{ matrix.platform }} --arch ${{ matrix.arch }} --skip-prepare
+      - name: Verify macOS resource signature
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          if [ "${{ matrix.arch }}" = arm64 ]; then app=packages/desktop/dist/mac-arm64/UWork.app; else app=packages/desktop/dist/mac/UWork.app; fi
+          codesign --verify --deep --strict --verbose=1 "$app"
+      - name: Stage verified versioned artifacts
+        run: node scripts/desktop-release.mjs stage ${{ matrix.platform }} ${{ matrix.arch }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uwork-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-assets/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: [checks, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: mise.toml
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: uwork-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dependency-audit
+          path: release-assets
+      - name: Verify release identity and all installer checksums
+        run: node scripts/desktop-release.mjs assemble
+      - name: Publish the complete release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          tag="v${version}"
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$tag" ]]; then
+            echo 'Tag does not match package version'; exit 1
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' > existing-release.txt 2>/dev/null; then
+            if [ "$(cat existing-release.txt)" != true ]; then echo 'Release is already public; refusing to overwrite'; exit 1; fi
+            test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')" = "$GITHUB_SHA"
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "UWork $version" --notes-file release-assets/release-notes.md
+          fi
+          gh release upload "$tag" release-assets/UWork-* release-assets/uwork-*.json release-assets/SHA256SUMS release-assets/dependency-audit.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest

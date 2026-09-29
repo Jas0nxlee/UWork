@@ -196,6 +196,17 @@ pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 
 复现和排查问题时，请记录系统版本、提交版本、API 格式、脱敏后的路径和操作步骤，不要附带真实密钥。
 
+## GitHub Actions 构建与发布
+
+[桌面发布工作流](https://github.com/Jas0nxlee/UWork/actions/workflows/desktop-release.yml)使用 Node 24.14.0 / pnpm 10.33.2，先执行代码与依赖审计检查，再在原生 runner 上构建 macOS arm64/x64、Windows x64、Linux x64/arm64。
+
+- macOS：DMG、ZIP；Windows：NSIS EXE；Linux：AppImage、DEB、RPM、Arch 包。
+- `uwork` 的 push / PR 执行检查。推送与根版本一致的 `vX.Y.Z` 标签会构建并发布；也可在 Actions 的 Run workflow 中选择 `uwork`，开启 `publish` 后发布当前版本。未开启时只保留构建产物。
+- 必须全部平台成功，且生产依赖审计没有 high/critical，才会汇总并公开 Release。每个安装包都有 SHA256，完整报告和源码提交随发布提供。
+- macOS 当前使用 ad-hoc 签名，未经过 Apple 公证；Windows 当前未配置发布者签名。Linux AppImage 下载后需要添加执行权限。
+
+安装包发布到 [GitHub Releases](https://github.com/Jas0nxlee/UWork/releases)，规则详见 [多平台发布 spec](specs/desktop-github-release.md) 和 [依赖安全修复](specs/release-dependency-hardening.md)。
+
 ## 上游与许可
 
 感谢 [ZCode](https://github.com/zai-org/ZCode) 及其贡献者提供基础实现。UWork 的定制功能在本 fork 的 `uwork` 分支维护，不代表上游产品的功能、服务或支持承诺。
