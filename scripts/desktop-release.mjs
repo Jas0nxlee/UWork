@@ -11,6 +11,28 @@ const formats = {
   win: [".exe"],
   linux: [".AppImage", ".deb", ".rpm", ".pkg.tar.zst"],
 };
+function matchesTarget(name, platform, arch, version) {
+  const architectures =
+    platform === "linux"
+      ? arch === "x64"
+        ? ["x64", "x86_64", "amd64"]
+        : ["arm64", "aarch64"]
+      : [arch];
+  return architectures.some((value) =>
+    formats[platform].some((ext) => name === `UWork-${version}-${platform}-${value}${ext}`),
+  );
+}
+export function validateDependencyAudit(audit) {
+  const counts = audit?.metadata?.vulnerabilities;
+  if (
+    !counts ||
+    !Number.isInteger(counts.high) ||
+    !Number.isInteger(counts.critical) ||
+    counts.high !== 0 ||
+    counts.critical !== 0
+  )
+    throw new Error("Release dependency audit contains high/critical findings or is invalid");
+}
 async function digest(file) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
@@ -24,9 +46,8 @@ export async function stageReleaseAssets({ source, destination, platform, arch, 
   identity(version, sha);
   const target = `${platform}-${arch}`;
   if (!releaseTargets.includes(target)) throw new Error("Unsupported release target");
-  const prefix = `UWork-${version}-${platform}-${arch}`;
-  const names = (await readdir(source)).filter(
-    (name) => name.startsWith(prefix) && formats[platform].some((ext) => name.endsWith(ext)),
+  const names = (await readdir(source)).filter((name) =>
+    matchesTarget(name, platform, arch, version),
   );
   for (const ext of formats[platform]) {
     if (names.filter((name) => name.endsWith(ext)).length !== 1)
@@ -61,6 +82,7 @@ export async function validateReleaseAssets({ directory, version, sha }) {
     )
       throw new Error(`Release identity mismatch: ${target}`);
     const platform = target.split("-")[0];
+    const arch = target.split("-")[1];
     if (manifest.files.length !== formats[platform].length)
       throw new Error(`Release artifact count mismatch: ${target}`);
     for (const ext of formats[platform]) {
@@ -70,7 +92,7 @@ export async function validateReleaseAssets({ directory, version, sha }) {
     for (const file of manifest.files) {
       if (
         basename(file.name) !== file.name ||
-        !file.name.startsWith(`UWork-${version}-${target}`) ||
+        !matchesTarget(file.name, platform, arch, version) ||
         unique.has(file.name)
       )
         throw new Error("Invalid or duplicate release asset name");
@@ -108,12 +130,7 @@ async function main() {
       files.map((file) => `${file.sha256}  ${file.name}`).join("\n") + "\n",
     );
     const audit = JSON.parse(await readFile(join(directory, "dependency-audit.json"), "utf8"));
-    if (
-      !audit.metadata?.vulnerabilities ||
-      audit.metadata.vulnerabilities.high ||
-      audit.metadata.vulnerabilities.critical
-    )
-      throw new Error("Release dependency audit contains high/critical findings or is invalid");
+    validateDependencyAudit(audit);
     const notes = [
       `UWork ${version}`,
       "",

@@ -7,6 +7,8 @@
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取，个人企业身份配置和凭据不进入产物。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
+- macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。
+- Linux 包保留发行格式的架构名称：x64 可为 x64/x86_64/amd64，arm64 可为 arm64/aarch64；manifest 使用统一 matrix 身份，汇总须识别对应别名。
 - 按用户选择，正式发布的依赖审计必须拒绝 high/critical，上传完整审计报告。不为本次发布配置审计忽略项或允许失败。
 
 ## 所有者和事件顺序

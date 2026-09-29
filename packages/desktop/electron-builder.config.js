@@ -4,6 +4,8 @@ import { readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { runCommand, runCommandAndReadStdout } from "../../scripts/spawn-command.mjs";
 import { loadBuiltinProviderConfig } from "../../scripts/builtin-provider-config.mjs";
 import { noticesFileName, stageElectronNotices } from "../../scripts/third-party-notices.mjs";
@@ -559,6 +561,13 @@ export default {
     runTimedSync("afterPack:assertPackagedNodePtyPrebuild", () =>
       assertPackagedNodePtyPrebuild(context),
     );
+    if (context.electronPlatformName === "darwin" && process.env.ZCODE_MAC_ADHOC_SIGN === "1") {
+      // Finder/resource-fork 属性会令签名拒绝；只清理生成的副本，保持签名校验严格执行。
+      await promisify(execFile)("xattr", [
+        "-cr",
+        join(context.appOutDir, `${desktopProductIdentity.productName}.app`),
+      ]);
+    }
     if (actualWindowsTarget) {
       await runTimedAsync("afterPack:writeWindowsInstallManifest", () =>
         writeWindowsInstallManifest(context),
