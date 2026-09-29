@@ -10,6 +10,7 @@ import {
 import type { IEnterpriseIdentityService } from "@zcode/services";
 import {
   enterpriseIdentityAttemptSchema,
+  enterpriseLoginPopupRequestSchema,
   enterpriseIdentityViewSchema,
   type EnterpriseIdentityView,
 } from "@zcode/shared";
@@ -45,6 +46,7 @@ export function EnterpriseIdentityProvider({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const actionGeneration = useRef(0);
+  const popupAttempt = useRef<string | null>(null);
 
   useEffect(() => {
     const store = useEnterpriseIdentityStore.getState();
@@ -73,9 +75,11 @@ export function EnterpriseIdentityProvider({
     return () => {
       active = false;
       actionGeneration.current++;
+      if (popupAttempt.current) platform.cancelEnterpriseLogin?.(popupAttempt.current);
+      popupAttempt.current = null;
       subscription.dispose();
     };
-  }, [owner, allowLogin]);
+  }, [owner, allowLogin, platform]);
 
   useEffect(() => {
     if (view?.status === "authenticated") {
@@ -83,10 +87,16 @@ export function EnterpriseIdentityProvider({
       setBusy(false);
       setError(false);
     }
-  }, [view?.status]);
+    if (view?.status !== "waiting" && popupAttempt.current) {
+      actionGeneration.current++;
+      platform.cancelEnterpriseLogin?.(popupAttempt.current);
+      popupAttempt.current = null;
+      setBusy(false);
+    }
+  }, [view?.status, platform]);
 
   useEffect(() => {
-    if (!owner || !allowLogin || view?.status !== "waiting") return;
+    if (!owner || !allowLogin || view?.status !== "waiting" || view.pending.callbackUrl) return;
     const pollGeneration = actionGeneration.current;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -116,9 +126,11 @@ export function EnterpriseIdentityProvider({
     actionGeneration.current++;
     setBusy(false);
     setOpen(false);
+    if (popupAttempt.current) platform.cancelEnterpriseLogin?.(popupAttempt.current);
+    popupAttempt.current = null;
     if (owner && allowLogin)
       void owner.cancelLogin().catch(() => logger.warn("Enterprise login cancellation failed"));
-  }, [owner, allowLogin]);
+  }, [owner, allowLogin, platform]);
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
     const generation = ++actionGeneration.current;
@@ -126,10 +138,27 @@ export function EnterpriseIdentityProvider({
     setError(false);
     try {
       const attempt = enterpriseIdentityAttemptSchema.parse(await owner.beginLogin());
-      if (generation === actionGeneration.current) platform.openExternal(attempt.authorizationUrl);
+      if (generation !== actionGeneration.current) return;
+      if (attempt.callbackUrl) {
+        if (!platform.openEnterpriseLogin)
+          throw new Error("Desktop enterprise login is unavailable");
+        popupAttempt.current = attempt.id;
+        const callback = await platform.openEnterpriseLogin(
+          enterpriseLoginPopupRequestSchema.parse(attempt),
+        );
+        if (generation !== actionGeneration.current) return;
+        popupAttempt.current = null;
+        if (callback === null) await owner.cancelLogin(attempt.id);
+        else await owner.completeLogin(attempt.id, callback);
+      } else platform.openExternal(attempt.authorizationUrl);
     } catch {
       if (generation === actionGeneration.current) {
         setError(true);
+        if (popupAttempt.current) {
+          platform.cancelEnterpriseLogin?.(popupAttempt.current);
+          popupAttempt.current = null;
+          void owner.cancelLogin().catch(() => logger.warn("Enterprise login cancellation failed"));
+        }
         logger.warn("Enterprise login failed");
       }
     } finally {

@@ -33,6 +33,10 @@ export function createDesktopPlatform(options: {
     saveMcpToUserDirectory: (payload) => window.zcode.saveMcpToUserDirectory(payload),
     migrateLegacyCommonMcp: (payload) => window.zcode.migrateLegacyCommonMcp(payload),
     openExternal: (url) => window.zcode.openExternal(url),
+    openEnterpriseLogin: window.zcode.openEnterpriseLogin
+      ? (request) => window.zcode.openEnterpriseLogin!(request)
+      : undefined,
+    cancelEnterpriseLogin: (attemptId) => window.zcode.cancelEnterpriseLogin?.(attemptId),
     openFeedback: () => window.zcode.executeDesktopCommand(DesktopCommandIds.OpenFeedback),
     openCommunity: () => window.zcode.executeDesktopCommand(DesktopCommandIds.OpenCommunity),
     canOpenCommunity: (locale) => window.zcode.canOpenCommunity(locale),

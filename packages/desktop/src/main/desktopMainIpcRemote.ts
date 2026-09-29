@@ -34,6 +34,7 @@ import {
   type RemoteConnectionStats,
 } from "./desktopRemoteUsageArmsTelemetry.js";
 import { openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+import { openEnterpriseLoginWindow, cancelEnterpriseLoginWindow } from "./enterpriseLoginWindow.js";
 
 function isAllowedExternalOpenUrl(value: string): boolean {
   try {
@@ -306,6 +307,14 @@ export function registerRemoteIpcHandlers(options: {
     });
   });
 
+  ipcMain.handle(PlatformChannels.OpenEnterpriseLogin, (event, payload: unknown) => {
+    if (event.senderFrame !== event.sender.mainFrame)
+      throw new Error("Enterprise login requires the owning window frame");
+    return openEnterpriseLoginWindow(event, payload);
+  });
+  ipcMain.on(PlatformChannels.CancelEnterpriseLogin, (event, attemptId: unknown) =>
+    cancelEnterpriseLoginWindow(event.sender.id, attemptId),
+  );
   ipcMain.handle(PlatformChannels.OpenExternalFile, async (_event, rawPath: string) =>
     openPathInDefaultApp(rawPath, options.logger),
   );

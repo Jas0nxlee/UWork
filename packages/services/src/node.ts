@@ -317,7 +317,13 @@ import {
   IEnterpriseIdentityService,
   type EnterpriseIdentityAdapter,
 } from "./enterprise-identity/contract.js";
-import { createEnterpriseIdentityService } from "./enterprise-identity/enterpriseIdentityService.js";
+import {
+  createEnterpriseIdentityService,
+  disposeEnterpriseIdentityService,
+} from "./enterprise-identity/enterpriseIdentityService.js";
+import { createSharedIdentitySessionStore } from "./enterprise-identity/identitySessionStore.js";
+import { loadWeComIdentityAdapter } from "./enterprise-identity/wecomIdentityConfig.js";
+import { withFileLock as withEnterpriseIdentityFileLock } from "@zcode/shared/node";
 import { IUsageStatsService } from "./usage-stats/usageStats.js";
 import { ICodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscription.js";
 import { IClientScenesService } from "./client-scenes/clientScenes.js";
@@ -680,6 +686,10 @@ export function getOffPeakRequestAuthBuilder(
   return offPeakRequestAuthBuilders.get(services);
 }
 const managedHostApiNetworkTransports = new WeakMap<ServiceCollection, HostApiNetworkTransport>();
+const managedEnterpriseIdentities = new WeakMap<
+  ServiceCollection,
+  import("./enterprise-identity/contract.js").IEnterpriseIdentityService
+>();
 
 export function registerManagedCuaHelperHostForDispose(
   services: ServiceCollection,
@@ -2431,6 +2441,22 @@ export function createLocalServices(options: {
       createEnterpriseIdentityService({
         credentials: credentialService,
         adapter: options.enterpriseIdentityAdapter,
+        ...(options.serviceAuthorityMode === "desktop-local"
+          ? {
+              loadAdapter: () =>
+                loadWeComIdentityAdapter(
+                  join(resolveAppConfigDir(), "enterprise-identity.json"),
+                  hostApiNetworkTransport.fetch,
+                ),
+              sessionStore: createSharedIdentitySessionStore(credentialService, (operation) =>
+                withEnterpriseIdentityFileLock(
+                  join(resolveAppConfigDir(), "enterprise-identity-state"),
+                  operation,
+                ),
+              ),
+              broadcast: broadcastService,
+            }
+          : {}),
       }),
     )
     .register(
@@ -2575,6 +2601,7 @@ export function createLocalServices(options: {
     },
   });
   registerHostApiNetworkTransportForDispose(services, hostApiNetworkTransport);
+  managedEnterpriseIdentities.set(services, services.get(IEnterpriseIdentityService));
   // disposer 注册完成后才排预热。若 createLocalServices 中途抛错，不能留下一个无人持有、却会在当前
   // 调用栈结束后才创建的高权限 Helper；若返回后立即 dispose，terminal fence 会先于 acquire 生效。
   // Helper 懒启动：不预热——Helper 由 SDK 首次 CUA 调用拉起（spawn env 注入
@@ -2704,6 +2731,11 @@ function readTelemetryOAuthUserId(rawUserInfo: string | null): string {
 }
 
 export function disposeServiceResources(services: ServiceCollection): void {
+  const identity = managedEnterpriseIdentities.get(services);
+  if (identity) {
+    void disposeEnterpriseIdentityService(identity);
+    managedEnterpriseIdentities.delete(services);
+  }
   // host process 退出前以前没有统一遍历本地服务做资源回收，
   // terminal/task wrapper 这类会拉起子进程的服务只能等宿主进程自己结束，时序上可能留下短暂残留。
   // 这里集中调用各服务的本地 disposeAll 钩子，把“退出 app = 回收所有托管资源”落成机械动作。
@@ -2738,6 +2770,11 @@ export function disposeServiceResources(services: ServiceCollection): void {
 }
 
 export async function disposeServiceResourcesAndWait(services: ServiceCollection): Promise<void> {
+  const identity = managedEnterpriseIdentities.get(services);
+  if (identity) {
+    await disposeEnterpriseIdentityService(identity);
+    managedEnterpriseIdentities.delete(services);
+  }
   // app 关闭时 host 需要等 agent 进程树完成 graceful + force 清理。
   // 旧的同步 dispose 会在 host 退出时丢掉强杀 timer，导致 zcode-cli/app-server 变成孤儿进程。
   const disposableServices = [

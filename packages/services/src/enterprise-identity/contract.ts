@@ -14,6 +14,7 @@ export interface IEnterpriseIdentityService {
   restoreSession(): Promise<EnterpriseIdentityView>;
   beginLogin(): Promise<EnterpriseIdentityAttempt>;
   pollLogin(attemptId: string): Promise<EnterpriseIdentityView>;
+  completeLogin(attemptId: string, callbackUrl: string): Promise<EnterpriseIdentityView>;
   cancelLogin(attemptId?: string): Promise<void>;
   logout(): Promise<void>;
   onDidChange: Event<EnterpriseIdentityView>;
@@ -25,10 +26,12 @@ export const IEnterpriseIdentityService = createServiceDescriptor<IEnterpriseIde
 /** 仅供 Node 装配注入。待现有认证接口到位后映射，不在客户端假定企业后端协议。 */
 export interface EnterpriseIdentityAdapter {
   start(signal: AbortSignal): Promise<EnterpriseIdentityAttempt>;
-  poll(attemptId: string, signal: AbortSignal): Promise<EnterpriseIdentityPollResult>;
+  poll?(attemptId: string, signal: AbortSignal): Promise<EnterpriseIdentityPollResult>;
+  /** 仅 Host 使用 code 调已有服务；UI 不收到 token。 */
+  complete?(code: string, signal: AbortSignal): Promise<EnterpriseIdentitySession>;
   restore(
     session: EnterpriseIdentitySession,
     signal: AbortSignal,
   ): Promise<EnterpriseIdentitySession | null>;
-  revoke(session: EnterpriseIdentitySession): Promise<void>;
+  revoke?(session: EnterpriseIdentitySession): Promise<void>;
 }

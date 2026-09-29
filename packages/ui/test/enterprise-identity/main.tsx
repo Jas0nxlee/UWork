@@ -13,6 +13,9 @@ import "@/styles.css";
 const params = new URLSearchParams(location.search);
 const configured = params.has("configured");
 const readOnly = params.has("readonly");
+const native = params.has("native");
+const nativeCallback = "https://auth.example.com/callback";
+const nativeId = "fixture-native-state";
 const changed = new Emitter<EnterpriseIdentityView>();
 let view: EnterpriseIdentityView = {
   revision: 0,
@@ -36,13 +39,20 @@ const service: IEnterpriseIdentityService = {
       configured,
       status: "waiting",
       profile: null,
-      pending: { id: "fixture", expiresAt: Date.now() + 60000 },
+      pending: {
+        id: native ? nativeId : "fixture",
+        expiresAt: Date.now() + 60000,
+        ...(native ? { callbackUrl: nativeCallback } : {}),
+      },
       error: null,
     });
     return {
-      id: "fixture",
-      authorizationUrl: "https://example.com/fixture-login",
+      id: native ? nativeId : "fixture",
+      authorizationUrl: native
+        ? `https://login.work.weixin.qq.com/wwlogin/sso/login?login_type=CorpApp&appid=wx-fixture&agentid=1000001&state=${nativeId}&redirect_uri=${encodeURIComponent(nativeCallback)}`
+        : "https://example.com/fixture-login",
       expiresAt: Date.now() + 60000,
+      ...(native ? { callbackUrl: nativeCallback } : {}),
     };
   },
   pollLogin: async () => {
@@ -61,6 +71,7 @@ const service: IEnterpriseIdentityService = {
     });
     return view;
   },
+  completeLogin: async () => service.pollLogin(nativeId),
   cancelLogin: async () => {
     emit({
       revision: view.revision + 1,
@@ -86,7 +97,20 @@ const broadcast = {
   send: async () => {},
   onMessage: () => ({ dispose() {} }),
 } as IBroadcastService;
-const platform = { openExternal: () => {} } as unknown as IPlatformService;
+let cancelNative: (() => void) | null = null;
+const platform = {
+  openExternal: () => {},
+  openEnterpriseLogin: async () =>
+    params.has("cancel")
+      ? new Promise<string | null>((resolve) => {
+          cancelNative = () => resolve(null);
+        })
+      : `${nativeCallback}?code=fixture-code&state=${nativeId}`,
+  cancelEnterpriseLogin: () => {
+    cancelNative?.();
+    cancelNative = null;
+  },
+} as unknown as IPlatformService;
 localStorage.setItem("zcode-theme", params.has("dark") ? "zai-dark" : "zai-light");
 localStorage.setItem("zcode-locale-preference", params.has("en") ? "en-US" : "zh-CN");
 createRoot(document.getElementById("root")!).render(

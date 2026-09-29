@@ -13,6 +13,7 @@ import type {
   SaveCliMcpToUserDirectoryRequest,
 } from "./mcp.js";
 import type { OAuthStateRegistration } from "./oauth.js";
+import type { EnterpriseLoginPopupRequest } from "./enterprise-identity.js";
 import type { AppSettings, Locale } from "./protocol.js";
 import type { ArmsCustomEventPayload, RendererTelemetryEventPayload } from "./telemetry.js";
 import type {
@@ -618,6 +619,9 @@ export interface IPlatformService {
 
   /** 打开外部 URL（用于 OAuth 跳转浏览器） */
   openExternal(url: string): void;
+  /** Desktop 的隔离企业登录窗口；只返回临时授权回调，不返回 Token。 */
+  openEnterpriseLogin?(request: EnterpriseLoginPopupRequest): Promise<string | null>;
+  cancelEnterpriseLogin?(attemptId: string): void;
 
   /** 按系统应用标识读取真实 App 图标；非 Desktop 平台可不实现。 */
   getApplicationIcon?(
