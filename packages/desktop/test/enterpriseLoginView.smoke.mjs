@@ -22,7 +22,7 @@ app.on("session-created", (session) => {
       callbackLoads++;
       return new Response("Callback fixture loaded");
     }
-    if (iframeMode && new URL(request.url).pathname === "/wwopen/sso/qrConnect")
+    if (iframeMode && new URL(request.url).pathname === "/wwlogin/sso/login")
       return new Response(
         '<html><body><iframe src="https://open.work.weixin.qq.com/fixture"></iframe></body></html>',
         { headers: { "Content-Type": "text/html" } },

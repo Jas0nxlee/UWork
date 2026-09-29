@@ -27,7 +27,7 @@ const authorizationUrl =
     redirect_uri: callbackUrl,
   });
 
-test("embedded route preserves organization and unpredictable callback binding", () => {
+test("embedding preserves the exact successful modern authorization URL and callback encoding", () => {
   const request = enterpriseLoginRequestSchema.parse({
     id: "fixture-id",
     callbackUrl,
@@ -37,12 +37,13 @@ test("embedded route preserves organization and unpredictable callback binding",
     surface,
   });
   const url = new URL(createEnterpriseEmbedUrl(request));
-  assert.equal(url.origin, "https://open.work.weixin.qq.com");
-  assert.equal(url.pathname, "/wwopen/sso/qrConnect");
+  assert.equal(url.href, authorizationUrl);
+  assert.equal(url.origin, "https://login.work.weixin.qq.com");
+  assert.equal(url.pathname, "/wwlogin/sso/login");
   assert.equal(url.searchParams.get("state"), "fixture-org");
   assert.equal(url.searchParams.get("redirect_uri"), callbackUrl);
   assert.equal(url.searchParams.get("appid"), "wx-fixture");
-  assert.equal(url.searchParams.get("login_type"), "jssdk");
+  assert.equal(url.searchParams.get("login_type"), "CorpApp");
 });
 test("surface rejects CSS injection, URLs, invalid geometry and extra fields", () => {
   assert.ok(enterpriseLoginSurfaceSchema.safeParse(surface).success);

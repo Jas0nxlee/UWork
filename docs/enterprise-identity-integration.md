@@ -63,7 +63,7 @@ IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共�
 
 ## 内嵌扫码展示
 
-登录页通过平台接口发送已挂载二维码槽位的 bounds、主题颜色、字体和语言，Main 挂载独立 WebContentsView，不创建第二个窗口。内嵌地址沿用官方 [WwLogin 1.2.7 SDK](https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wwLogin-1.2.7.js) 的 sso iframe 路由。固定 CSS 只移除装饰性标题与外卡片，保持二维码对比度和授权状态；远端页没有应用 preload 或 Node 权限。授权文档切换后重新应用 UI zoom/CSS，窗口尺寸和主题更新不会重载二维码。规范与事件顺序见 [spec](../specs/enterprise-identity.md)。
+登录页通过平台接口发送已挂载二维码槽位的 bounds、主题颜色、字体和语言，Main 挂载独立 WebContentsView，不创建第二个窗口。内嵌地址完整沿用已验证成功的新版 Web 登录 URL，不能为展示改造转换到旧版 qrConnect；旧版入口在当前配置下已实测出现回调域不匹配。固定 CSS 只移除装饰性标题与外卡片，保持二维码对比度和授权状态；远端页没有应用 preload 或 Node 权限。授权文档切换后重新应用 UI zoom/CSS，窗口尺寸和主题更新不会重载二维码。规范与事件顺序见 [spec](../specs/enterprise-identity.md)。
 
 ## 验证边界
 

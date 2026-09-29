@@ -5,7 +5,7 @@
 - 登录卡片删除 U 字母图形和 UWork wordmark，删除身份登录说明与本地功能说明；保留标题、登录操作、跳过操作和必要的未配置/失败/过期提示。
 - 用户点击企业微信后，在同一登录卡片中显示二维码与授权状态。使用独立内存 partition 的 WebContentsView 挂在原 BrowserWindow 内，不创建第二个登录窗口，也不将远端登录页放入有应用权限的 Renderer。
 - UI 是扫码区域几何、颜色和字体的唯一所有者，通过 IPlatformService 发布严格验证的 surface 快照。Main 只持有 native view、请求绑定和短期回调路由；Host 继续持有登录尝试和设备会话。布局必须实际挂载后才打开 native view，使用可取消的就绪握手，不能用延时猜测 DOM 是否已渲染。
-- Main 依据官方 WwLogin 1.2.7 SDK 的 iframe 路由构造内嵌二维码地址，保持原 appid、agentid、org state 与带 nonce 的回调。远端装饰性标题、外卡片背景与字号由固定 CSS 适配；二维码保持白色安全边距，扫码/确认/失败等授权状态不隐藏。
+- Main 内嵌已验证成功的新版 Web 登录 URL，完整保留其路径、编码、appid、agentid、org state 与带 nonce 的回调，不转换成旧版 qrConnect。用户实测旧版入口提示回调域不匹配，不能要求修改后台来迁就界面。远端装饰性标题、外卡片背景与字号由固定 CSS 适配；二维码保持白色安全边距，扫码/确认/失败等授权状态不隐藏。
 - bounds 从 CSS viewport 换算到 Electron DIP，随窗口尺寸、缩放和 UI 主题更新；每条更新只作用于原 sender 和同一 attempt ID。颜色、字体等只接受有界样式值，不接受任意 CSS、脚本或 URL。
 - 授权文档导航会使 insertCSS key 与 origin zoom 失效；Main 按文档 generation 清理样式缓存，在新文档完成后重新应用当前 UI 缩放和主题，旧异步样式任务不得覆盖新文档。
 - 原有 HTTPS origin/端口/path、唯一 state、唯一 nonce、唯一 code 校验保持。跳过、关闭窗口、Renderer 重载、失效尝试与完成都撤下 view、关闭 WebContents 并清理独立会话；网络/认证失败仍可跳过。
