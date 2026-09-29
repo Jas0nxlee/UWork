@@ -1,5 +1,18 @@
 /** 中文翻译 */
 const zhCN: Record<string, string> = {
+  "enterpriseIdentity.title": "登录",
+  "enterpriseIdentity.scanHint": "使用企业微信扫一扫",
+  "enterpriseIdentity.qrLabel": "企业微信登录二维码",
+  "enterpriseIdentity.wecomLogin": "企业微信登录",
+  "enterpriseIdentity.waiting": "等待扫码确认…",
+  "enterpriseIdentity.unconfigured": "企业微信登录暂未配置，您可以先跳过。",
+  "enterpriseIdentity.failed": "登录未完成，请重试或跳过登录。",
+  "enterpriseIdentity.expired": "登录已过期，请重新登录或继续本地使用。",
+  "enterpriseIdentity.skip": "跳过登录，继续使用",
+  "enterpriseIdentity.signedOut": "未登录 · 点击登录",
+  "enterpriseIdentity.source": "通过企业微信登录",
+  "enterpriseIdentity.logout": "退出登录",
+
   "startPlan.recommendation.subagentDescription":
     "你的体验套餐中，{model} 仍有可用额度，是否将此子智能体的模型切换到体验套餐？",
   "startPlan.recommendation.preferenceSaveFailed": "未能保存“不再提示”，本次仍按你的选择继续。",

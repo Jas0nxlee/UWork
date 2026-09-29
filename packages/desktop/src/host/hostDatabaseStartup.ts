@@ -6,7 +6,11 @@ import {
 import type { DatabaseStartupState } from "@zcode/shared";
 import { DatabaseStartupCoordinator } from "./databaseStartupCoordinator.js";
 import { StartupDiskSampler } from "./startupDiskSampler.js";
-import { prepareHostStorage, prepareSessionStorage } from "./storagePreparationProcesses.js";
+import {
+  ensureHostFallbackCwd,
+  prepareHostStorage,
+  prepareSessionStorage,
+} from "./storagePreparationProcesses.js";
 
 const BASELINE_BUDGET_MS = 250;
 export function createHostDatabaseStartup(options: {
@@ -43,6 +47,8 @@ export function createHostDatabaseStartup(options: {
         coordinator.updateDisk(currentSampler.snapshot());
       };
       try {
+        // 有效 active 项目也可能伴随已删除的 recent 项目；先保证备用 cwd 存在，避免 CLI 在首帧前退出。
+        await ensureHostFallbackCwd(options.cwd);
         report("preparing_host_storage", "checking");
         const tasksPath = getTasksIndexDatabasePath();
         await observePath(tasksPath);

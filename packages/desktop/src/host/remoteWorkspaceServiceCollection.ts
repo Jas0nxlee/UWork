@@ -16,6 +16,7 @@ import {
   IConversationShareService,
   IFileWatcherService,
   IOAuthService,
+  IEnterpriseIdentityService,
   IModelSelectionService,
   IProviderSettingsService,
   IUsageStatsService,
@@ -41,6 +42,7 @@ import {
   ConversationShareService,
   createSettingService,
   createCredentialService,
+  createPublicCredentialService,
   createBroadcastService,
   createNodeApiClient,
   createHostApiNetworkTransport,
@@ -316,7 +318,7 @@ export function createRemoteWorkspaceServiceCollection(params: {
     .register(ISystemService, params.connectionServices.systemService)
     .register(ITerminalService, params.connectionServices.terminalService)
     .register(ISettingService, localSettingService)
-    .register(ICredentialService, localCredentialService)
+    .register(ICredentialService, createPublicCredentialService(localCredentialService))
     .register(IBroadcastService, localBroadcastService)
     .register(IZCodeTaskService, remoteZCodeTaskService)
     .register(IZCodeAgentService, params.connectionServices.zcodeAgentService)
@@ -364,6 +366,9 @@ export function createRemoteWorkspaceServiceCollection(params: {
       createSettingsSyncService({ settingService: localSettingService }),
     )
     .register(IPromptAttachmentTransferService, params.promptAttachmentTransferService);
+  // 手机连接远端 attachment 时仍投影窗口 Local Host 的身份，不为远端工作区另建登录 owner。
+  const enterpriseIdentity = params.sourceServices?.getOptional(IEnterpriseIdentityService);
+  if (enterpriseIdentity) services.register(IEnterpriseIdentityService, enterpriseIdentity);
   registerHostApiNetworkTransportForDispose(services, hostApiNetworkTransport);
   registerRemoteProviderProvisioningExecutor(services, remoteProviderProvisioningService);
   return services;

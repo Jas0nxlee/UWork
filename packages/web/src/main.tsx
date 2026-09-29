@@ -79,6 +79,7 @@ const webAuthService = createWebAuthService();
 }
 
 interface WebBootstrapResult {
+  enterpriseIdentityReadOnly?: boolean;
   wsUrl: string;
   initialWorkspaceAbsPath?: string;
   initialWorkspaceIdentity?: string;
@@ -363,7 +364,7 @@ async function resolveWebBootstrap(): Promise<WebBootstrapResult> {
     : `${resolveDefaultWsOrigin()}/ws`;
 
   if (remoteId) {
-    return { wsUrl };
+    return { wsUrl, enterpriseIdentityReadOnly: true };
   }
 
   try {
@@ -455,6 +456,7 @@ async function bootstrapWebApp() {
           broadcastService={services.broadcastService}
         >
           <Root
+            enterpriseIdentityReadOnly={bootstrap.enterpriseIdentityReadOnly}
             services={services}
             platform={platform}
             initialWorkspaceAbsPath={bootstrap.initialWorkspaceAbsPath}

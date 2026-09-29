@@ -55,6 +55,11 @@ import type {
 declare global {
   interface Window {
     zcode: {
+      openEnterpriseLogin?(
+        request: import("@zcode/shared").EnterpriseLoginRequest,
+      ): Promise<string | null>;
+      cancelEnterpriseLogin?(attemptId: string): void;
+      updateEnterpriseLogin?(update: import("@zcode/shared").EnterpriseLoginSurfaceUpdate): void;
       connectRemote(
         options: RemoteTarget,
         requestId?: string,

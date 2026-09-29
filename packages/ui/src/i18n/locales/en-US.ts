@@ -1,5 +1,18 @@
 /** English translations */
 const enUS: Record<string, string> = {
+  "enterpriseIdentity.title": "Sign in",
+  "enterpriseIdentity.scanHint": "Scan with WeCom",
+  "enterpriseIdentity.qrLabel": "WeCom sign-in QR code",
+  "enterpriseIdentity.wecomLogin": "Sign in with WeCom",
+  "enterpriseIdentity.waiting": "Waiting for confirmation…",
+  "enterpriseIdentity.unconfigured": "WeCom sign-in is not configured yet. You can skip for now.",
+  "enterpriseIdentity.failed": "Sign-in did not complete. Please retry or skip.",
+  "enterpriseIdentity.expired": "Your sign-in expired. Sign in again or continue locally.",
+  "enterpriseIdentity.skip": "Skip sign-in and continue",
+  "enterpriseIdentity.signedOut": "Signed out · Sign in",
+  "enterpriseIdentity.source": "Signed in with WeCom",
+  "enterpriseIdentity.logout": "Sign out",
+
   "startPlan.recommendation.subagentDescription":
     "Your Start Plan has quota available for {model}. Switch this subagent’s model to the Start Plan?",
   "startPlan.recommendation.preferenceSaveFailed":

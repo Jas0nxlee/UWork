@@ -14,6 +14,7 @@ import type { IZCodeSessionService } from "./zcode-session/zcodeSession.js";
 import type { ICuaPermissionService } from "./cua-permission-broker/cuaPermissionService.js";
 import type { IFileWatcherService } from "./fileWatcher/fileWatcher.js";
 import type { IOAuthService } from "./oauth/oauth.js";
+import type { IEnterpriseIdentityService } from "./enterprise-identity/contract.js";
 import type {
   IModelSelectionService,
   IProviderSettingsService,
@@ -62,6 +63,8 @@ export interface IServiceAccessor {
   readonly conversationShareService: IConversationShareService;
   readonly fileWatcherService: IFileWatcherService;
   readonly oauthService: IOAuthService;
+  /** 应用级可选企业身份；旧 Host 或测试替身可不提供。 */
+  readonly enterpriseIdentityService?: IEnterpriseIdentityService;
   /** 当前 Environment 的 Provider 配置与设置视图。 */
   readonly providerSettingsService: IProviderSettingsService;
   /** 当前 Environment Registry 发布的唯一模型选择 View。 */

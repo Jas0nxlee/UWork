@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { Worker } from "node:worker_threads";
 import { createInterface } from "node:readline";
@@ -12,6 +12,7 @@ import {
   type DatabaseStartupState,
 } from "@zcode/shared";
 import { resolveDefaultZCodeAgentCommand } from "@zcode/services/storage-startup";
+import { classifyStorageWorkerStderr } from "./storageWorkerDiagnostics.js";
 
 type Phase = NonNullable<DatabaseStartupState["databasePhase"]>;
 const workerMessageSchema = z.discriminatedUnion("type", [
@@ -57,6 +58,11 @@ const statusError = (
     migrationUpdate:
       databaseId && details?.migration ? { databaseId, migration: details.migration } : undefined,
   });
+
+/** 仅创建 Main 提供的 app-managed 备用目录，不能在遍历历史项目时重建已删除的项目。 */
+export async function ensureHostFallbackCwd(path: string): Promise<void> {
+  await mkdir(path, { recursive: true });
+}
 
 export function prepareHostStorage(
   path: string,
@@ -141,6 +147,9 @@ export async function prepareSessionStorage(options: {
     let pathReceived = false;
     let preparedPath: string | undefined;
     let failure: unknown;
+    let frameCount = 0;
+    let stderrBytes = 0;
+    let stderrPrefix = "";
     const terminate = () => {
       void child.terminate();
     };
@@ -154,7 +163,13 @@ export async function prepareSessionStorage(options: {
     }, 30_000);
     options.signal.addEventListener("abort", abort, { once: true });
     // stdout 只有有界控制帧，stderr 排空但不把可能含本地路径的原始文本上报。
-    child.stderr.resume();
+    child.stderr.on("data", (chunk: Uint8Array) => {
+      stderrBytes += chunk.byteLength;
+      if (stderrPrefix.length < 4096)
+        stderrPrefix += Buffer.from(chunk)
+          .toString("utf8")
+          .slice(0, 4096 - stderrPrefix.length);
+    });
     input.on("error", (error) => {
       failure ??= error;
       terminate();
@@ -163,6 +178,7 @@ export async function prepareSessionStorage(options: {
       try {
         if (line.length > 65536) throw statusError("transport_closed");
         const frame = zcodeStoragePreparationFrameSchema.parse(JSON.parse(line));
+        frameCount++;
         clearTimeout(firstStateTimer);
         if (frame.method === "startup/storagePath") {
           if (pathReceived) throw statusError("transport_closed");
@@ -214,7 +230,23 @@ export async function prepareSessionStorage(options: {
       if (code === 0 && prepared && !failure) {
         if (preparedPath) options.preparedPaths?.add(preparedPath);
         resolve();
-      } else reject(failure ?? statusError("transport_closed"));
+      } else {
+        const error = failure ?? statusError("transport_closed");
+        // 独立 Worker 可完成而完整 Host 提前退出；只保留控制帧事实，不能将 stderr 中的路径或凭据写入诊断。
+        if (error instanceof Error)
+          Object.assign(error, {
+            workerExitFacts: {
+              code,
+              frameCount,
+              pathReceived,
+              prepared,
+              stderrBytes,
+              stderrPrefixChars: stderrPrefix.length,
+              stderrHints: classifyStorageWorkerStderr(stderrPrefix),
+            },
+          });
+        reject(error);
+      }
     });
     if (options.signal.aborted) abort();
   });

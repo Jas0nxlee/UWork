@@ -1,5 +1,9 @@
 // Descriptors & collection (browser-safe)
 export { type ServiceDescriptor, createServiceDescriptor } from "./descriptors.js";
+export {
+  IEnterpriseIdentityService,
+  type EnterpriseIdentityAdapter,
+} from "./enterprise-identity/contract.js";
 export { ServiceCollection } from "./collection.js";
 export {
   IModelSelectionService,

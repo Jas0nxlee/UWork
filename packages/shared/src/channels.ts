@@ -103,6 +103,8 @@ export const ServiceChannels = {
   FileWatcher: "file-watcher",
   /** OAuth 认证服务 */
   OAuth: "oauth",
+  /** 可选企业身份；独立于退役的模型供应商 OAuth。 */
+  EnterpriseIdentity: "enterprise-identity",
   /** 新 Provider Config 的设置读写 Facade */
   ProviderSettings: "provider-settings",
   /** 新 Provider Registry 的模型选择 Facade */
@@ -273,6 +275,9 @@ export const PlatformChannels = {
   StorageScanProgress: "zcode:storage-scan-progress",
   /** Renderer → Main：打开外部 URL（用于 OAuth 跳转浏览器） */
   OpenExternal: "zcode:open-external",
+  OpenEnterpriseLogin: "zcode:open-enterprise-login",
+  UpdateEnterpriseLogin: "zcode:update-enterprise-login",
+  CancelEnterpriseLogin: "zcode:cancel-enterprise-login",
   /** Renderer → Main：查询当前语言下是否存在可用的用户社群入口 */
   CanOpenCommunity: "zcode:can-open-community",
   /** Renderer → Main：在系统文件管理器中打开路径 */

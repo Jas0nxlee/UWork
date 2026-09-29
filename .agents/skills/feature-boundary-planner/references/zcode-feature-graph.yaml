@@ -25,6 +25,33 @@ rules:
     - invariant-only
     - evidence-only
 nodes:
+  - id: capability.enterprise-identity
+    kind: capability
+    label: Optional enterprise identity
+    aliases: [企业登录, 企业微信, optional login, enterprise identity]
+    codeSeeds:
+      - file: packages/services/src/enterprise-identity/contract.ts
+        symbol: IEnterpriseIdentityService
+    invariants:
+      - Local workspaces and model settings remain usable without enterprise authentication.
+      - Retired model-provider OAuth is independent and remains retired.
+  - id: surface.enterprise-login
+    kind: ui-surface
+    label: Enterprise login and sidebar profile
+    codeSeeds:
+      - file: packages/ui/src/hooks/useEnterpriseIdentity.tsx
+        symbol: EnterpriseIdentityProvider
+      - file: packages/ui/src/login/EnterpriseIdentityBadge.tsx
+        symbol: EnterpriseIdentityBadge
+  - id: service.enterprise-identity
+    kind: service
+    label: Window Host enterprise identity owner
+    codeSeeds:
+      - file: packages/services/src/enterprise-identity/enterpriseIdentityService.ts
+        symbol: createEnterpriseIdentityService
+    invariants:
+      - Views and events never contain credentials.
+      - Cancelled generations cannot publish or persist late login success.
   - id: capability.model-selection
     kind: capability
     label: Model selection
@@ -356,6 +383,15 @@ nodes:
       - file: apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
         symbol: applySubmissionExecutionState
 edges:
+  - from: capability.enterprise-identity
+    to: surface.enterprise-login
+    type: exposes-optional-entry
+    rank: must-inspect
+  - from: surface.enterprise-login
+    to: service.enterprise-identity
+    type: projects-and-commands
+    rank: must-inspect
+    condition: The app-level provider stays bound to base services across workspace switches.
   - from: capability.model-selection
     to: surface.conversation-model-control
     type: renders-in

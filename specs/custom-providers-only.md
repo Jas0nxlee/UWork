@@ -1,5 +1,7 @@
 # 本地自定义供应商版本
 
+企业身份登录后续按 [enterprise-identity.md](enterprise-identity.md) 独立新增，可跳过；下文退役的账号仅指原模型供应商账号。企业登录不恢复旧 OAuth、套餐或模型账号服务。
+
 ## 产品规则
 
 移除应用登录及智谱/Z.ai 内置供应商（BigModel、Coding Plan、Start Plan、团队与闲时套餐）。保留 UCAS 作为唯一随包默认供应商：其配置写入 Personal Provider Repository，不使用账号认证或远端配置刷新。启动直接进入工作区；UCAS 默认可用，其他供应商仍可通过模型设置添加。模型设置、模型选择与页脚不展示账号、登录、订阅或升级入口。
