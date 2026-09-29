@@ -64,7 +64,7 @@ export class ZCodeProtocolRequestTimeoutError extends Error {
     readonly requestId: ZCodeProtocolRequestId,
     readonly timeoutMs: number,
   ) {
-    super(`ZCode Protocol request timed out: ${method}`);
+    super(`UWork Protocol request timed out: ${method}`);
     this.name = "ZCodeProtocolRequestTimeoutError";
   }
 }
@@ -335,7 +335,7 @@ export class ZCodeProtocolClient implements IDisposable {
       pending.reject(
         error instanceof Error
           ? error
-          : new Error(`ZCode Protocol response parse failed: ${pending.method}`),
+          : new Error(`UWork Protocol response parse failed: ${pending.method}`),
       );
     }
   }

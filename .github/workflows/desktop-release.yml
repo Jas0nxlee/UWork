@@ -57,6 +57,7 @@ jobs:
           packages/desktop/test/enterpriseLoginSurface.test.ts
           packages/desktop/test/enterpriseLoginNavigation.test.ts
           packages/ui/test/enterpriseLoginSurfaceGate.test.ts
+          scripts/test/uworkBranding.test.ts
       - name: Dependency release gate
         run: pnpm audit --prod --audit-level=high --json > dependency-audit.json
       - name: Preserve dependency audit

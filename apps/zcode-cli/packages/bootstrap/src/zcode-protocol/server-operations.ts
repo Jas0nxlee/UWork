@@ -637,7 +637,7 @@ function mapProtocolSessionEvent(
   }
   if (!shouldExposeSessionEventToProtocol(event)) {
     const payload = asRecord(event.payload);
-    context.logger?.debug("ZCode Protocol session event filtered", {
+    context.logger?.debug("UWork Protocol session event filtered", {
       event: "zcode_protocol.session_event.filtered",
       eventId: String(event.id),
       module: "bootstrap.zcode_protocol",
@@ -770,7 +770,7 @@ function logProtocolSessionEventSent(
     method: "session/event",
     params: mappedEvent,
   };
-  context.logger?.debug("ZCode Protocol session event sent", {
+  context.logger?.debug("UWork Protocol session event sent", {
     deliveryKind: mappedEvent.deliveryKind,
     event: "zcode_protocol.session_event.sent",
     eventId: mappedEvent.eventId,
@@ -1197,7 +1197,7 @@ async function persistImportedSessionHistory(params: {
     });
   }
 
-  params.context.logger?.info("ZCode Protocol imported history persisted", {
+  params.context.logger?.info("UWork Protocol imported history persisted", {
     event: "zcode_protocol.session_import.persisted",
     messageCount: importedHistory.messages.length,
     module: "bootstrap.zcode_protocol",
@@ -1254,7 +1254,7 @@ async function createSessionWithProjection<T>(
   }
   const sessionId = (params.sessionId ?? createSessionId()) as SessionId;
   const workspace = params.workspace;
-  context.logger?.info("ZCode Protocol session/create started", {
+  context.logger?.info("UWork Protocol session/create started", {
     event: "zcode_protocol.session_create.started",
     hasInitialModel: params.model !== undefined,
     hasInitialThoughtLevel: params.thoughtLevel !== undefined,
@@ -1306,7 +1306,7 @@ async function createSessionWithProjection<T>(
       } else if (initialThoughtLevel) {
         // workspace 默认 thoughtLevel 可能来自上一个模型。新 session 继承另一模型时，
         // 不能把不支持的档位硬塞给 runtime，否则创建阶段会抛 Unsupported reasoning effort。
-        context.logger?.warn("ZCode Protocol session/create skipped unsupported thought level", {
+        context.logger?.warn("UWork Protocol session/create skipped unsupported thought level", {
           event: "zcode_protocol.session_create.thought_level_skipped",
           module: "bootstrap.zcode_protocol",
           requestedThoughtLevel: initialThoughtLevel,
@@ -1335,7 +1335,7 @@ async function createSessionWithProjection<T>(
     const createdSnapshot = createdSnapshotResult.value;
     snapshotPhaseDurationsMs = createdSnapshotResult.phaseDurationsMs;
     snapshotDurationMs = Date.now() - snapshotStartedAt;
-    context.logger?.info("ZCode Protocol session/create completed", {
+    context.logger?.info("UWork Protocol session/create completed", {
       durationMs: Date.now() - startedAt,
       event: "zcode_protocol.session_create.completed",
       hasInitialModel: initialModel !== undefined,
@@ -1356,7 +1356,7 @@ async function createSessionWithProjection<T>(
     });
     return createdSnapshot;
   } catch (error) {
-    context.logger?.warn("ZCode Protocol session/create failed", {
+    context.logger?.warn("UWork Protocol session/create failed", {
       durationMs: Date.now() - startedAt,
       errorMessage: error instanceof Error ? error.message : String(error),
       event: "zcode_protocol.session_create.failed",
@@ -1413,7 +1413,7 @@ export async function activateSessionForResume(
 ): Promise<ActivatedSessionForResume> {
   const resumeStartedAt = Date.now();
   const activeBeforeWait = context.sessions.has(params.sessionId);
-  context.logger?.debug("ZCode Protocol session resume started", {
+  context.logger?.debug("UWork Protocol session resume started", {
     activeBeforeWait,
     event: "zcode_protocol.session.resume_started",
     hasSessionStore: Boolean(context.deps.sessionStore),
@@ -1431,7 +1431,7 @@ export async function activateSessionForResume(
   if (!session) {
     // 诊断：冷恢复只有在持久化记录也不存在时才会走到这里；单凭错误文本无法和
     // readSession 的“runtime 尚未活跃”区分，因此把两层状态和等待耗时一起落盘。
-    context.logger?.warn("ZCode Protocol session resume found no persisted record", {
+    context.logger?.warn("UWork Protocol session resume found no persisted record", {
       activeBeforeWait,
       activeSessionCount: context.sessions.size,
       durationMs: Math.max(0, Date.now() - resumeStartedAt),
@@ -1499,7 +1499,7 @@ export async function activateSessionForResume(
   if (options.reusePersistedMessages && resumeResult.persistedMessagesReloadRequired) {
     persistedMessages = await readPersistedSessionMessages(context, params.sessionId);
   }
-  context.logger?.info("ZCode Protocol session resume completed", {
+  context.logger?.info("UWork Protocol session resume completed", {
     activeSessionCount: context.sessions.size,
     durationMs: Math.max(0, Date.now() - resumeStartedAt),
     event: "zcode_protocol.session.resume_completed",
@@ -1690,7 +1690,7 @@ export async function listSessionSubagents(
   if (!parentSession) {
     // 诊断：hydrate 会复用子任务种子读取；若 task index/旧 ACP task 残留了无效 ID，
     // 这里会把“持久化记录不存在”包装成 v4.hydrate，必须记录调用阶段而不是只看错误文本。
-    context.logger?.warn("ZCode Protocol session subagents has no persisted parent", {
+    context.logger?.warn("UWork Protocol session subagents has no persisted parent", {
       activeSessionCount: context.sessions.size,
       activeSession: Boolean(liveParent),
       event: "zcode_protocol.session.persisted_missing",
@@ -1926,7 +1926,7 @@ export async function sendPrompt(context: ZCodeProtocolAgentServerContext, rawPa
   assertExpectedRevision(record, params.expectedRevision);
   assertExpectedProviderRevision(context, record, params.expectedProviderRevision);
   if (record.activeAbortController) {
-    context.logger?.warn("ZCode Protocol session/send rejected: active prompt exists", {
+    context.logger?.warn("UWork Protocol session/send rejected: active prompt exists", {
       inputId: params.inputId,
       queryId: params.queryId,
       sessionId: params.sessionId,
@@ -1950,7 +1950,7 @@ export async function sendPrompt(context: ZCodeProtocolAgentServerContext, rawPa
   }
   const abortController = new AbortController();
   record.activeAbortController = abortController;
-  context.logger?.info("ZCode Protocol session/send accepted", {
+  context.logger?.info("UWork Protocol session/send accepted", {
     attachmentCount: params.attachments?.length ?? 0,
     inputId: params.inputId,
     queryId: params.queryId,
@@ -2080,7 +2080,7 @@ async function runCompactTurnInBackground(
 ): Promise<void> {
   const startedAt = Date.now();
   let mutationReason = "session_compacted";
-  context.logger?.info("ZCode Protocol background compact started", {
+  context.logger?.info("UWork Protocol background compact started", {
     inputId: params.inputId,
     sessionId: record.app.sessionId,
     workspacePath: record.workspace.workspacePath,
@@ -2090,7 +2090,7 @@ async function runCompactTurnInBackground(
       abortSignal: params.abortController.signal,
       inputId: params.inputId,
     });
-    context.logger?.info("ZCode Protocol background compact completed", {
+    context.logger?.info("UWork Protocol background compact completed", {
       durationMs: Date.now() - startedAt,
       inputId: params.inputId,
       sessionId: record.app.sessionId,
@@ -2100,7 +2100,7 @@ async function runCompactTurnInBackground(
     mutationReason = params.abortController.signal.aborted
       ? "session_compact_cancelled"
       : "session_compact_failed";
-    context.logger?.warn("ZCode Protocol background compact failed", {
+    context.logger?.warn("UWork Protocol background compact failed", {
       durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
       inputId: params.inputId,
@@ -2153,13 +2153,13 @@ export async function goalSession(context: ZCodeProtocolAgentServerContext, rawP
     const activeAbortController = record.activeAbortController;
     const target = await record.app.updateTargetStatus("paused");
     if (target && activeAbortController) {
-      context.logger?.info("ZCode Protocol goal pause aborting active turn", {
+      context.logger?.info("UWork Protocol goal pause aborting active turn", {
         inputId: params.inputId,
         sessionId: params.sessionId,
         targetId: target.targetID,
         workspacePath: record.workspace.workspacePath,
       });
-      activeAbortController.abort(new Error("ZCode Protocol goal paused"));
+      activeAbortController.abort(new Error("UWork Protocol goal paused"));
     }
     const snapshotAfterGoal = await afterStateMutation(context, record, "goal_paused");
     return {
@@ -2374,7 +2374,7 @@ async function runPromptTurnInBackground(
   } & TurnBackgroundAttribution,
 ): Promise<void> {
   const startedAt = Date.now();
-  context.logger?.info("ZCode Protocol background turn started", {
+  context.logger?.info("UWork Protocol background turn started", {
     inputId: params.inputId,
     queryId: params.queryId,
     sessionId: record.app.sessionId,
@@ -2434,7 +2434,7 @@ async function runPromptTurnInBackground(
       throw new ProtocolRequestError(-32010, `Prompt admission rejected: ${admission.reason}`);
     }
     if (admission.kind === "started_turn") await admission.completion;
-    context.logger?.info("ZCode Protocol background turn completed", {
+    context.logger?.info("UWork Protocol background turn completed", {
       durationMs: Date.now() - startedAt,
       inputId: params.inputId,
       queryId: params.queryId,
@@ -2443,7 +2443,7 @@ async function runPromptTurnInBackground(
     });
   } catch (error) {
     mutationReason = "prompt_failed";
-    context.logger?.warn("ZCode Protocol background turn failed", {
+    context.logger?.warn("UWork Protocol background turn failed", {
       durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
       inputId: params.inputId,
@@ -2456,7 +2456,7 @@ async function runPromptTurnInBackground(
       // 必须先释放 active lock 再广播状态，否则手机端收到 ready 后立刻 drain 会被
       // session/send 拒绝为 "A prompt is already running for this session"。
       record.activeAbortController = undefined;
-      context.logger?.info("ZCode Protocol background turn cleared active controller", {
+      context.logger?.info("UWork Protocol background turn cleared active controller", {
         durationMs: Date.now() - startedAt,
         inputId: params.inputId,
         sessionId: record.app.sessionId,
@@ -2586,7 +2586,7 @@ export async function stopSession(context: ZCodeProtocolAgentServerContext, rawP
   const record = requireSession(context, params.sessionId);
   const hadActivePrompt = Boolean(record.activeAbortController);
   let pausedTarget: ProtocolGoalTarget | null = null;
-  context.logger?.info("ZCode Protocol session/stop received", {
+  context.logger?.info("UWork Protocol session/stop received", {
     hadActivePrompt,
     sessionId: params.sessionId,
     workspacePath: record.workspace.workspacePath,
@@ -2596,7 +2596,7 @@ export async function stopSession(context: ZCodeProtocolAgentServerContext, rawP
       sessionId: params.sessionId,
     });
   }
-  record.activeAbortController?.abort(new Error("ZCode Protocol session stopped"));
+  record.activeAbortController?.abort(new Error("UWork Protocol session stopped"));
   if (pausedTarget) {
     await afterStateMutation(context, record, "session_stop_goal_paused");
   }
@@ -2621,7 +2621,7 @@ async function pauseActiveGoalForSessionStop(
     // 会在队列仍持有 stopRequested 的情况下保留 active goal，导致后续队列无法 drain。
     const pausedTarget = await record.app.updateTargetStatus("paused");
     if (pausedTarget) {
-      context.logger?.info("ZCode Protocol session/stop paused active goal", {
+      context.logger?.info("UWork Protocol session/stop paused active goal", {
         sessionId: params.sessionId,
         targetId: pausedTarget.targetID,
         workspacePath: record.workspace.workspacePath,
@@ -2629,7 +2629,7 @@ async function pauseActiveGoalForSessionStop(
     }
     return pausedTarget;
   } catch (error) {
-    context.logger?.warn("ZCode Protocol session/stop failed to pause active goal", {
+    context.logger?.warn("UWork Protocol session/stop failed to pause active goal", {
       error: error instanceof Error ? error.message : String(error),
       sessionId: params.sessionId,
       targetId: target.targetID,
@@ -2645,7 +2645,7 @@ export async function cancelBackgroundTask(
 ) {
   const params = parseParams(zcodeSessionCancelBackgroundTaskParamsSchema, rawParams);
   const record = requireSession(context, params.sessionId);
-  context.logger?.info("ZCode Protocol session/cancelBackgroundTask received", {
+  context.logger?.info("UWork Protocol session/cancelBackgroundTask received", {
     sessionId: params.sessionId,
     taskId: params.taskId,
     workspacePath: record.workspace.workspacePath,
@@ -3158,7 +3158,7 @@ async function requestSessionRuntimePreferences(
   // ZCodeProtocolTrace.traceId 是协议层的 string；LogContext 需要 branded TraceId，
   // 按本文件既有惯例断言收口，避免多处日志构造重复转换。
   const traceId = trace?.traceId as TraceId | undefined;
-  context.logger?.debug("ZCode Protocol runtime preferences request started", {
+  context.logger?.debug("UWork Protocol runtime preferences request started", {
     event: "zcode_protocol.runtime_preferences.request_started",
     module: "bootstrap.zcode_protocol",
     scope,
@@ -3175,7 +3175,7 @@ async function requestSessionRuntimePreferences(
         ...(trace ? { trace } : {}),
       },
     );
-    context.logger?.debug("ZCode Protocol runtime preferences response received", {
+    context.logger?.debug("UWork Protocol runtime preferences response received", {
       durationMs: Math.max(0, Date.now() - startedAt),
       event: "zcode_protocol.runtime_preferences.response_received",
       module: "bootstrap.zcode_protocol",
@@ -3200,12 +3200,12 @@ async function requestSessionRuntimePreferences(
     if (errorCode === -32022) {
       // 诊断：偏好请求超时发生在 runtime 注册前；记录 session/scope，区分
       // “Host 没收到/没回包”和“恢复过程中其他阶段失败”。
-      context.logger?.warn("ZCode Protocol runtime preferences request timed out", diagnostic);
+      context.logger?.warn("UWork Protocol runtime preferences request timed out", diagnostic);
     } else if (errorCode !== -32601 && errorCode !== -32020) {
-      context.logger?.warn("ZCode Protocol runtime preferences request failed", diagnostic);
+      context.logger?.warn("UWork Protocol runtime preferences request failed", diagnostic);
     } else {
       context.logger?.debug(
-        "ZCode Protocol runtime preferences compatibility fallback",
+        "UWork Protocol runtime preferences compatibility fallback",
         diagnostic,
       );
     }
@@ -3306,7 +3306,7 @@ async function createRecord(
       : undefined;
   const taskType = params.taskType ?? "interactive";
   const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(params.mcpServers);
-  context.logger?.info("ZCode Protocol createRecord MCP config", {
+  context.logger?.info("UWork Protocol createRecord MCP config", {
     event: "zcode_protocol.create_record.mcp_config",
     rootTraceId: traceContext.traceId,
     inboundTraceId: trace?.traceId,
@@ -3588,7 +3588,7 @@ async function snapshotWithDiagnostics(
   if (totalDurationMs >= SLOW_SNAPSHOT_LOG_THRESHOLD_MS) {
     // SSH 场景下慢点集中在 session snapshot，但旧日志只有总耗时。
     // 超过阈值时记录各子阶段，便于区分 sqlite 等待、消息读取和 projection 构建。
-    context.logger?.warn("ZCode Protocol session snapshot slow", {
+    context.logger?.warn("UWork Protocol session snapshot slow", {
       durationMs: totalDurationMs,
       event: "zcode_protocol.session_snapshot.slow",
       messageCount: messages.length,

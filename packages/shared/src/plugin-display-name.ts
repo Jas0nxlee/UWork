@@ -3,7 +3,8 @@ import type { ZCodePluginStoreListing } from "./zcode-protocol/index.js";
 const CANONICAL_PLUGIN_NAME_ACRONYMS: Readonly<Record<string, string>> = {
   aws: "AWS",
   mcp: "MCP",
-  zcode: "ZCode",
+  zcode: "UWork",
+  uwork: "UWork",
 };
 
 /** listing 的多语言字段先精确匹配，再按语言前缀兜底。 */

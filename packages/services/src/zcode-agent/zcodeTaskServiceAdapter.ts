@@ -286,7 +286,7 @@ export function createZCodeTaskServiceAdapter(
 
   function unsupported(name: string): never {
     throw Object.assign(
-      new Error(`ZCode task service adapter does not support IZCodeTaskService.${name} yet.`),
+      new Error(`UWork task service adapter does not support IZCodeTaskService.${name} yet.`),
       {
         code: "ZCODE_AGENT_UNSUPPORTED_LEGACY_TASK_METHOD",
       },
@@ -397,7 +397,7 @@ export function createZCodeTaskServiceAdapter(
     // ZCode task wrapper 的字段仍叫 traceId，但这里语义已经是单次输入 inputId。
     // 先记录 inputId，后续 ZCode session 事件回投 ZCode Agent 时才能让 UI 终态按输入轮次收口。
     activePromptInputIds.set(taskKey(target), params.traceId);
-    logger.info(params.traceId, "ZCode task facade sendPrompt 开始", {
+    logger.info(params.traceId, "UWork task facade sendPrompt 开始", {
       attachmentCount: params.attachments?.length ?? 0,
       queryId: params.queryId ?? null,
       reason: params.logReason ?? "direct",
@@ -461,7 +461,7 @@ export function createZCodeTaskServiceAdapter(
         });
         assertV4CommandAckOk("sendText", ack, `session=${target.taskId}`);
       }
-      logger.info(params.traceId, "ZCode task facade sendPrompt ACK", {
+      logger.info(params.traceId, "UWork task facade sendPrompt ACK", {
         durationMs: Date.now() - startedAt,
         queryId: params.queryId ?? null,
         reason: params.logReason ?? "direct",
@@ -472,7 +472,7 @@ export function createZCodeTaskServiceAdapter(
       });
     } catch (error) {
       activePromptInputIds.delete(taskKey(target));
-      logger.warn(params.traceId, "ZCode task facade sendPrompt 失败", {
+      logger.warn(params.traceId, "UWork task facade sendPrompt 失败", {
         durationMs: Date.now() - startedAt,
         error: error instanceof Error ? error.message : String(error),
         queryId: params.queryId ?? null,
@@ -575,7 +575,7 @@ export function createZCodeTaskServiceAdapter(
     // 手机 host command 在 sendPrompt ACK 后仍要保持 running，
     // 否则手机刷新拿不到“已开始发送”的 pendingCommands。只有真实终态到达后才能从 host 队列移除。
     removeRuntimeCommand(params, command.commandId);
-    logger.info(command.traceId, "ZCode task command 终态收口", {
+    logger.info(command.traceId, "UWork task command 终态收口", {
       commandId: command.commandId,
       terminalType,
       taskId: params.taskId,
@@ -610,7 +610,7 @@ export function createZCodeTaskServiceAdapter(
     }
 
     const runningCommand = markRuntimeCommandRunning(params, command);
-    logger.info(runningCommand.traceId, "ZCode task command drain 开始", {
+    logger.info(runningCommand.traceId, "UWork task command drain 开始", {
       commandId: runningCommand.commandId,
       queryId: runningCommand.queryId ?? null,
       reason,
@@ -635,7 +635,7 @@ export function createZCodeTaskServiceAdapter(
       });
     } catch (error) {
       markRuntimeCommandFailed(params, runningCommand, error);
-      logger.warn(runningCommand.traceId, "ZCode task command drain 失败", {
+      logger.warn(runningCommand.traceId, "UWork task command drain 失败", {
         commandId: runningCommand.commandId,
         error: error instanceof Error ? error.message : String(error),
         reason,
@@ -651,7 +651,7 @@ export function createZCodeTaskServiceAdapter(
     try {
       await drainRuntimeCommands(params, reason);
     } catch (error) {
-      logger.warn(undefined, "ZCode task command drain 调度失败", {
+      logger.warn(undefined, "UWork task command drain 调度失败", {
         error: error instanceof Error ? error.message : String(error),
         reason,
         taskId: params.taskId,
@@ -952,7 +952,7 @@ export function createZCodeTaskServiceAdapter(
     }
 
     if (changed) {
-      logger.debug(undefined, "ZCode snapshot 合并 live tool projection", {
+      logger.debug(undefined, "UWork snapshot 合并 live tool projection", {
         event: "zcode_task.snapshot.live_tool_projection.merged",
         liveToolCount: liveTools.length,
         mergedToolCount,
@@ -978,7 +978,7 @@ export function createZCodeTaskServiceAdapter(
   function getTaskTarget(taskId: string): TaskTarget {
     const target = taskTargets.get(taskId);
     if (!target) {
-      throw Object.assign(new Error(`ZCode session target is not loaded: ${taskId}`), {
+      throw Object.assign(new Error(`UWork session target is not loaded: ${taskId}`), {
         code: "ZCODE_SESSION_TARGET_NOT_FOUND",
       });
     }
@@ -1350,7 +1350,7 @@ export function createZCodeTaskServiceAdapter(
     if (model || thoughtLevel) {
       // task-local thoughtLevel 和 model 一样属于历史 session 恢复 hint。
       // 不回填 thoughtLevel 时，同 workspace 的 draft 默认值会在 session/resume 后覆盖 active task。
-      logger.info(undefined, "从 task index 回填 ZCode session resume 配置", {
+      logger.info(undefined, "从 task index 回填 UWork session resume 配置", {
         model: model || null,
         thoughtLevel: thoughtLevel || null,
         reason,
@@ -1592,7 +1592,7 @@ export function createZCodeTaskServiceAdapter(
   function mapServiceEvent(params: TaskTarget, event: ZCodeAgentServiceEvent): void {
     if (event.type === "snapshot") {
       void syncTaskIndexSnapshot(event.snapshot).catch((error) => {
-        logger.warn(undefined, "同步 ZCode snapshot 到 task index 失败", error);
+        logger.warn(undefined, "同步 UWork snapshot 到 task index 失败", error);
       });
       const snapshotEvent: ZCodeStreamEvent = {
         type: "task_snapshot_updated",
@@ -1971,7 +1971,7 @@ export function createZCodeTaskServiceAdapter(
       const commands = runtimeCommands.get(key) ?? [];
       const command = commands.find((candidate) => candidate.commandId === params.commandId);
       if (!command) {
-        logger.info(undefined, "ZCode task command 取消时已不存在", {
+        logger.info(undefined, "UWork task command 取消时已不存在", {
           commandId: params.commandId,
           taskId: params.taskId,
           workspaceIdentity: params.workspaceIdentity ?? null,
@@ -1985,7 +1985,7 @@ export function createZCodeTaskServiceAdapter(
         };
       }
       if (command.status === "running") {
-        logger.info(command.traceId, "ZCode task command 已开始运行，跳过取消", {
+        logger.info(command.traceId, "UWork task command 已开始运行，跳过取消", {
           commandId: command.commandId,
           taskId: params.taskId,
           workspaceIdentity: params.workspaceIdentity ?? null,
@@ -2006,7 +2006,7 @@ export function createZCodeTaskServiceAdapter(
         commands.filter((item) => item.commandId !== command.commandId),
       );
       emitRuntimeCommandSnapshotUpdated(params, command.traceId);
-      logger.info(command.traceId, "ZCode task command 已取消", {
+      logger.info(command.traceId, "UWork task command 已取消", {
         commandId: command.commandId,
         status: command.status,
         taskId: params.taskId,
@@ -2030,7 +2030,7 @@ export function createZCodeTaskServiceAdapter(
             workspaceIdentity: params.workspaceIdentity,
           }
         : getTaskTarget(params.taskId);
-      logger.info(params.runId, "ZCode task facade stopGeneration 开始", {
+      logger.info(params.runId, "UWork task facade stopGeneration 开始", {
         hasRunId: Boolean(params.runId),
         taskId: params.taskId,
         workspaceIdentity: target.workspaceIdentity ?? null,
@@ -2048,7 +2048,7 @@ export function createZCodeTaskServiceAdapter(
         }),
       });
       assertV4CommandAckOk("stop", ack, `session=${params.taskId}`);
-      logger.info(params.runId, "ZCode task facade stopGeneration ACK", {
+      logger.info(params.runId, "UWork task facade stopGeneration ACK", {
         durationMs: Date.now() - startedAt,
         taskId: params.taskId,
         workspaceIdentity: target.workspaceIdentity ?? null,
@@ -3901,7 +3901,7 @@ function mapSessionEvent(
   if (eventInputId && eventInputId !== protocolTraceId) {
     logger.debug(
       eventInputId,
-      `对齐 ZCode prompt inputId eventType=${event.type} protocolTrace=${protocolTraceId}`,
+      `对齐 UWork prompt inputId eventType=${event.type} protocolTrace=${protocolTraceId}`,
     );
   }
   const turnKey = `${event.sessionId}:${event.turnId ?? eventInputId ?? traceId}`;
@@ -4090,7 +4090,7 @@ function mapSessionEvent(
           params.taskId,
           traceId,
           eventInputId,
-          stringValue(errorPayload.message) ?? "ZCode compact failed",
+          stringValue(errorPayload.message) ?? "UWork compact failed",
         ),
       ];
     }
@@ -4102,7 +4102,7 @@ function mapSessionEvent(
         taskId: params.taskId,
         traceId,
         ...(eventInputId ? { inputId: eventInputId } : {}),
-        error: stringValue(errorPayload.message) ?? "ZCode session failed",
+        error: stringValue(errorPayload.message) ?? "UWork session failed",
         // type 是外层错误分类，code 才是 provider/subagent 要展示的真实错误码。
         code: stringValue(errorPayload.code) ?? stringValue(errorPayload.type),
         detail: stringValue(errorPayload.detail),
@@ -4373,7 +4373,7 @@ function logStreamingToolInputProjection(
     toolName?: string;
   },
 ): void {
-  logger.debug(traceId, "ZCode streaming tool input projected", {
+  logger.debug(traceId, "UWork streaming tool input projected", {
     ...details,
     event: "zcode.task.streaming_tool_input.projected",
   });
