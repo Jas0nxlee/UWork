@@ -16,8 +16,18 @@ app.setPath("userData", data);
 let redirect = null;
 let iframeMode = false;
 let callbackLoads = 0;
+let layoutMode = false;
 app.on("session-created", (session) => {
   session.protocol.handle("https", (request) => {
+    if (layoutMode) {
+      const nested = new URL(request.url).pathname === "/layout-frame";
+      return new Response(
+        nested
+          ? '<html><body><div class="loginPanel"><div class="title">Vendor decoration</div><div class="wrp_code"><svg class="qrcode" width="320" height="320"><rect width="320" height="320" fill="black"/></svg></div><div class="status">Confirm scanner fixture</div></div><style>body{margin:0;background:white}.loginPanel{width:500px;margin:120px auto 0;padding:40px;background:white}.title{font-size:30px;height:80px}.qrcode{display:block;margin:auto}</style></body></html>'
+          : '<html><body><div style="padding:100px;min-width:800px"><h1>Outer decoration</h1><iframe src="https://open.work.weixin.qq.com/layout-frame" width="500" height="600"></iframe></div></body></html>',
+        { headers: { "Content-Type": "text/html" } },
+      );
+    }
     if (new URL(request.url).hostname === "auth.example.com") {
       callbackLoads++;
       return new Response("Callback fixture loaded");
@@ -108,6 +118,7 @@ async function run() {
     assert.equal(owner.contentView.children.length, 0);
     assert.equal(BrowserWindow.getAllWindows().length, 1);
     const styled = createRequest();
+    owner.show();
     owner.webContents.setZoomFactor(1.25);
     const styleResult = openEnterpriseLoginView({ sender: owner.webContents }, styled);
     const guest = owner.contentView.children[0].webContents;
@@ -123,8 +134,10 @@ async function run() {
       );
     };
     await assertTheme();
+    console.log("PASS: initial view theme and zoom");
     await guest.loadURL("https://open.work.weixin.qq.com/fixture-next");
     await assertTheme();
+    console.log("PASS: navigated view theme and zoom");
     updateEnterpriseLoginView(owner.webContents.id, { id: styled.id, surface: null });
     assert.equal(owner.contentView.children[0].getVisible(), false);
     updateEnterpriseLoginView(owner.webContents.id, { id: styled.id, surface: styled.surface });
@@ -132,6 +145,22 @@ async function run() {
     cancelEnterpriseLoginView(owner.webContents.id, styled.id);
     assert.equal(await styleResult, null);
     owner.webContents.setZoomFactor(1);
+    layoutMode = true;
+    console.log("CHECK: nested frame layout");
+    const layout = createRequest();
+    const layoutResult = openEnterpriseLoginView({ sender: owner.webContents }, layout);
+    const layoutGuest = owner.contentView.children[0].webContents;
+    await new Promise((done) => layoutGuest.once("did-finish-load", done));
+    const frame = layoutGuest.mainFrame.frames[0];
+    assert.ok(frame);
+    const boxes = await frame.executeJavaScript(
+      `new Promise(resolve => { const read=()=>{ const q=document.querySelector('.qrcode'), t=document.querySelector('.title'), s=document.querySelector('.status'); const qr=q.getBoundingClientRect(), sr=s.getBoundingClientRect(); if(getComputedStyle(t).display==='none') resolve({qr:qr.toJSON(),status:sr.toJSON(),width:innerWidth,height:innerHeight}); else requestAnimationFrame(read); }; read(); })`,
+    );
+    assert.ok(Math.abs(boxes.qr.x + boxes.qr.width / 2 - boxes.width / 2) < 2);
+    assert.ok(boxes.qr.y >= 0 && boxes.qr.bottom <= boxes.height);
+    assert.ok(boxes.status.height > 0 && boxes.status.bottom <= boxes.height);
+    cancelEnterpriseLoginView(owner.webContents.id, layout.id);
+    await layoutResult;
     owner.destroy();
     console.log(
       "PASS: native callback interception, wrong state, blocked navigation and owner-scoped cancellation",

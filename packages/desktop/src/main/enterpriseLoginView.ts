@@ -9,6 +9,7 @@ import {
 import { classifyEnterpriseLoginNavigation } from "./enterpriseLoginNavigation.js";
 import {
   createEnterpriseEmbedCss,
+  createEnterpriseFrameStyleScript,
   createEnterpriseEmbedUrl,
   fitEnterpriseSurfaceBounds,
 } from "./enterpriseLoginSurface.js";
@@ -59,7 +60,6 @@ export function openEnterpriseLoginView(
   let surface: EnterpriseLoginSurface | null = request.surface;
   let styleTask: Promise<void> = Promise.resolve();
   let loaded = false;
-  let cssKey: string | null = null;
   let scheduledCss: string | null = null;
   let documentGeneration = 0;
   let resolve!: (value: string | null) => void;
@@ -101,20 +101,30 @@ export function openEnterpriseLoginView(
     guest.setZoomFactor(zoom);
     view.setVisible(bounds.width > 0 && bounds.height > 0);
   };
-  const style = () => {
+  const style = (force = false) => {
     if (!loaded || !surface || settled) return;
     const css = createEnterpriseEmbedCss(surface.appearance);
-    if (css === scheduledCss) return;
+    if (!force && css === scheduledCss) return;
     scheduledCss = css;
     const generation = documentGeneration;
     // 主题变更只替换样式，不重载二维码；串行处理避免旧主题覆盖新的外观。
     styleTask = styleTask
       .then(async () => {
         if (settled || guest.isDestroyed() || generation !== documentGeneration) return;
-        if (cssKey) await guest.removeInsertedCSS(cssKey);
-        if (!settled && !guest.isDestroyed() && generation === documentGeneration) {
-          const key = await guest.insertCSS(css);
-          if (generation === documentGeneration) cssKey = key;
+        const script = createEnterpriseFrameStyleScript(css);
+        for (const frame of guest.mainFrame.framesInSubtree) {
+          if (settled || guest.isDestroyed() || generation !== documentGeneration) return;
+          if (
+            frame.isDestroyed() ||
+            classifyEnterpriseLoginNavigation(frame.url, request) !== "authorization"
+          )
+            continue;
+          try {
+            await frame.executeJavaScript(script);
+          } catch {
+            if (!frame.isDestroyed() && generation === documentGeneration && !settled)
+              throw new Error("Enterprise frame style unavailable");
+          }
         }
       })
       .catch(() => {
@@ -177,17 +187,20 @@ export function openEnterpriseLoginView(
   guest.on("render-process-gone", () => finish(null, new Error("Enterprise login page closed")));
   guest.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
     if (!isMainFrame || isInPlace) return;
-    // insertCSS 属于当前文档，导航后原 key 和缓存失效，旧异步任务也不能写入新文档。
+    // 新版登录页在 iframe 内绘制扫码卡片；文档导航后固定样式节点需重新创建。
     documentGeneration++;
     loaded = false;
-    cssKey = null;
     scheduledCss = null;
   });
   guest.on("did-finish-load", () => {
     loaded = true;
     // Electron 导航提交会恢复新 origin 的 zoom；每个授权文档加载后重新同步 UI 缩放。
     place();
-    style();
+    style(true);
+  });
+  guest.on("did-frame-finish-load", () => {
+    // 包括异步挂载和重载的授权子 frame；只对官方白名单 frame 做固定样式写入。
+    if (loaded) style(true);
   });
   place();
   void guest.loadURL(createEnterpriseEmbedUrl(request)).catch(() => {
