@@ -16,6 +16,10 @@ try {
     );
   assert.ok(page, "仅测试源码构建的隔离窗口，禁止修改已安装应用的数据");
   page.setDefaultTimeout(15000);
+  await page.getByTestId("enterprise-login-skip").waitFor();
+  if (await page.getByTestId("enterprise-login-skip").isVisible()) {
+    await page.getByTestId("enterprise-login-skip").click();
+  }
   for (
     let step = 0;
     step < 3 && (await page.getByRole("button", { name: "跳过", exact: true }).isVisible());
@@ -29,7 +33,8 @@ try {
   await page.getByTestId("settings-section-nav-modelProvider").click();
   const addProvider = page.getByTestId("model-provider-add-provider-button");
   await addProvider.waitFor();
-  const forbidden = /BigModel|Start Plan|Z\.ai|开通编程套餐|登录|订阅|升级/;
+  // 可选企业身份已独立新增，仍禁止恢复已退役的模型账号与套餐入口。
+  const forbidden = /BigModel|Start Plan|Z\.ai|开通编程套餐|订阅|升级/;
   assert.doesNotMatch(await page.locator("body").innerText(), forbidden);
   assert.match(await page.locator("body").innerText(), /ucas/);
   await page.getByText("https://lm.ucas.com.cn:15000/v1", { exact: true }).waitFor();

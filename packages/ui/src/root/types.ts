@@ -38,6 +38,8 @@ export interface RootProps {
   initialWorkspaceLoadingFallback?: ReactNode;
   /** Assistant code-comment 卡片灰度；默认关闭，关闭时保留原始 directive。 */
   assistantCodeCommentCardsEnabled?: boolean;
+  /** 手机 attachment 只投影已有 Host 身份，不发起企业登录或显示启动登录页。 */
+  enterpriseIdentityReadOnly?: boolean;
 }
 
 export interface WorkspaceSettingsLayerProps {

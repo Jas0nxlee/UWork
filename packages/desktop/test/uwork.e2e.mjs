@@ -32,6 +32,8 @@ try {
     .find((page) => page.url().includes("/packages/desktop/out/renderer/"));
   assert.ok(page, "只允许隔离的源码测试窗口");
   page.setDefaultTimeout(15000);
+  await page.getByTestId("enterprise-login-skip").waitFor();
+  await page.getByTestId("enterprise-login-skip").click();
   const exitGuide = page.getByRole("button", { name: "退出引导", exact: true });
   if (await exitGuide.isVisible()) await exitGuide.click();
   const header = page.getByTestId("workspace-mode-header");
@@ -41,7 +43,8 @@ try {
     taskBox = await page.getByTestId("task-new-button").boundingBox();
   assert.ok(headerBox.y + headerBox.height <= taskBox.y + 1, "字标和模式切换必须位于新建任务上面");
   const toggle = page.getByTestId("interface-mode-toggle");
-  assert.equal(await header.getByRole("button").count(), 1);
+  assert.equal(await header.getByTestId("interface-mode-toggle").count(), 1);
+  assert.equal(await header.getByTestId("enterprise-identity-entry").count(), 1);
   const logoBox = await header.getByTestId("uwork-wordmark").boundingBox();
   const toggleBox = await toggle.boundingBox();
   assert.ok(toggleBox.x >= logoBox.x + logoBox.width, "模式按钮位于 UWork 右侧");
@@ -52,6 +55,8 @@ try {
   assert.equal(await toggle.getAttribute("data-interface-mode"), switchedMode);
   assert.equal((await toggle.innerText()).trim(), switchedMode === "office" ? "助理" : "开发");
   await page.reload();
+  await page.getByTestId("enterprise-login-skip").waitFor();
+  await page.getByTestId("enterprise-login-skip").click();
   await toggle.waitFor();
   assert.equal(await toggle.getAttribute("data-interface-mode"), switchedMode);
   await toggle.focus();

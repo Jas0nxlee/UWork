@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip.js";
 import { Button } from "@/components/ui/button.js";
 import { PlatformProvider } from "@/hooks/usePlatform.js";
 import { ServiceProvider } from "@/hooks/useServices.js";
+import { EnterpriseIdentityProvider } from "@/hooks/useEnterpriseIdentity.js";
 import { useDynamicWorkflowAvailabilityLoader } from "@/hooks/useDynamicWorkflowAvailability.js";
 import { DirectoryBrowser } from "@/DirectoryBrowser.js";
 import { useTabPersistence } from "@/hooks/useTabPersistence.js";
@@ -113,7 +114,13 @@ export function Root(props: RootProps) {
                     enabled={props.assistantCodeCommentCardsEnabled}
                   >
                     <CodingPlanUpgradeDialogProvider>
-                      <RootInner {...props} />
+                      <EnterpriseIdentityProvider
+                        service={props.services.enterpriseIdentityService}
+                        showOnStartup={!props.enterpriseIdentityReadOnly}
+                        allowLogin={!props.enterpriseIdentityReadOnly}
+                      >
+                        <RootInner {...props} />
+                      </EnterpriseIdentityProvider>
                     </CodingPlanUpgradeDialogProvider>
                   </AssistantCodeCommentFeatureProvider>
                 </DiffsWorkerPoolProvider>
