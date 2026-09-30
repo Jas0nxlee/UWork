@@ -81,6 +81,8 @@ export interface HostInitMessage {
   agentSpawnFallbackCwd?: string;
   /** Main 解析后的 ZCode Built-in Provider Config 路径；Host/Services 不感知 Electron 安装布局。 */
   zcodeBuiltinProviderConfigFilePath: string;
+  /** 随包企业身份公开配置；仅作为缺少本机覆盖时的默认来源。 */
+  enterpriseIdentityBuiltinConfigFilePath?: string;
   /** Main 提前异步采集并过滤的本机 runtime 环境；只允许传给 InitLocal。 */
   runtimeProcessEnvPatch?: Record<string, string>;
 }

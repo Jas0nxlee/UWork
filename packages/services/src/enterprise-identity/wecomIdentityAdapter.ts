@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { EnterpriseIdentitySession } from "@zcode/shared";
+import { wecomIdentityConfigSchema, type EnterpriseIdentitySession } from "@zcode/shared";
 import type { EnterpriseIdentityAdapter } from "./contract.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import {
@@ -8,40 +8,7 @@ import {
   type IdentityIssuerDiagnostic,
 } from "./identityIssuerDiagnostics.js";
 
-const httpsUrl = z
-  .string()
-  .url()
-  .refine((value) => {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password;
-  });
-export const wecomIdentityConfigSchema = z
-  .object({
-    corpId: z.string().regex(/^[a-zA-Z0-9_-]{3,128}$/),
-    agentId: z.string().regex(/^\d{1,20}$/),
-    apiBaseUrl: httpsUrl,
-    callbackUrl: httpsUrl,
-    orgId: z.string().trim().min(1).max(256),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const api = new URL(value.apiBaseUrl);
-    const callback = new URL(value.callbackUrl);
-    if (
-      api.origin !== callback.origin ||
-      api.pathname !== "/" ||
-      api.search ||
-      api.hash ||
-      callback.search ||
-      callback.hash
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Callback must use the configured HTTPS issuer origin",
-      });
-    }
-  });
-export type WeComIdentityConfig = z.infer<typeof wecomIdentityConfigSchema>;
+export { wecomIdentityConfigSchema, type WeComIdentityConfig } from "@zcode/shared";
 
 const authResponseSchema = z.object({
   token: z.string().min(1).max(16384),

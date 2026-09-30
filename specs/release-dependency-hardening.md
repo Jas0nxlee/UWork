@@ -1,6 +1,7 @@
 # 发布依赖安全修复
 
 - 本次正式发布必须消除 `pnpm audit --prod --audit-level=high` 中的 high/critical 报告。按公告修复版本更新依赖，优先保留主版本；Electron 保留 41 系列并更新到 41.10.7。
+- electron-builder 的 `electronVersion` 必须直接使用桌面 package.json 中的固定版本；通过加载真实打包配置的测试校验两者一致，禁止打包配置中的旧硬编码绕过已更新的锁文件。
 - transitive resolution 由根 `pnpm-workspace.yaml` 的 overrides 唯一控制，提交根锁文件；不以忽略公告、修改审计返回值或临时目录中的修改绕过检查。
 - 原有 React 固定版本和三份 dependency patch 同步迁到 workspace 配置，删除 package.json 中重复设置，避免 pinned pnpm 与外层新版 shim 对配置优先级的解释不同。
 - `extract-zip@2.0.1` 没有上游修复版本。使用 workspace 包 `@uwork/safe-extract-zip` 作为已有 `extract-zip` 消费者的兼容适配器，公开接口仍为 `extract(zipPath, {dir, onEntry?, defaultDirMode?, defaultFileMode?}): Promise<void>`。这是工具链 ZIP 解包边界，不拥有身份、workspace 或应用状态。

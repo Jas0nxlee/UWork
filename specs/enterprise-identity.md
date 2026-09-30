@@ -1,5 +1,27 @@
 # UWork 可选企业身份登录
 
+## 安装即可扫码的发布配置（2026-09-30）
+
+- 正式 GitHub 安装包在 Windows、macOS、Linux 均携带经过严格 schema 校验的默认企业微信公开配置。仅包含 CorpID、AgentID、orgId、HTTPS 认证服务地址和同源回调；Secret、Token、UCAS Key 与用户会话不能进入配置或安装包。
+- 默认配置从受信发布构建的 `UWORK_ENTERPRISE_IDENTITY_CONFIG` 加密配置注入，暂存于 Git 忽略的构建目录，再复制到 `resources/config/enterprise-identity.json`。源码不记录真实企业参数。缺少或无效构建配置必须阻断正式构建；每个平台打包后重新校验资源内容与注入配置一致。
+- Main 是安装布局路径的唯一所有者，向 window-scoped Local Host 注入默认配置路径。Host 先读取本机 `.zcode/v2/enterprise-identity.json`；本机文件不存在时才读取随包默认文件。显式本机配置无效时不悄悄回退；两者均不存在的开发环境仍可跳过登录。本机覆盖不被安装升级修改。
+- 配置源只决定 adapter 接入，不改变 IdentitySessionStore、attempt generation、owner/lease、跨窗口同步或 desktop-continuous/web-remote-replayable 边界。新安装无本机配置即可启用扫码；有默认 UCAS Key 时不重复引导，没有时沿用下述登录后输入对话框。
+
+```mermaid
+sequenceDiagram
+    participant CI as 发布构建
+    participant Main as Desktop Main
+    participant Host as 本窗口 Host
+    participant Config as 本机 / 随包配置
+    CI->>CI: 严格校验公开参数并打入资源
+    Main->>Host: 默认配置资源路径
+    Host->>Config: 优先本机覆盖，缺失才读取随包默认
+    Config-->>Host: 已校验 adapter 配置
+    Host-->>Main: configured=true；现有扫码与认证流程
+```
+
+验收：缺少本机文件时加载随包配置并可开始扫码；本机覆盖优先；损坏覆盖、损坏默认和多余凭据字段被拒绝；各平台资源校验通过，隔离新数据目录的桌面登录按钮启用并可打开扫码槽位。真实扫码仍由用户在企业微信确认。
+
 ## 扫码成功后的 UCAS API Key 引导（2026-09-30）
 
 - 本窗口的企业微信扫码回调经 Host `completeLogin` 验证并提交后，返回严格校验的 `{ view, committedAttemptId }`。只有 `view.status=authenticated` 且 `committedAttemptId` 等于本窗口本次 attempt ID，才调用本机 Provider Settings 的 `refresh("ucas-login-prompt")` 重读默认 UCAS（固定 ID `ucas`）；仅当刷新后的个人配置中没有非空 API Key 时弹出输入对话框。不能只读本窗口缓存，否则其它 Host 刚写入的 Key 在轮询同步前会被误判为空。迟到或失效的 callback 即使返回其它窗口已认证的 view，也没有本次提交标记，不能触发引导。会话自动恢复、其它窗口的身份广播、只读手机 attachment、扫码取消及认证失败均不触发。
@@ -83,7 +105,7 @@ sequenceDiagram
 - 有效会话自动恢复；过期、断网或恢复失败均允许跳过。缓存姓名不能冒充验证成功。
 - 本轮身份只是本地应用的可选身份标签，不引入账号隔离、云数据或权限控制；现有工作区、会话、API Key、引导记录继续属于本地设备。登录/退出不认领、迁移或删除这些数据。
 - 旧智谱/Z.ai OAuth 与套餐 RPC 继续退役。企业身份拥有独立类型、服务、事件与凭据命名空间。
-- 用户已有认证服务，Desktop 使用本机公开配置接入标准自建应用扫码。没有配置时明确显示“企业微信登录暂未配置”，不制造登录结果、不另建认证后端。
+- 用户已有认证服务，Desktop 使用随包默认公开配置或本机覆盖接入标准自建应用扫码。开发环境两种配置均缺少时明确显示“企业微信登录暂未配置”，不制造登录结果、不另建认证后端。
 
 ## 所有者和边界
 
@@ -154,7 +176,7 @@ sequenceDiagram
     H-->>M: 仅状态和姓名视图
 ```
 
-- HTTPS 网络通过已有 HostApiNetworkTransport，禁止重定向泄露 Bearer Token；不自动重试 code 交换。CorpID、AgentID、认证服务地址与回调仅保存在本机配置文件，不提交真实企业标识或内部地址；不保存企业微信 Secret。
+- HTTPS 网络通过已有 HostApiNetworkTransport，禁止重定向泄露 Bearer Token；不自动重试 code 交换。CorpID、AgentID、认证服务地址与回调通过受信发布配置进入默认资源，本机文件可覆盖；不在源码提交中记录真实企业标识或内部地址，不保存企业微信 Secret。
 - 企业服务公开前端只有本地退出语义，未确认远端吊销接口；App 退出只清理本地会话，不声称已吊销服务器 Token。
 - 身份 RPC 新增 completeLogin(attemptId, callbackUrl)；原 poll 模式保持兼容，native callback 模式不轮询虚构接口。跳过、关闭登录窗口或退出使旧回调失效；原外部浏览器登录适配器仍按自身 poll 语义工作。
 - 用户确认同一设备共享一个企业账号，登录和退出同步到所有窗口。加密 IdentitySessionStore 是设备会话唯一持久化事实源；窗口 Host 只拥有当前尝试和视图投影。跨 Host 文件锁覆盖版本比较、写入和取消回滚。

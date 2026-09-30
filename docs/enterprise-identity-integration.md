@@ -45,9 +45,11 @@ start 返回官方新版 Web 登录 URL、绑定当前尝试的 id/state、callb
 
 IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共享账号。登录/退出只广播 revision，其他窗口读取事实并由后端验证后更新姓名；续期不广播，Token 条件写入防止回环和覆盖。Host 只向 Renderer 发布无凭据视图。开始、取消、跳过、退出后的旧响应不能写入新状态；登录页用覆盖层保留草稿。手机 attachment 只投影已有 Local Host 身份。
 
-## 本机配置
+## 发布默认配置与本机覆盖
 
-文件位于当前 dataBaseDir 下的 `.zcode/v2/enterprise-identity.json`，只由 Desktop Local Host 加载。使用企业管理员提供的公开标识，不包含 Secret，也不提交真实企业地址。
+正式 GitHub 安装包通过发布构建注入默认企业微信公开参数，保存于 `resources/config/enterprise-identity.json`，由 Desktop Main 将资源路径传给 Local Host。新设备安装后无需另放文件即可扫码。发布输入保存在 GitHub Actions 的 `UWORK_ENTERPRISE_IDENTITY_CONFIG` 加密配置中，不写入源码；严格 schema 仅允许下列五个字段，缺少配置或字段不合法会阻断发布，打包后逐平台验证资源内容。
+
+管理员需要不同配置时，可在当前 dataBaseDir 下放置 `.zcode/v2/enterprise-identity.json`。Host 优先读取本机覆盖，文件不存在才读取随包默认；显式覆盖损坏时不静默换到默认组织。覆盖文件不随升级删除。Secret、用户 Token、登录会话和 UCAS Key 不属于公开配置。
 
 ```json
 {
@@ -61,15 +63,15 @@ IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共�
 
 配置修改后重启 App。apiBaseUrl 必须为 HTTPS 根地址，callbackUrl 必须同源且无 query/hash。普通 Web 没有原生视图能力，本轮不自动启用此适配器；手机远控继续只读。
 
-### Windows 安装后的本机配置
+### Windows 安装与覆盖
 
-企业身份配置按设备保存，不随安装包或 Mac 登录状态同步。Windows 上若登录按钮呈灰色且显示“企业微信登录暂未配置”，表示当前 Local Host 未找到本机配置；这不是按钮的点击命中问题。
+从 `v3.14.6` 起，Windows 正式包携带默认配置，安装后企业微信按钮应可点击。Mac 登录会话不会复制到 Windows，每台设备仍需自己扫码。旧版安装包或没有注入默认配置的开发构建仍可按下列步骤放置本机覆盖。
 
 1. 完全退出 UWork（包括系统托盘中的进程）。
 2. 将已确认有效、仅含 `corpId`、`agentId`、`orgId`、`apiBaseUrl`、`callbackUrl` 的 `enterprise-identity.json` 复制到 `%USERPROFILE%\.zcode\v2\enterprise-identity.json`。若设置了自定义 `dataBaseDir`，目标改为该目录下的 `.zcode\v2\enterprise-identity.json`。保留 UTF-8 JSON 文件名，避免资源管理器隐藏扩展名后变成 `.json.txt`。已有目标文件先备份。
 3. 重新启动 UWork；确认“暂未配置”提示消失且企业微信登录按钮可点击，再检查二维码与回调。若按钮仍灰色，核对实际数据目录、文件名与 JSON 结构。网络不可达或授权失败属于后续链路，不能用按钮恢复可点击代替真实登录验证。
 
-不要复制 `credentials.json`：设备会话凭据按本机加密保存，企业身份配置文件也不得加入 Git、安装包或公开下载链接。
+不要复制 `credentials.json`：设备会话凭据按本机加密保存。随包默认配置仅包含公开参数，本机覆盖与任何凭据都不提交 Git，也不作为独立公开下载文件分发。
 
 ## 内嵌扫码展示
 

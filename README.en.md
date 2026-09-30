@@ -60,7 +60,7 @@ Unauthenticated desktop users can scan inside the login card or skip login and c
 
 This identity provides a local name label. It does not add account-based data isolation, cloud sync, or extra permissions. Enterprise login does not supply a model API key. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
 
-An administrator must configure an existing authentication service. The client includes no WeCom application Secret. Without configuration, the app shows that WeCom login is not configured and still allows skipping. See [WeCom integration](docs/enterprise-identity-integration.md) for the configuration location, placeholder example, and interface requirements. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
+Official GitHub installers include the default public WeCom login parameters. Windows, macOS, and Linux users can scan after installation without copying a configuration file. After a verified scan, a skippable dialog asks for a UCAS API key if the default provider has none. The client includes no WeCom Secret, user Token, or UCAS API key. Administrators can override the defaults with a local configuration; see [WeCom integration](docs/enterprise-identity-integration.md) for its location and interface requirements. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
 
 ## Run from source
 

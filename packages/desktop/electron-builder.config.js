@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- Electron Builder config keeps related packaging hooks together so build order stays explicit. */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { readdir, writeFile } from "node:fs/promises";
+import { access, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -88,6 +88,16 @@ const shouldEnableMacSigning =
   process.env.ZCODE_ENABLE_MAC_SIGN === "1" && Boolean(macSigningIdentity);
 const workspaceRoot = resolve(import.meta.dirname, "../..");
 const desktopPackageRoot = import.meta.dirname;
+const enterpriseIdentityConfigPath = resolve(
+  desktopPackageRoot,
+  ".release-config/enterprise-identity.json",
+);
+const hasEnterpriseIdentityConfig = await access(enterpriseIdentityConfigPath).then(
+  () => true,
+  () => false,
+);
+if (process.env.UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG === "1" && !hasEnterpriseIdentityConfig)
+  throw new Error("Release requires staged public enterprise identity configuration");
 const runtimeModuleLookupRoots = [
   desktopPackageRoot,
   workspaceRoot,
@@ -468,10 +478,8 @@ export default {
   // 默认全量语言会产生大量 locale.pak 签名调用，显著拉长打包时长。
   // 这里仅保留当前产品必需语言，减少签名文件数并缩短 CI 总耗时。
   electronLanguages: ["en-US", "zh-CN"],
-  // pnpm workspace + semver range（如 ^41.0.3）下，electron-builder
-  // 有时无法从依赖树里稳定推导出 Electron 版本，导致 bundle 直接中断。
-  // 显式写死当前桌面端使用的 Electron 版本，避免打包阶段再做不可靠的猜测。
-  electronVersion: "41.0.3",
+  // 旧硬编码曾让锁文件已升级的 Electron 仍被打包成旧版本；直接取 manifest 的唯一固定版本。
+  electronVersion: desktopElectronVersion,
   electronDownload: {
     // ELECTRON_MIRROR 是 @electron/get 的全局环境变量，会覆盖 dmg-builder 等
     // generic artifact 自己传入的 mirrorOptions，导致 builder 辅助包被错误拼到 Electron runtime 镜像目录。
@@ -575,6 +583,9 @@ export default {
     }
   },
   extraResources: [
+    ...(hasEnterpriseIdentityConfig
+      ? [{ from: enterpriseIdentityConfigPath, to: "config/enterprise-identity.json" }]
+      : []),
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
     ...(targetPlatform.os === "darwin"
       ? [

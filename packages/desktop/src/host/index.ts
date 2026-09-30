@@ -2817,6 +2817,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               serviceAuthorityMode: "desktop-local",
               zcodeAgentSpawnFallbackCwd: msg.agentSpawnFallbackCwd,
               zcodeBuiltinProviderConfigFilePath: msg.zcodeBuiltinProviderConfigFilePath,
+              enterpriseIdentityBuiltinConfigFilePath: msg.enterpriseIdentityBuiltinConfigFilePath,
               processLifecycleReporter: runtimeProcessLifecycleReporter,
               taskRuntimeReporter: runtimeTaskReporter,
               feedback: {

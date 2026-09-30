@@ -141,6 +141,7 @@ import {
   handleDesktopWindowCloseRequest,
 } from "./desktopWindowLifecycle.js";
 import { resolveZCodeBuiltinProviderConfigFilePath } from "./desktopProviderConfig.js";
+import { resolveBundledEnterpriseIdentityConfigFilePath } from "./desktopEnterpriseIdentityConfig.js";
 import {
   getCredentialsDir,
   isDockerDaemonAvailable,
@@ -1669,6 +1670,11 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
           ...initMessage,
           zcodeBuiltinProviderConfigFilePath: resolveZCodeBuiltinProviderConfigFilePath({
             env: { ...hostProcessLocalEnv, ...process.env },
+          }),
+          enterpriseIdentityBuiltinConfigFilePath: resolveBundledEnterpriseIdentityConfigFilePath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
           }),
         },
         {

@@ -189,6 +189,7 @@ export const hostInitLocalMessageSchema = z.object({
   agentWarmupTargets: z.array(hostAgentWarmupTargetSchema).max(3).optional(),
   agentSpawnFallbackCwd: nonEmptyStringSchema.optional(),
   zcodeBuiltinProviderConfigFilePath: nonEmptyStringSchema,
+  enterpriseIdentityBuiltinConfigFilePath: nonEmptyStringSchema.optional(),
   runtimeProcessEnvPatch: z
     .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string())
     .optional(),

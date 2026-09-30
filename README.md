@@ -60,7 +60,7 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 
 此身份用于本地姓名展示，不引入账号数据隔离、云同步或额外操作权限。企业登录不提供模型 API Key，登录或退出也不会迁移、认领或删除已有工作区、会话与模型配置。退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
 
-企业管理员需配置已有认证服务，客户端不内置企业微信 Secret。未配置时显示“企业微信登录暂未配置”，仍可跳过。配置文件位置、占位示例与接口要求见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
+GitHub 正式安装包已携带默认企业微信公开登录参数，Windows、macOS 和 Linux 安装后可直接扫码，无需复制配置文件。扫码认证成功后，默认 UCAS 尚未配置 API Key 时会弹出可跳过的输入对话框。客户端不内置企业微信 Secret、用户 Token 或 UCAS Key；管理员可使用本机配置覆盖默认参数，位置与接口要求见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
 
 ## 从源码运行
 

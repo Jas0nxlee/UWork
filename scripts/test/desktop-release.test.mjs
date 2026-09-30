@@ -12,6 +12,13 @@ import {
 
 const version = "3.14.4";
 const sha = "a".repeat(40);
+test("packaged Electron runtime uses the version pinned in the desktop manifest", async () => {
+  const manifest = JSON.parse(
+    await readFile(new URL("../../packages/desktop/package.json", import.meta.url), "utf8"),
+  );
+  const { default: config } = await import("../../packages/desktop/electron-builder.config.js");
+  assert.equal(config.electronVersion, manifest.devDependencies.electron);
+});
 async function fixture(run) {
   const directory = await mkdtemp(join(tmpdir(), "uwork-release-"));
   try {

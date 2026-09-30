@@ -1339,6 +1339,8 @@ export function createLocalServices(options: {
   };
   /** 所属 Environment 的 ZCode Built-in Provider Config 物理路径。 */
   zcodeBuiltinProviderConfigFilePath: string;
+  /** Desktop Main 提供的默认公开配置路径；其它 Environment 不启用该默认来源。 */
+  enterpriseIdentityBuiltinConfigFilePath?: string;
   /** HTTP Server 只有在调用方明确配置认证时才暴露跨 Environment Provisioning target。 */
   providerProvisioningTargetEnabled?: boolean;
   /** Desktop Host 私有通知；只在 Source 成功持久化后请求 Main 调度远端镜像。 */
@@ -2447,6 +2449,7 @@ export function createLocalServices(options: {
                 loadWeComIdentityAdapter(
                   join(resolveAppConfigDir(), "enterprise-identity.json"),
                   hostApiNetworkTransport.fetch,
+                  options.enterpriseIdentityBuiltinConfigFilePath,
                 ),
               sessionStore: createSharedIdentitySessionStore(credentialService, (operation) =>
                 withEnterpriseIdentityFileLock(
