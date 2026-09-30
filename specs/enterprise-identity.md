@@ -16,7 +16,7 @@
 - bounds 从 CSS viewport 换算到 Electron DIP，随窗口尺寸、缩放和 UI 主题更新；每条更新只作用于原 sender 和同一 attempt ID。颜色、字体等只接受有界样式值，不接受任意 CSS、脚本或 URL。
 - 授权文档导航会使固定样式节点与 origin zoom 失效；Main 按文档 generation 清理样式缓存，在新文档完成后重新应用当前 UI 缩放和主题，旧异步样式任务不得覆盖新文档。
 - 新版登录页包含独立的扫码 iframe。仅适配顶层文档会留下 iframe 的固定宽度、标题和白色外框并截断二维码。Main 必须把固定展示样式应用到同一 guest 内、官方白名单 origin 的每个授权 frame；不读取表单、二维码内容、Cookie 或网页资料。顶层仅将官方扫码 iframe 填满已测量槽位；子 frame 的 QR 和状态居中，保留安全留白与授权操作。每个 frame 加载/导航后按本次文档重新适配；不得更换授权地址或隐藏错误、确认等状态。
-- 原有 HTTPS origin/端口/path、唯一 state、唯一 nonce、唯一 code 校验保持。跳过、关闭窗口、Renderer 重载、失效尝试与完成都撤下 view、关闭 WebContents 并清理独立会话；网络/认证失败仍可跳过。
+- 原有 HTTPS origin/端口/path、组织 state、每次唯一 nonce、唯一 code 校验保持。跳过、关闭窗口、Renderer 重载、失效尝试与完成都撤下 view、关闭 WebContents 并清理独立会话；网络/认证失败仍可跳过。
 
 ```mermaid
 sequenceDiagram
@@ -44,6 +44,7 @@ sequenceDiagram
 ## 产品规则
 
 - 桌面打开时，未认证用户看到登录页，首期只展示企业微信，始终可以“跳过登录，继续使用”。跳过只关闭当前窗口的登录页，重启后仍可选择登录。
+- 启动时的身份配置和恢复结果为未知状态，不能在首帧显示“未配置”。等待期间允许跳过；跳过仅取消本 Renderer 已取得 ID 的登录尝试，不能中断 Host 的设备会话恢复。若跳过发生在 beginLogin 返回前，取得 ID 后再按该 ID 取消。
 - 侧栏 UWork 字标下：未登录显示可点击的登录入口；认证后显示姓名，点击查看来源并退出。右侧保留助理/开发切换。
 - 有效会话自动恢复；过期、断网或恢复失败均允许跳过。缓存姓名不能冒充验证成功。
 - 本轮身份只是本地应用的可选身份标签，不引入账号隔离、云数据或权限控制；现有工作区、会话、API Key、引导记录继续属于本地设备。登录/退出不认领、迁移或删除这些数据。
@@ -52,13 +53,13 @@ sequenceDiagram
 
 ## 所有者和边界
 
-- 设备共享的 IdentitySessionStore 唯一拥有加密会话和全局 revision；Window-scoped Local Host 的 EnterpriseIdentityService 拥有本窗口尝试及已验证视图。Renderer 的 Zustand 只保存投影，登录页开关是 UI 状态。
+- 设备共享的 IdentitySessionStore 经 CredentialService 的加密存储唯一拥有会话和全局 revision；Window-scoped Local Host 的 EnterpriseIdentityService 拥有本窗口尝试及已验证视图。Renderer 的 Zustand 只保存投影，登录页开关是 UI 状态。
 - 应用层身份 Provider 固定使用 base services，远端工作区不能替换该身份。Main 通过 IPlatformService 管理隔离授权窗口及临时回调路由，不保存身份或 Token。
 - Node 适配器支持 start/complete/restore；poll 和远端 revoke 为可选能力。Token 不进入 Renderer，Secret 不打包进 App。
 - 通用 Credential RPC 隔离 enterprise-identity 命名空间的读、写和删除；身份服务在 Host 内持有原始凭据库。不能通过旧凭据接口伪造登录资料。
-- RPC：getView、restoreSession、beginLogin、pollLogin、cancelLogin、logout、onDidChange。视图含单调 revision、configured、status、profile、pending，不含 Token。用户信息必须含稳定 ID、企业 ID、provider 和姓名。
+- RPC：getView、restoreSession、beginLogin、pollLogin、cancelLogin(attemptId)、logout、onDidChange。取消命令必须携带当前 attempt ID，缺失或不匹配时无副作用。视图含单调 revision、configured、status、profile、pending，不含 Token。用户信息必须含稳定 ID、企业 ID、provider 和姓名。
 - 开始/取消/退出使旧 generation 失效并中止请求；凭据写入串行化，发布事件在持久化完成后。迟到响应不能复活取消的登录或覆盖新会话。
-- 断网保留加密凭据供重试，明确过期则清理；未配置适配器不恢复历史凭据。
+- 断网保留加密凭据供重试；恢复时即使本地 expiresAt 已过，也先向 issuer 发起 refresh 验证。issuer 明确拒绝或返回无效会话才清理；未配置适配器不恢复历史凭据。
 - 同一设备共享一个企业账号，登录和退出跨窗口同步；广播只触发从私有会话库读取并重新验证，不接受 UI 提供的姓名或 Token。
 - 普通 Web 可使用同一入口；手机 attachment 只投影桌面 Host 的身份，不显示启动登录页，不另起身份服务。任务流、owner/lease、workspaceIdentity、desktop-continuous/web-remote-replayable 语义不变。
 
@@ -97,7 +98,7 @@ sequenceDiagram
 
 - 用户已提供 CorpID、AgentID；应用使用官方新版 Web 登录链接（login_type=CorpApp），不把微信内 snsapi_base 网页授权当成扫码登录。
 - Desktop 通过 IPlatformService 打开独立 sandbox 登录窗口。Main 只管理该窗口、导航白名单、回调路由与关闭，不保存身份、Token 或登录业务结果。登录页面不启用 Node、不提供 preload，使用临时 session partition。
-- Host 生成每次唯一的随机 state/attempt ID 和 5 分钟有效期；回调必须精确匹配配置的 HTTPS origin/path，并含相同 state 和唯一 code。截获回调后停止网页加载，避免网页和 Host 重复消费一次性 code。
+- Host 生成每次唯一的随机 attempt ID 和 5 分钟有效期；当前标准企微请求使用已绑定的 orgId 作为 state，并在 redirect_uri 放入随机 attempt ID 作为 uwork_nonce。回调必须精确匹配配置的 HTTPS origin/path、组织 state、nonce 和唯一 code。旧适配器仍可使用随机 state。截获回调后停止网页加载，避免网页和 Host 重复消费一次性 code。
 - Host 使用已有 POST /api/auth/login（code、org_id）换取 token/user，user.id、user.org_id、user.name 与 JWT exp 必须通过校验，返回组织必须与配置一致。JWT 仅在受信 HTTPS 服务响应中用于读取有效期；恢复必须经 POST /api/auth/refresh 验证，不能以本地解码代替认证。
 - 2026-09-29 实测服务返回 needsEmailAuth=true。现有网页先保存 Token/姓名，再尝试一次邮箱授权；后续即使该标记仍为 true 也可结束登录。因此该标记不能单独解释为身份认证拒绝。本期 UWork 仅展示姓名，不采集邮箱；收到该标记时，Host 必须先用返回 Token 请求已有 refresh 接口，只有服务确认会话有效、稳定用户/组织一致且姓名有效后才提交设备会话。refresh 拒绝、身份变化、缺失姓名或网络失败均不能登录；不修改服务、不伪造邮箱授权。
 
@@ -133,7 +134,7 @@ sequenceDiagram
     participant Main as 原生窗口 / 回调转发
     participant WX as 企业微信官方登录页
     participant API as 已有认证服务
-    UI->>Host: beginLogin（随机 state）
+    UI->>Host: beginLogin（随机 attempt ID / nonce，组织 state）
     Host-->>UI: 官方登录 URL / 精确回调 URL
     UI->>Main: IPlatformService 打开隔离登录窗口
     Main->>WX: 加载官方扫码页

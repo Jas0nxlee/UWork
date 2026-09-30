@@ -49,6 +49,7 @@ export function EnterpriseIdentityProvider({
   const [error, setError] = useState(false);
   const actionGeneration = useRef(0);
   const nativeAttemptId = useRef<string | null>(null);
+  const activeAttemptId = useRef<string | null>(null);
   const [surfaceGate] = useState(createEnterpriseLoginSurfaceGate);
   const surfaceController = useRef<AbortController | null>(null);
   const onSurface = useCallback(
@@ -97,6 +98,7 @@ export function EnterpriseIdentityProvider({
 
   useEffect(() => {
     if (view?.status === "authenticated") {
+      activeAttemptId.current = null;
       setOpen(false);
       setBusy(false);
       setError(false);
@@ -146,8 +148,13 @@ export function EnterpriseIdentityProvider({
     setOpen(false);
     if (nativeAttemptId.current) platform.cancelEnterpriseLogin?.(nativeAttemptId.current);
     nativeAttemptId.current = null;
-    if (owner && allowLogin)
-      void owner.cancelLogin().catch(() => logger.warn("Enterprise login cancellation failed"));
+    // 跳过只是关闭本窗口入口；无 attempt ID 的取消会中止 Host 正在恢复的设备会话。
+    const attemptId = activeAttemptId.current;
+    activeAttemptId.current = null;
+    if (owner && allowLogin && attemptId)
+      void owner
+        .cancelLogin(attemptId)
+        .catch(() => logger.warn("Enterprise login cancellation failed"));
   }, [owner, allowLogin, platform]);
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
@@ -161,7 +168,14 @@ export function EnterpriseIdentityProvider({
     try {
       const attempt = enterpriseIdentityAttemptSchema.parse(await owner.beginLogin());
       startedAttemptId = attempt.id;
-      if (generation !== actionGeneration.current) return;
+      if (generation !== actionGeneration.current) {
+        // beginLogin 可能在跳过后才返回；只取消刚取得的这次尝试。
+        void owner
+          .cancelLogin(attempt.id)
+          .catch(() => logger.warn("Enterprise login cancellation failed"));
+        return;
+      }
+      activeAttemptId.current = attempt.id;
       if (attempt.callbackUrl) {
         if (!platform.openEnterpriseLogin)
           throw new Error("Desktop enterprise login is unavailable");
@@ -175,6 +189,7 @@ export function EnterpriseIdentityProvider({
         nativeAttemptId.current = null;
         if (callback === null) await owner.cancelLogin(attempt.id);
         else await owner.completeLogin(attempt.id, callback);
+        if (activeAttemptId.current === attempt.id) activeAttemptId.current = null;
       } else platform.openExternal(attempt.authorizationUrl);
     } catch {
       if (generation === actionGeneration.current) {
@@ -186,6 +201,7 @@ export function EnterpriseIdentityProvider({
           void owner
             .cancelLogin(startedAttemptId)
             .catch(() => logger.warn("Enterprise login cancellation failed"));
+          if (activeAttemptId.current === startedAttemptId) activeAttemptId.current = null;
         }
         logger.warn("Enterprise login failed");
       }
@@ -222,7 +238,7 @@ export function EnterpriseIdentityProvider({
       {/* 重新打开只覆盖工作区，不卸载 Root，以免丢失未提交草稿和标签状态。 */}
       {open && allowLogin ? (
         <EnterpriseLoginPage
-          configured={view?.configured ?? false}
+          configured={owner ? (view?.configured ?? null) : false}
           waiting={busy || view?.status === "waiting"}
           error={error || view?.error === "failed"}
           expired={view?.error === "expired"}

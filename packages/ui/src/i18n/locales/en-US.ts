@@ -5,6 +5,7 @@ const enUS: Record<string, string> = {
   "enterpriseIdentity.qrLabel": "WeCom sign-in QR code",
   "enterpriseIdentity.wecomLogin": "Sign in with WeCom",
   "enterpriseIdentity.waiting": "Waiting for confirmation…",
+  "enterpriseIdentity.checking": "Checking WeCom sign-in status…",
   "enterpriseIdentity.unconfigured": "WeCom sign-in is not configured yet. You can skip for now.",
   "enterpriseIdentity.failed": "Sign-in did not complete. Please retry or skip.",
   "enterpriseIdentity.expired": "Your sign-in expired. Sign in again or continue locally.",
@@ -617,7 +618,6 @@ const enUS: Record<string, string> = {
     "The app will restart after disconnecting. You will need to connect your account again.",
   "logout.confirm.ok": "Disconnect and restart",
   "logout.confirm.cancel": "Cancel",
-  "sidebar.profile.notLoggedIn": "Connect",
   "app.selectFile": "Select a file to get started",
   "app.workspace": "Workspace",
   "browser.title": "Browser",
@@ -1279,7 +1279,6 @@ const enUS: Record<string, string> = {
   "desktopMenu.help.updateAvailableVersion": "Update available {version}",
   "desktopMenu.help.downloadingUpdateVersion": "Downloading update {version}...",
   "desktopMenu.help.downloadingUpdateProgress": "Downloading update... {progress}",
-  "desktopMenu.help.restartUpdateAction": "Restart to update",
   "desktopMenu.help.restartToUpdate": "Restart to update ({version})",
   "postUpdateReleaseNotes.title": "Release notes",
   "postUpdateReleaseNotes.acknowledge": "I know",
@@ -2442,7 +2441,6 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.addProviderUnlockHint":
     "Click 20 times in a row to unlock adding providers",
   "settings.modelProvider.templatePickerTitle": "Add provider",
-  "settings.modelProvider.templateGroup.zhipu": "Zhipu",
   "settings.modelProvider.templateGroup.other": "Other",
   "settings.modelProvider.templatePickerBack": "Back to provider details",
   "settings.modelProvider.addProviderModelReminder":

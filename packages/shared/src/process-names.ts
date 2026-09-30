@@ -1,5 +1,17 @@
 const ZCODE_PROCESS_PREFIX = "uwork";
+const LEGACY_PROCESS_PREFIX = "zcode";
 const MAX_PROCESS_NAME_SEGMENT_LENGTH = 24;
+
+/** 崩溃分类与进程命名共用角色边界；兼容升级时仍在运行的旧子进程。 */
+export function matchesZCodeProcessRole(name: string | null | undefined): "host" | "agent" | null {
+  if (!name) return null;
+  for (const prefix of [ZCODE_PROCESS_PREFIX, LEGACY_PROCESS_PREFIX]) {
+    for (const role of ["host", "agent"] as const) {
+      if (name === `${prefix}-${role}` || name.startsWith(`${prefix}-${role}-`)) return role;
+    }
+  }
+  return null;
+}
 
 function sanitizeProcessNameSegment(value: string | null | undefined): string | null {
   if (!value) {

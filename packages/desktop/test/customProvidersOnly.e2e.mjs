@@ -37,7 +37,7 @@ try {
   const forbidden = /BigModel|Start Plan|Z\.ai|开通编程套餐|订阅|升级/;
   assert.doesNotMatch(await page.locator("body").innerText(), forbidden);
   assert.match(await page.locator("body").innerText(), /ucas/);
-  await page.getByText("https://lm.ucas.com.cn:15000/v1", { exact: true }).waitFor();
+  await page.getByText("https://llm.ucas.com.cn:15000/v1", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("model-provider-base-url-input").count(), 0);
   await page.getByText("Chat Completions (/chat/completions)", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("model-provider-actions-button").count(), 0);

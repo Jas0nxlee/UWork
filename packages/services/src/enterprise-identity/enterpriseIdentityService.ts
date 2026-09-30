@@ -178,10 +178,8 @@ export function createEnterpriseIdentityService(options: {
       signedOut();
       return structuredClone(view);
     }
-    const restored =
-      record.session.expiresAt > now()
-        ? await adapter.restore(record.session, controller.signal)
-        : null;
+    // 本地到期时间只是调度提示；issuer 的 refresh 才能判定旧 Token 是否还能续期。
+    const restored = await adapter.restore(record.session, controller.signal);
     if (current !== generation) return structuredClone(view);
     if (restored) await commit(restored, current, record);
     else
@@ -348,7 +346,8 @@ export function createEnterpriseIdentityService(options: {
       return completeResult(generation, () => adapter!.complete!(code, signal));
     },
     async cancelLogin(attemptId) {
-      if (attemptId !== undefined && attempt?.id !== attemptId) return;
+      // 缺失/过时 ID 绝不能中断共享 restore controller；仅当前尝试可被取消。
+      if (!attemptId || attempt?.id !== attemptId) return;
       invalidate();
       if (view.status !== "authenticated") signedOut(adapter ? null : "unconfigured");
       await writes;

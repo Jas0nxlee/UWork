@@ -142,6 +142,34 @@ test("logout during startup restore cannot revive identity", async () => {
   assert.equal(values.size, 0);
 });
 
+test("cancelling another attempt does not interrupt startup restore", async () => {
+  const pending = deferred<typeof session>();
+  const { service, values } = setup(provider({ restore: async () => pending.promise }));
+  values.set("enterprise-identity:session", JSON.stringify(session));
+  const restoring = service.restoreSession();
+  await Promise.resolve();
+  await service.cancelLogin("renderer-attempt-that-never-started");
+  await (service as unknown as { cancelLogin(): Promise<void> }).cancelLogin();
+  pending.resolve(session);
+  assert.equal((await restoring).status, "authenticated");
+  assert.equal(values.size, 1);
+});
+
+test("expired local timestamp still asks issuer to refresh before clearing", async () => {
+  let called = 0;
+  const { service, values } = setup(
+    provider({
+      restore: async () => {
+        called++;
+        return { ...session, expiresAt: 4000 };
+      },
+    }),
+  );
+  values.set("enterprise-identity:session", JSON.stringify({ ...session, expiresAt: 900 }));
+  assert.equal((await service.restoreSession()).status, "authenticated");
+  assert.equal(called, 1);
+});
+
 test("cancelling during credential save removes the unaccepted session", async () => {
   const saving = deferred<void>();
   const entered = deferred<void>();
@@ -164,7 +192,7 @@ test("cancelling during credential save removes the unaccepted session", async (
   await service.beginLogin();
   const polling = service.pollLogin(attempt.id);
   await entered.promise;
-  const cancellation = service.cancelLogin();
+  const cancellation = service.cancelLogin(attempt.id);
   saving.resolve();
   await Promise.all([polling, cancellation]);
   assert.equal(values.size, 0);

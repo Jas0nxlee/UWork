@@ -22,6 +22,7 @@ const native = params.has("native");
 const nativeCallback = "https://auth.example.com/callback";
 const nativeId = "fixture-native-state";
 const changed = new Emitter<EnterpriseIdentityView>();
+let restoreCancelled = false;
 let view: EnterpriseIdentityView = {
   revision: 0,
   configured,
@@ -37,7 +38,26 @@ const emit = (next: EnterpriseIdentityView) => {
 const service: IEnterpriseIdentityService = {
   onDidChange: changed.event,
   getView: async () => view,
-  restoreSession: async () => view,
+  restoreSession: async () => {
+    if (params.has("slowrestore")) {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (restoreCancelled) return view;
+      emit({
+        revision: view.revision + 1,
+        configured: true,
+        status: "authenticated",
+        profile: {
+          id: "fixture-user",
+          tenantId: "fixture-corp",
+          provider: "wecom",
+          displayName: "测试用户",
+        },
+        pending: null,
+        error: null,
+      });
+    }
+    return view;
+  },
   beginLogin: async () => {
     emit({
       revision: view.revision + 1,
@@ -77,7 +97,11 @@ const service: IEnterpriseIdentityService = {
     return view;
   },
   completeLogin: async () => service.pollLogin(nativeId),
-  cancelLogin: async () => {
+  cancelLogin: async (attemptId) => {
+    if (!attemptId) {
+      restoreCancelled = true;
+      document.documentElement.dataset.cancelWithoutId = "true";
+    }
     emit({
       revision: view.revision + 1,
       configured,

@@ -14,7 +14,7 @@ export function EnterpriseLoginPage({
   onSkip,
   onSurface,
 }: {
-  configured: boolean;
+  configured: boolean | null;
   waiting: boolean;
   error: boolean;
   expired: boolean;
@@ -67,9 +67,19 @@ export function EnterpriseLoginPage({
                 {t("wecomLogin")}
               </Button>
             )}
-            {!configured ? (
+            {configured === null ? (
+              <p className="text-ui-sm text-foreground-subtle" role="status">
+                {t("checking")}
+              </p>
+            ) : null}
+            {configured === false ? (
               <p className="text-ui-sm text-foreground-subtle" role="status">
                 {t("unconfigured")}
+              </p>
+            ) : null}
+            {waiting ? (
+              <p className="sr-only" role="status" aria-live="polite">
+                {t("waiting")}
               </p>
             ) : null}
             {error ? (

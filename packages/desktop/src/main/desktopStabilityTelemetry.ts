@@ -4,6 +4,7 @@ import armsRum from "@arms/rum-electron";
 import { BrowserWindow, type WebContents } from "electron";
 import {
   mapZCodeEnvToArmsRumEnv,
+  matchesZCodeProcessRole,
   type HostAgentProcessErrorResponse,
   type HostAgentProcessExceptionResponse,
   type HostAgentProcessExitedResponse,
@@ -701,12 +702,8 @@ function mapChildProcessGoneToProcessRoleWithName(
   type: string,
   processName?: string,
 ): StabilityProcessRole {
-  if (processName?.startsWith("zcode-host")) {
-    return "host";
-  }
-  if (processName?.startsWith("zcode-agent")) {
-    return "agent";
-  }
+  const ownedRole = matchesZCodeProcessRole(processName);
+  if (ownedRole) return ownedRole;
   switch (type) {
     case "GPU":
       return "gpu";

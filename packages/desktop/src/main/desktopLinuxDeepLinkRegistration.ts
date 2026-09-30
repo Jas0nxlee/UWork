@@ -10,8 +10,12 @@ import {
 
 const LINUX_DEEP_LINK_DESKTOP_FILE = "zcode.desktop";
 const LINUX_DEEP_LINK_MIME_TYPE = "x-scheme-handler/zcode";
-// 归属标记：用于识别用户级 zcode.desktop 是否由本应用写入（历史所有版本都带这行 Comment）。
+// 历史品牌写过旧 Comment；升级时两代标记都属于本应用。
 const LINUX_DESKTOP_ENTRY_OWNERSHIP_MARKER = "Comment=UWork Desktop App";
+const LINUX_DESKTOP_ENTRY_OWNERSHIP_MARKERS = new Set([
+  LINUX_DESKTOP_ENTRY_OWNERSHIP_MARKER,
+  "Comment=ZCode Desktop App",
+]);
 
 type LinuxDesktopEnv = {
   APPIMAGE?: string;
@@ -174,7 +178,7 @@ function isOwnedDesktopEntry(path: string): boolean {
     // 避免可清理的遗留条目被误判为用户自定义条目而永久残留。
     return content
       .split("\n")
-      .some((line) => line.replaceAll("\r", "").trim() === LINUX_DESKTOP_ENTRY_OWNERSHIP_MARKER);
+      .some((line) => LINUX_DESKTOP_ENTRY_OWNERSHIP_MARKERS.has(line.replaceAll("\r", "").trim()));
   } catch {
     return false;
   }

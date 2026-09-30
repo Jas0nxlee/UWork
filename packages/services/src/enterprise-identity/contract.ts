@@ -15,7 +15,7 @@ export interface IEnterpriseIdentityService {
   beginLogin(): Promise<EnterpriseIdentityAttempt>;
   pollLogin(attemptId: string): Promise<EnterpriseIdentityView>;
   completeLogin(attemptId: string, callbackUrl: string): Promise<EnterpriseIdentityView>;
-  cancelLogin(attemptId?: string): Promise<void>;
+  cancelLogin(attemptId: string): Promise<void>;
   logout(): Promise<void>;
   onDidChange: Event<EnterpriseIdentityView>;
 }
