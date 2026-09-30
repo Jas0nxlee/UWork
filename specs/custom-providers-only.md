@@ -2,6 +2,8 @@
 
 企业身份登录后续按 [enterprise-identity.md](enterprise-identity.md) 独立新增，可跳过；下文退役的账号仅指原模型供应商账号。企业登录不恢复旧 OAuth、套餐或模型账号服务。
 
+公开 Web 会话分享页保留独立的历史 Z.ai / BigModel 认证入口：私有分享的 owner 与服务端访问令牌仍按这两个账号域判权，删除入口会使既有私有分享不可访问。此例外仅用于 `/share` 的读取与导入，不进入 Desktop/Web 工作区模型供应商、套餐或通用账号 UI；未来迁移分享服务鉴权时须单独设计数据迁移及授权兼容。
+
 ## 产品规则
 
 移除应用登录及智谱/Z.ai 内置供应商（BigModel、Coding Plan、Start Plan、团队与闲时套餐）。保留 UCAS 作为唯一随包默认供应商：其配置写入 Personal Provider Repository，不使用账号认证或远端配置刷新。启动直接进入工作区；UCAS 默认可用，其他供应商仍可通过模型设置添加。模型设置、模型选择与页脚不展示账号、登录、订阅或升级入口。
@@ -16,6 +18,8 @@
 - 套餐 RPC 返回明确退役错误，Start Plan 和强制更新查询为空；动态工作流只读本地覆盖与现有默认值，不再查询 client/configs。
 - OAuthCredentialRepo 的历史账号读取停用；credentialService 隔离 oauth:、account-provider: 和 zcodejwttoken 的历史读取；自定义 API Key 不变。
 - UI 通过现有 hooks/facade 编辑供应商；页脚只保留偏好菜单与设置按钮。
+- UCAS 空白页水印在浅色主题使用可见实心文字，在深色主题沿用渐变资源；分享页 UWork 字标可做轻微脉冲，但尊重系统减少动态效果设置。
+- 清理已经没有产品入口的旧登录组件、强制更新提示、套餐和额度组件；调用方不再向共享侧栏页脚传递已弃用账号/套餐 prop。仅删除静态引用图中不可达的源码，保留独立 Web 分享鉴权及现有兼容 RPC。
 - Desktop 连续流、手机恢复流、owner/lease、workspaceIdentity 与远程鉴权均保持现有协议。
 
 ```mermaid

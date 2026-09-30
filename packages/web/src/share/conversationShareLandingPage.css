@@ -27,6 +27,19 @@
   left: var(--share-brand-left);
   transform: translateY(-50%);
   white-space: nowrap;
+  animation: share-brand-breathe 3s ease-in-out infinite;
+}
+
+@keyframes share-brand-breathe {
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-share-brand="true"] {
+    animation: none;
+  }
 }
 
 [data-share-title="true"] {

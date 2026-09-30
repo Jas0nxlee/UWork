@@ -221,7 +221,7 @@ function ZCodeEmptyStateLogo({ className }: { className?: string }) {
         width="400"
         height="320"
         viewBox="0 0 720 220"
-        fill="none"
+        fill="currentColor"
         xmlns="http://www.w3.org/2000/svg"
       >
         <text
@@ -232,7 +232,6 @@ function ZCodeEmptyStateLogo({ className }: { className?: string }) {
           fontSize="190"
           fontWeight="800"
           letterSpacing="-10"
-          stroke="currentColor"
         >
           UCAS
         </text>

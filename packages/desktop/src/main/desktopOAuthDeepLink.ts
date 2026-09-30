@@ -20,9 +20,7 @@ import {
 import { registerLinuxDeepLinkProtocol } from "./desktopLinuxDeepLinkRegistration.js";
 
 interface DeepLinkWorkspaceGateOptions {
-  canOpenWorkspace?: (workspacePath: string) => boolean;
   confirmationCopy?: ExternalWorkspaceOpenDialogCopy;
-  onWorkspaceOpenBlocked?: (workspacePath: string) => void;
   /** 业务窗口解析器；必须排除 CUA indicator 等 Main 辅助窗口。 */
   resolveApplicationWindow?: () => BrowserWindow | null;
 }
@@ -266,13 +264,6 @@ export function handleDeepLink(
       // deep link 是外部输入，必须在任何文件系统探测前拒绝网络路径。
       logger.warn("[deep-link] 网络工作区路径已拒绝", { path: workspacePath });
       return false;
-    }
-
-    if (options.canOpenWorkspace && !options.canOpenWorkspace(workspacePath)) {
-      // 强制升级是进程级 gate，workspace deep link 不能先进入缓存/投递路径。
-      logger.warn("[deep-link] 工作区打开请求被当前启动 gate 阻止", { path: workspacePath });
-      options.onWorkspaceOpenBlocked?.(workspacePath);
-      return true;
     }
 
     const targetWindow = options.resolveApplicationWindow
