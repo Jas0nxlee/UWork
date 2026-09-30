@@ -65,7 +65,7 @@ IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共�
 
 ### Windows 安装与覆盖
 
-从 `v3.14.6` 起，Windows 正式包携带默认配置，安装后企业微信按钮应可点击。Mac 登录会话不会复制到 Windows，每台设备仍需自己扫码。旧版安装包或没有注入默认配置的开发构建仍可按下列步骤放置本机覆盖。
+从 `v3.14.7` 起，Windows 正式包携带默认配置，安装后企业微信按钮应可点击。Mac 登录会话不会复制到 Windows，每台设备仍需自己扫码。旧版安装包或没有注入默认配置的开发构建仍可按下列步骤放置本机覆盖。
 
 1. 完全退出 UWork（包括系统托盘中的进程）。
 2. 将已确认有效、仅含 `corpId`、`agentId`、`orgId`、`apiBaseUrl`、`callbackUrl` 的 `enterprise-identity.json` 复制到 `%USERPROFILE%\.zcode\v2\enterprise-identity.json`。若设置了自定义 `dataBaseDir`，目标改为该目录下的 `.zcode\v2\enterprise-identity.json`。保留 UTF-8 JSON 文件名，避免资源管理器隐藏扩展名后变成 `.json.txt`。已有目标文件先备份。

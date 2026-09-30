@@ -4,18 +4,11 @@ import { mkdtemp, access, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "playwright-core";
+import { resolvePackagedDesktopExecutable } from "../scripts/packaged-desktop-executable.mjs";
 
 const [platform, arch] = process.argv.slice(2);
 const dist = resolve(import.meta.dirname, "../dist");
-const executablePath =
-  platform === "mac"
-    ? join(dist, arch === "arm64" ? "mac-arm64" : "mac", "UWork.app/Contents/MacOS/UWork")
-    : platform === "win"
-      ? join(dist, "win-unpacked/UWork.exe")
-      : platform === "linux"
-        ? join(dist, arch === "arm64" ? "linux-arm64-unpacked" : "linux-unpacked", "uwork")
-        : null;
-assert.ok(executablePath, "Unknown packaged platform");
+const executablePath = resolvePackagedDesktopExecutable(platform, arch, dist);
 await access(executablePath);
 const data = await mkdtemp(join(tmpdir(), "uwork-packaged-login-"));
 let app;

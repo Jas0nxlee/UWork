@@ -5,7 +5,8 @@
 - 发布目标为用户 fork `Jas0nxlee/UWork`，默认分支 `uwork`；正式客户端身份为 `UWork` / `dev.zcode.app`，构建显式使用 `ZCODE_ENV=production` 和 `ZCODE_PREVIEW_IDENTITY=0`。
 - 首次配置以 `v3.14.4` 发布，版本由根 `package.json` 提供。已有标签不移动，不覆盖其他版本的 Release。
 - 本轮修复以 `v3.14.5` 发布：登录恢复与取消、子进程崩溃归类、Linux 历史桌面项、UCAS 验收地址及发布 tag 门禁。Release 说明列出用户可见修复与仍需每台设备单独放置的企业身份公开配置。
-- 下一版 `v3.14.6` 修复新设备企业微信按钮禁用：五个平台构建均从 GitHub Actions 加密配置注入默认公开参数，随包资源必须通过严格字段校验和内容一致性校验。安装后无需复制配置文件；保留本机覆盖与用户凭据隔离，并发布本次 UCAS Key 引导。
+- 下一版 `v3.14.7` 修复新设备企业微信按钮禁用：五个平台构建均从 GitHub Actions 加密配置注入默认公开参数，随包资源必须通过严格字段校验和内容一致性校验。安装后无需复制配置文件；保留本机覆盖与用户凭据隔离，并发布本次 UCAS Key 引导。`v3.14.6` 构建因新增 Linux 启动测试误用可执行文件名而未发布，标签保留。
+- 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。

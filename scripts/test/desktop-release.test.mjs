@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { resolvePackagedDesktopExecutable } from "../../packages/desktop/scripts/packaged-desktop-executable.mjs";
+import { resolveDesktopProductIdentity } from "../../packages/desktop/scripts/desktop-product-identity.mjs";
 import {
   releaseTargets,
   stageReleaseAssets,
@@ -18,6 +20,15 @@ test("packaged Electron runtime uses the version pinned in the desktop manifest"
   );
   const { default: config } = await import("../../packages/desktop/electron-builder.config.js");
   assert.equal(config.electronVersion, manifest.devDependencies.electron);
+});
+test("Linux startup validation uses the retained executable from the production identity", () => {
+  const identity = resolveDesktopProductIdentity({
+    ZCODE_ENV: "production",
+    ZCODE_PREVIEW_IDENTITY: "0",
+  });
+  const executable = resolvePackagedDesktopExecutable("linux", "arm64", "/fixture/dist");
+  assert.equal(basename(executable), identity.linuxExecutableName);
+  assert.equal(dirname(executable), join("/fixture/dist", "linux-arm64-unpacked"));
 });
 async function fixture(run) {
   const directory = await mkdtemp(join(tmpdir(), "uwork-release-"));
