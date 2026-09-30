@@ -13,6 +13,13 @@ const zhCN: Record<string, string> = {
   "enterpriseIdentity.signedOut": "未登录 · 点击登录",
   "enterpriseIdentity.source": "通过企业微信登录",
   "enterpriseIdentity.logout": "退出登录",
+  "enterpriseIdentity.ucasKey.title": "配置 UCAS API Key",
+  "enterpriseIdentity.ucasKey.description":
+    "企业微信登录已完成。UCAS 模型还需要单独配置 API Key；你也可以稍后在模型设置中填写。",
+  "enterpriseIdentity.ucasKey.label": "UCAS API Key",
+  "enterpriseIdentity.ucasKey.save": "保存",
+  "enterpriseIdentity.ucasKey.later": "稍后设置",
+  "enterpriseIdentity.ucasKey.failure": "保存失败，请重试。",
 
   "startPlan.recommendation.subagentDescription":
     "你的体验套餐中，{model} 仍有可用额度，是否将此子智能体的模型切换到体验套餐？",

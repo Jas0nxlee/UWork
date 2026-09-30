@@ -195,6 +195,19 @@ export const enterpriseIdentityViewSchema = z.discriminatedUnion("status", [
 ]);
 export type EnterpriseIdentityView = z.infer<typeof enterpriseIdentityViewSchema>;
 
+/** 仅扫码完成命令携带本次提交回执；身份事件与只读视图仍不包含尝试来源。 */
+export const enterpriseIdentityCompletionSchema = z
+  .object({
+    view: enterpriseIdentityViewSchema,
+    committedAttemptId: z.string().min(1).max(256).nullable(),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.committedAttemptId && result.view.status !== "authenticated")
+      context.addIssue({ code: "custom", message: "A committed login must be authenticated" });
+  });
+export type EnterpriseIdentityCompletion = z.infer<typeof enterpriseIdentityCompletionSchema>;
+
 export const enterpriseIdentityPollResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("pending") }),
   z.object({ status: z.literal("authenticated"), session: enterpriseIdentitySessionSchema }),

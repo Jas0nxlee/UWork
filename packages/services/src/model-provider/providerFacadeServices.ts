@@ -49,6 +49,7 @@ export interface IProviderSettingsService {
     config: ProviderConfigObject,
     metadata?: Parameters<ProviderSettingsFacade["savePersonalProviderOverlay"]>[2],
   ): Promise<ProviderSettingsView>;
+  setUcasApiKeyIfMissing(apiKey: string): Promise<ProviderSettingsView>;
   deletePersonalProvider(providerId: ProviderId): Promise<ProviderSettingsView>;
   reorderPersonalProviders(providerIds: readonly ProviderId[]): Promise<ProviderSettingsView>;
   reorderPersonalModels(
@@ -170,6 +171,10 @@ export function createProviderSettingsService(
     savePersonalProviderOverlay: async (providerId, config, metadata) => {
       await ensureReady();
       return facade.savePersonalProviderOverlay(providerId, config, metadata);
+    },
+    setUcasApiKeyIfMissing: async (apiKey) => {
+      await ensureReady();
+      return facade.setUcasApiKeyIfMissing(apiKey);
     },
     deletePersonalProvider: async (providerId) => {
       await ensureReady();

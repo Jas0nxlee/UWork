@@ -251,6 +251,38 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     });
   }
 
+  /** 登录引导仅补空密钥；须在 Personal 仓库锁内读取现值，避免跨 Host 覆盖。 */
+  setUcasApiKeyIfMissing(apiKey: string): Promise<ProviderConfigLayerSnapshot> {
+    const normalizedApiKey = apiKey.trim();
+    if (!normalizedApiKey) throw new Error("UCAS API Key 不能为空");
+    return this.#updatePersonal((current) => {
+      const rule = current.providers.getRule(UCAS_PROVIDER_ID);
+      if (rule?.templateId !== UCAS_PROVIDER_TEMPLATE_ID) {
+        throw new Error("UCAS 默认供应商不可用");
+      }
+      const config = rule.config;
+      const access = config.access;
+      if (access != null && access.type !== "api-key") {
+        throw new Error("UCAS API Key 配置类型无效");
+      }
+      if (access?.apiKey?.trim()) {
+        return {
+          providers: current.providers,
+          models: current.models,
+          providerOrder: current.providerOrder,
+        };
+      }
+      const nextConfig = config.overlay(
+        new ProviderConfigValue({ access: new ApiKeyAccessConfig({ apiKey: normalizedApiKey }) }),
+      );
+      return {
+        providers: current.providers.setRule({ ...rule, config: nextConfig }),
+        models: current.models,
+        providerOrder: current.providerOrder,
+      };
+    });
+  }
+
   /** 多 Host 并发启动时仍以固定 ID 单次播种；已有个人记录和模型配置一律保留。 */
   async ensureSeededPersonalProvider(input: EnsureSeededPersonalProviderInput): Promise<void> {
     const providerId = normalizeId("providerId", input.providerId);

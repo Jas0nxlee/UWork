@@ -116,6 +116,7 @@ export function Root(props: RootProps) {
                     <CodingPlanUpgradeDialogProvider>
                       <EnterpriseIdentityProvider
                         service={props.services.enterpriseIdentityService}
+                        providerSettingsService={props.services.providerSettingsService}
                         showOnStartup={!props.enterpriseIdentityReadOnly}
                         allowLogin={!props.enterpriseIdentityReadOnly}
                       >

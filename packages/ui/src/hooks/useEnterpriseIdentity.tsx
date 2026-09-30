@@ -7,9 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { IEnterpriseIdentityService } from "@zcode/services";
+import type { IEnterpriseIdentityService, IProviderSettingsService } from "@zcode/services";
 import {
   enterpriseIdentityAttemptSchema,
+  enterpriseIdentityCompletionSchema,
   enterpriseLoginRequestSchema,
   enterpriseIdentityViewSchema,
   type EnterpriseIdentityView,
@@ -18,6 +19,8 @@ import {
 import { useEnterpriseIdentityStore } from "@/store/enterpriseIdentityStore.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { EnterpriseLoginPage } from "@/login/EnterpriseLoginPage.js";
+import { UcasApiKeyDialog } from "@/login/UcasApiKeyDialog.js";
+import { hasConfiguredUcasApiKey } from "@/login/ucasApiKeyPrompt.js";
 import { logger } from "@/logger.js";
 import { createEnterpriseLoginSurfaceGate } from "./enterpriseLoginSurfaceGate.js";
 
@@ -32,11 +35,13 @@ const IdentityContext = createContext<IdentityContextValue | null>(null);
 /** 固定绑定应用 base services，嵌套远端 ServiceProvider 不会替换身份 owner。 */
 export function EnterpriseIdentityProvider({
   service,
+  providerSettingsService,
   showOnStartup,
   allowLogin = true,
   children,
 }: {
   service?: IEnterpriseIdentityService;
+  providerSettingsService: Pick<IProviderSettingsService, "refresh" | "setUcasApiKeyIfMissing">;
   showOnStartup: boolean;
   allowLogin?: boolean;
   children: ReactNode;
@@ -47,6 +52,7 @@ export function EnterpriseIdentityProvider({
   const [open, setOpen] = useState(showOnStartup);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const [showUcasApiKeyPrompt, setShowUcasApiKeyPrompt] = useState(false);
   const actionGeneration = useRef(0);
   const nativeAttemptId = useRef<string | null>(null);
   const activeAttemptId = useRef<string | null>(null);
@@ -102,6 +108,8 @@ export function EnterpriseIdentityProvider({
       setOpen(false);
       setBusy(false);
       setError(false);
+    } else {
+      setShowUcasApiKeyPrompt(false);
     }
     if (view?.status !== "waiting" && surfaceController.current) {
       actionGeneration.current++;
@@ -142,6 +150,7 @@ export function EnterpriseIdentityProvider({
 
   const skip = useCallback(() => {
     actionGeneration.current++;
+    setShowUcasApiKeyPrompt(false);
     surfaceController.current?.abort();
     surfaceController.current = null;
     setBusy(false);
@@ -159,9 +168,12 @@ export function EnterpriseIdentityProvider({
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
     const generation = ++actionGeneration.current;
+    setShowUcasApiKeyPrompt(false);
     surfaceController.current?.abort();
-    const controller = new AbortController();
-    surfaceController.current = controller;
+    // beginLogin 尚未返回时外部轮询可能已经认证成功；此时不能保留只属于原生扫码的
+    // controller，否则认证 effect 会误触发取消并让迟到的 beginLogin 继续取消已完成的登录。
+    surfaceController.current = null;
+    let controller: AbortController | null = null;
     setBusy(true);
     setError(false);
     let startedAttemptId: string | null = null;
@@ -179,6 +191,8 @@ export function EnterpriseIdentityProvider({
       if (attempt.callbackUrl) {
         if (!platform.openEnterpriseLogin)
           throw new Error("Desktop enterprise login is unavailable");
+        controller = new AbortController();
+        surfaceController.current = controller;
         const surface = await surfaceGate.wait(controller.signal);
         if (generation !== actionGeneration.current) return;
         nativeAttemptId.current = attempt.id;
@@ -188,9 +202,56 @@ export function EnterpriseIdentityProvider({
         if (generation !== actionGeneration.current) return;
         nativeAttemptId.current = null;
         if (callback === null) await owner.cancelLogin(attempt.id);
-        else await owner.completeLogin(attempt.id, callback);
+        else {
+          // 回调已离开原生扫码视图；先结束 surface 等待，再让 Host 发布认证状态。
+          // 否则认证事件会触发下方 effect 误判为扫码取消，使成功后的引导失效。
+          surfaceController.current = null;
+          const completion = enterpriseIdentityCompletionSchema.parse(
+            await owner.completeLogin(attempt.id, callback),
+          );
+          if (generation === actionGeneration.current) {
+            useEnterpriseIdentityStore.getState().project(owner, completion.view);
+            if (
+              completion.view.status === "authenticated" &&
+              completion.committedAttemptId === attempt.id
+            ) {
+              try {
+                const providerView = await providerSettingsService.refresh("ucas-login-prompt");
+                const latest = useEnterpriseIdentityStore.getState();
+                // 只接受本窗口这次扫码完成后的身份版本；恢复、退出、其它窗口更新及迟到读取无效。
+                if (
+                  generation === actionGeneration.current &&
+                  latest.owner === owner &&
+                  latest.view?.status === "authenticated" &&
+                  latest.view.revision === completion.view.revision &&
+                  !hasConfiguredUcasApiKey(providerView)
+                ) {
+                  setShowUcasApiKeyPrompt(true);
+                }
+              } catch {
+                // Provider Settings 刷新失败不影响已完成的企业登录；模型设置仍可单独录入密钥。
+                logger.warn("UCAS API key prompt check failed");
+              }
+            }
+          }
+        }
         if (activeAttemptId.current === attempt.id) activeAttemptId.current = null;
-      } else platform.openExternal(attempt.authorizationUrl);
+      } else {
+        // waiting 事件的快速轮询可先于 beginLogin 返回并完成认证；打开授权页前
+        // 复核 Host 与本窗口投影，避免已完成的身份再弹出过期浏览器登录页。
+        const latest = enterpriseIdentityViewSchema.parse(await owner.getView());
+        if (generation !== actionGeneration.current) return;
+        const projection = useEnterpriseIdentityStore.getState();
+        if (latest.status === "authenticated") projection.project(owner, latest);
+        if (
+          latest.status === "authenticated" ||
+          (projection.owner === owner && projection.view?.status === "authenticated")
+        ) {
+          if (activeAttemptId.current === attempt.id) activeAttemptId.current = null;
+          return;
+        }
+        platform.openExternal(attempt.authorizationUrl);
+      }
     } catch {
       if (generation === actionGeneration.current) {
         setError(true);
@@ -206,13 +267,14 @@ export function EnterpriseIdentityProvider({
         logger.warn("Enterprise login failed");
       }
     } finally {
-      if (surfaceController.current === controller) surfaceController.current = null;
+      if (controller && surfaceController.current === controller) surfaceController.current = null;
       if (generation === actionGeneration.current) setBusy(false);
     }
-  }, [owner, allowLogin, platform, busy, surfaceGate]);
+  }, [owner, allowLogin, platform, busy, surfaceGate, providerSettingsService]);
   const logout = useCallback(async () => {
     if (!owner || !allowLogin) return;
     actionGeneration.current++;
+    setShowUcasApiKeyPrompt(false);
     try {
       await owner.logout();
     } catch {
@@ -245,6 +307,12 @@ export function EnterpriseIdentityProvider({
           onLogin={() => void login()}
           onSkip={skip}
           onSurface={onSurface}
+        />
+      ) : null}
+      {showUcasApiKeyPrompt && !open && allowLogin && view?.status === "authenticated" ? (
+        <UcasApiKeyDialog
+          providerSettingsService={providerSettingsService}
+          onClose={() => setShowUcasApiKeyPrompt(false)}
         />
       ) : null}
     </IdentityContext.Provider>

@@ -49,9 +49,20 @@ test("native callback is exchanged once and publishes verified profile", async (
   const { service, count } = setup();
   await service.beginLogin();
   const url = `${callback}?code=fixture-code&state=${id}`;
-  await Promise.all([service.completeLogin(id, url), service.completeLogin(id, url)]);
+  const results = await Promise.all([
+    service.completeLogin(id, url),
+    service.completeLogin(id, url),
+  ]);
+  assert.deepEqual(
+    results.map((result) => result.committedAttemptId),
+    [id, id],
+  );
+  assert.equal(results[0]?.view.status, "authenticated");
   assert.equal(count(), 1);
   assert.equal((await service.getView()).profile?.displayName, "Fixture");
+  const stale = await service.completeLogin(id, url);
+  assert.equal(stale.committedAttemptId, null);
+  assert.equal(stale.view.status, "authenticated");
 });
 test("wrong state, duplicate code and origin mismatch do not consume authorization code", async () => {
   const { service, count } = setup();
@@ -68,7 +79,9 @@ test("cancelled native callback cannot authenticate or write credentials", async
   const { service, values, count } = setup();
   await service.beginLogin();
   await service.cancelLogin(id);
-  await service.completeLogin(id, `${callback}?code=c&state=${id}`);
+  const stale = await service.completeLogin(id, `${callback}?code=c&state=${id}`);
+  assert.equal(stale.committedAttemptId, null);
+  assert.equal(stale.view.status, "signed-out");
   assert.equal(count(), 0);
   assert.equal(values.size, 0);
 });

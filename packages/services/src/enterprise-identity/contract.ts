@@ -2,6 +2,7 @@ import type { Event } from "@zcode/rpc";
 import {
   ServiceChannels,
   type EnterpriseIdentityAttempt,
+  type EnterpriseIdentityCompletion,
   type EnterpriseIdentityPollResult,
   type EnterpriseIdentitySession,
   type EnterpriseIdentityView,
@@ -14,7 +15,7 @@ export interface IEnterpriseIdentityService {
   restoreSession(): Promise<EnterpriseIdentityView>;
   beginLogin(): Promise<EnterpriseIdentityAttempt>;
   pollLogin(attemptId: string): Promise<EnterpriseIdentityView>;
-  completeLogin(attemptId: string, callbackUrl: string): Promise<EnterpriseIdentityView>;
+  completeLogin(attemptId: string, callbackUrl: string): Promise<EnterpriseIdentityCompletion>;
   cancelLogin(attemptId: string): Promise<void>;
   logout(): Promise<void>;
   onDidChange: Event<EnterpriseIdentityView>;

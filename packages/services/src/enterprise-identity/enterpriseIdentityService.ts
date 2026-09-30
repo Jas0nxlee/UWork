@@ -5,6 +5,7 @@ import {
   enterpriseIdentitySessionSchema,
   readEnterpriseIdentityCallback,
   type EnterpriseIdentityAttempt,
+  type EnterpriseIdentityCompletion,
   type EnterpriseIdentitySession,
   type EnterpriseIdentityView,
 } from "@zcode/shared";
@@ -55,7 +56,7 @@ export function createEnterpriseIdentityService(options: {
   let attempt: EnterpriseIdentityAttempt | null = null;
   let nativeAttemptClaimed = false;
   let startTask: Promise<EnterpriseIdentityAttempt> | null = null;
-  let resultTask: Promise<EnterpriseIdentityView> | null = null;
+  let resultTask: Promise<EnterpriseIdentityCompletion> | null = null;
   let restoreTask: Promise<EnterpriseIdentityView> | null = null;
   let adapterTask: Promise<void> | null = null;
   let writes: Promise<unknown> = Promise.resolve();
@@ -225,15 +226,19 @@ export function createEnterpriseIdentityService(options: {
   };
   const completeResult = (
     current: number,
+    committedAttemptId: string | null,
     operation: () => Promise<EnterpriseIdentitySession | null>,
-  ): Promise<EnterpriseIdentityView> => {
+  ): Promise<EnterpriseIdentityCompletion> => {
     if (resultTask) return resultTask;
     const task = (async () => {
       try {
         const result = await operation();
-        if (current !== generation) return getView();
-        if (result && !(await commit(result, current))) await restoreOwned(current);
-        return getView();
+        if (current !== generation) return { view: await getView(), committedAttemptId: null };
+        const committed = result ? await commit(result, current) : false;
+        if (result && !committed) await restoreOwned(current);
+        const latest = await getView();
+        const accepted = committed && current === generation && latest.status === "authenticated";
+        return { view: latest, committedAttemptId: accepted ? committedAttemptId : null };
       } catch {
         fail(current);
         throw new Error("企业微信登录失败，请重试或跳过登录");
@@ -277,9 +282,8 @@ export function createEnterpriseIdentityService(options: {
           if (current !== generation) throw new Error("企业登录已取消");
           attemptRevision = record.revision;
           knownRevision = record.revision;
-          const started = enterpriseIdentityAttemptSchema.parse(
-            await adapter.start(controller.signal),
-          );
+          const response = await adapter.start(controller.signal);
+          const started = enterpriseIdentityAttemptSchema.parse(response);
           if (current !== generation || started.expiresAt <= now())
             throw new Error("企业登录已取消或过期");
           attempt = started;
@@ -312,11 +316,9 @@ export function createEnterpriseIdentityService(options: {
         return getView();
       }
       const current = generation;
-      const signal = controller.signal;
-      return completeResult(current, async () => {
-        const result = enterpriseIdentityPollResultSchema.parse(
-          await adapter!.poll!(attemptId, signal),
-        );
+      return completeResult(current, null, async () => {
+        const polled = await adapter!.poll!(attemptId, controller.signal);
+        const result = enterpriseIdentityPollResultSchema.parse(polled);
         if (current !== generation) return null;
         if (result.status === "expired") {
           invalidate();
@@ -324,14 +326,15 @@ export function createEnterpriseIdentityService(options: {
           return null;
         }
         return result.status === "authenticated" ? result.session : null;
-      });
+      }).then((result) => result.view);
     },
     completeLogin(attemptId, callbackUrl) {
-      if (!adapter?.complete || !attempt || attempt.id !== attemptId) return getView();
+      const currentView = async () => ({ view: await getView(), committedAttemptId: null });
+      if (!adapter?.complete || !attempt || attempt.id !== attemptId) return currentView();
       if (attempt.expiresAt <= now()) {
         invalidate();
         signedOut("expired");
-        return getView();
+        return currentView();
       }
       let code: string;
       try {
@@ -340,10 +343,10 @@ export function createEnterpriseIdentityService(options: {
         return Promise.reject(new Error("企业登录回调校验失败"));
       }
       // 领取一次性授权码后保留 attempt 身份用于取消，但即使 CAS 拒绝也不能重复兑换。
-      if (nativeAttemptClaimed) return resultTask ?? getView();
+      if (nativeAttemptClaimed) return resultTask ?? currentView();
       nativeAttemptClaimed = true;
-      const signal = controller.signal;
-      return completeResult(generation, () => adapter!.complete!(code, signal));
+      const redeem = () => adapter!.complete!(code, controller.signal);
+      return completeResult(generation, attemptId, redeem);
     },
     async cancelLogin(attemptId) {
       // 缺失/过时 ID 绝不能中断共享 restore controller；仅当前尝试可被取消。

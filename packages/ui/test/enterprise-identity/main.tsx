@@ -7,7 +7,12 @@ import {
   type EnterpriseIdentityView,
   type IPlatformService,
 } from "@zcode/shared";
-import type { IBroadcastService, IEnterpriseIdentityService } from "@zcode/services";
+import type {
+  IBroadcastService,
+  IEnterpriseIdentityService,
+  IProviderSettingsService,
+  ProviderSettingsView,
+} from "@zcode/services";
 import { EnterpriseIdentityProvider } from "@/hooks/useEnterpriseIdentity.js";
 import { PlatformProvider } from "@/hooks/usePlatform.js";
 import { StoreProvider } from "@/store/StoreProvider.js";
@@ -34,6 +39,150 @@ let view: EnterpriseIdentityView = {
 const emit = (next: EnterpriseIdentityView) => {
   view = next;
   changed.fire(view);
+};
+// 仅供隔离浏览器场景使用：模拟本机 UCAS 配置，持久化标记不包含输入的密钥。
+const persistedFixtureKey = sessionStorage.getItem("uwork-identity-test-ucas-saved") === "1";
+const initialFixtureKey =
+  params.has("existing_key") || persistedFixtureKey ? "fixture-existing-key" : "";
+const initialPersonalConfig = {
+  group: "standard-personal" as const,
+  access: { type: "api-key" as const, apiKey: initialFixtureKey },
+  api: { headers: { "x-fixture": "preserve" } },
+  personalModelIds: ["fixture-model"],
+  modelOrder: ["fixture-model"],
+};
+let providerView: ProviderSettingsView = {
+  revision: 1,
+  providerTemplates: [],
+  providerOrder: ["ucas"],
+  providers: [
+    {
+      providerId: "ucas",
+      providerName: "ucas",
+      templateId: "ucas",
+      enabled: true,
+      executable: Boolean(initialFixtureKey),
+      effectiveConfig: {
+        ...initialPersonalConfig,
+        api: {
+          type: "openai-chat-completions",
+          baseUrl: "https://fixture.example/v1",
+          headers: { "x-fixture": "preserve" },
+        },
+      },
+      personalConfig: initialPersonalConfig,
+      issues: [],
+      models: [],
+    },
+  ],
+};
+document.documentElement.dataset.ucasKeyStored = String(Boolean(initialFixtureKey));
+let failNextSave = params.has("save_fail");
+const providerSettingsService: Pick<
+  IProviderSettingsService,
+  "refresh" | "setUcasApiKeyIfMissing"
+> = {
+  refresh: async () => {
+    const reads = Number(document.documentElement.dataset.ucasRefreshCount ?? 0) + 1;
+    document.documentElement.dataset.ucasRefreshCount = String(reads);
+    if (params.has("key_before_prompt") && reads === 1) {
+      const current = providerView.providers.find((candidate) => candidate.providerId === "ucas");
+      if (!current) throw new Error("Fixture UCAS provider is missing");
+      providerView = {
+        ...providerView,
+        revision: providerView.revision + 1,
+        providers: [
+          {
+            ...current,
+            personalConfig: {
+              ...current.personalConfig,
+              access: { type: "api-key", apiKey: "fixture-other-window-key" },
+            },
+          },
+        ],
+      };
+      document.documentElement.dataset.ucasKeyStored = "true";
+    }
+    return providerView;
+  },
+  setUcasApiKeyIfMissing: async (apiKey) => {
+    document.documentElement.dataset.ucasAtomicSaveCalls = String(
+      Number(document.documentElement.dataset.ucasAtomicSaveCalls ?? 0) + 1,
+    );
+    if (failNextSave) {
+      failNextSave = false;
+      document.documentElement.dataset.ucasSaveFailed = "true";
+      throw new Error("Fixture save failure");
+    }
+    let current = providerView.providers.find((candidate) => candidate.providerId === "ucas");
+    if (!current) throw new Error("Fixture UCAS provider is missing");
+    // 模拟另一个窗口恰在 owner 锁内重读前提交密钥和其它配置。
+    if (params.has("key_arrives")) {
+      const concurrentConfig = {
+        ...current.personalConfig,
+        access: { type: "api-key" as const, apiKey: "fixture-other-window-key" },
+        api: {
+          ...current.personalConfig?.api,
+          headers: { "x-fixture": "preserve", "x-concurrent": "latest" },
+        },
+        personalModelIds: ["fixture-model", "concurrent-model"],
+        modelOrder: ["fixture-model", "concurrent-model"],
+      };
+      current = { ...current, personalConfig: concurrentConfig };
+      providerView = {
+        ...providerView,
+        revision: providerView.revision + 1,
+        providers: [current],
+      };
+    }
+    const personalConfig = current.personalConfig;
+    if (!personalConfig) throw new Error("Fixture UCAS personal config is missing");
+    const existingKey =
+      personalConfig.access?.type === "api-key" ? personalConfig.access.apiKey?.trim() : null;
+    const savedPersonalConfig = existingKey
+      ? personalConfig
+      : {
+          ...personalConfig,
+          access: {
+            ...personalConfig.access,
+            type: "api-key" as const,
+            apiKey: apiKey.trim(),
+          },
+        };
+    providerView = {
+      ...providerView,
+      revision: providerView.revision + (existingKey ? 0 : 1),
+      providers: [
+        {
+          ...current,
+          personalConfig: savedPersonalConfig,
+          effectiveConfig: {
+            ...current.effectiveConfig,
+            access: savedPersonalConfig.access,
+          },
+        },
+      ],
+    };
+    const savedAccess = savedPersonalConfig.access;
+    const stored = savedAccess?.type === "api-key" && Boolean(savedAccess.apiKey?.trim());
+    document.documentElement.dataset.ucasKeyStored = String(stored);
+    document.documentElement.dataset.ucasConfigPreserved = String(
+      savedPersonalConfig.api?.headers?.["x-fixture"] === "preserve" &&
+        savedPersonalConfig.personalModelIds?.[0] === "fixture-model" &&
+        savedPersonalConfig.modelOrder?.[0] === "fixture-model" &&
+        (!params.has("key_arrives") ||
+          (savedPersonalConfig.api?.headers?.["x-concurrent"] === "latest" &&
+            savedPersonalConfig.personalModelIds?.[1] === "concurrent-model" &&
+            savedPersonalConfig.modelOrder?.[1] === "concurrent-model")),
+    );
+    document.documentElement.dataset.ucasOtherWriterPreserved = String(
+      params.has("key_arrives") &&
+        savedAccess?.type === "api-key" &&
+        savedAccess.apiKey === "fixture-other-window-key",
+    );
+    if (stored) sessionStorage.setItem("uwork-identity-test-ucas-saved", "1");
+    return providerView;
+  },
 };
 const service: IEnterpriseIdentityService = {
   onDidChange: changed.event,
@@ -71,7 +220,7 @@ const service: IEnterpriseIdentityService = {
       },
       error: null,
     });
-    return {
+    const attempt = {
       id: native ? nativeId : "fixture",
       authorizationUrl: native
         ? `https://login.work.weixin.qq.com/wwlogin/sso/login?login_type=CorpApp&appid=wx-fixture&agentid=1000001&state=${nativeId}&redirect_uri=${encodeURIComponent(nativeCallback)}`
@@ -79,6 +228,12 @@ const service: IEnterpriseIdentityService = {
       expiresAt: Date.now() + 60000,
       ...(native ? { callbackUrl: nativeCallback } : {}),
     };
+    if (params.has("fast_poll") && !native) {
+      // 让 waiting 事件的轮询先于 beginLogin 的 continuation 完成。
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    document.documentElement.dataset.beginLoginReturned = "true";
+    return attempt;
   },
   pollLogin: async () => {
     emit({
@@ -96,7 +251,10 @@ const service: IEnterpriseIdentityService = {
     });
     return view;
   },
-  completeLogin: async () => service.pollLogin(nativeId),
+  completeLogin: async (attemptId) => ({
+    view: await service.pollLogin(attemptId),
+    committedAttemptId: params.has("stale_native") ? null : attemptId,
+  }),
   cancelLogin: async (attemptId) => {
     if (!attemptId) {
       restoreCancelled = true;
@@ -125,10 +283,14 @@ const service: IEnterpriseIdentityService = {
 const broadcast = {
   send: async () => {},
   onMessage: () => ({ dispose() {} }),
-} as IBroadcastService;
+} as unknown as IBroadcastService;
 let cancelNative: (() => void) | null = null;
 const platform = {
-  openExternal: () => {},
+  openExternal: () => {
+    document.documentElement.dataset.externalOpens = String(
+      Number(document.documentElement.dataset.externalOpens ?? 0) + 1,
+    );
+  },
   openEnterpriseLogin: async (request: unknown) => {
     enterpriseLoginRequestSchema.parse(request);
     document.documentElement.dataset.nativeOpened = "true";
@@ -159,6 +321,7 @@ createRoot(document.getElementById("root")!).render(
       <StoreProvider broadcastService={broadcast}>
         <EnterpriseIdentityProvider
           service={service}
+          providerSettingsService={providerSettingsService}
           showOnStartup={!readOnly}
           allowLogin={!readOnly}
         >

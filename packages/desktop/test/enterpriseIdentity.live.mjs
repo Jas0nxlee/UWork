@@ -71,8 +71,12 @@ async function run() {
       await identity.cancelLogin(attempt.id);
       console.log("CANCELLED: no login completed");
     } else {
-      const view = await identity.completeLogin(attempt.id, callback);
-      if (view.status !== "authenticated") throw new Error("Identity was not accepted");
+      const completion = await identity.completeLogin(attempt.id, callback);
+      if (
+        completion.view.status !== "authenticated" ||
+        completion.committedAttemptId !== attempt.id
+      )
+        throw new Error("Identity was not accepted");
       console.log(
         "VERIFIED: issuer code exchange and name validation succeeded; encrypted device session persisted",
       );

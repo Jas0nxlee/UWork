@@ -37,6 +37,7 @@ import type {
   ProviderRegistryServiceChangedEvent,
   ProviderRegistryServiceSnapshot,
 } from "./registry-service.js";
+import { UCAS_PROVIDER_ID } from "./ucas-defaults.js";
 
 export interface ProviderRegistryFacadeSource {
   getSnapshot(): ProviderRegistryServiceSnapshot | null;
@@ -46,6 +47,7 @@ export interface ProviderRegistryFacadeSource {
 }
 
 export interface ProviderSettingsMutationTarget {
+  setUcasApiKeyIfMissing(apiKey: string): Promise<unknown>;
   createPersonalProvider(input?: {
     readonly templateId?: ProviderTemplateId;
     readonly providerName?: string;
@@ -336,6 +338,12 @@ export class ProviderSettingsFacade {
         this.#modelMembership(providerId),
         metadata,
       ),
+    );
+  }
+
+  setUcasApiKeyIfMissing(apiKey: string): Promise<ProviderSettingsView> {
+    return this.#mutateProvider(UCAS_PROVIDER_ID, "set-ucas-api-key-if-missing", (target) =>
+      target.setUcasApiKeyIfMissing(apiKey),
     );
   }
 

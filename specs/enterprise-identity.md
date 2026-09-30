@@ -1,5 +1,39 @@
 # UWork 可选企业身份登录
 
+## 扫码成功后的 UCAS API Key 引导（2026-09-30）
+
+- 本窗口的企业微信扫码回调经 Host `completeLogin` 验证并提交后，返回严格校验的 `{ view, committedAttemptId }`。只有 `view.status=authenticated` 且 `committedAttemptId` 等于本窗口本次 attempt ID，才调用本机 Provider Settings 的 `refresh("ucas-login-prompt")` 重读默认 UCAS（固定 ID `ucas`）；仅当刷新后的个人配置中没有非空 API Key 时弹出输入对话框。不能只读本窗口缓存，否则其它 Host 刚写入的 Key 在轮询同步前会被误判为空。迟到或失效的 callback 即使返回其它窗口已认证的 view，也没有本次提交标记，不能触发引导。会话自动恢复、其它窗口的身份广播、只读手机 attachment、扫码取消及认证失败均不触发。
+- 对话框说明企业身份与 UCAS 密钥是两项独立配置，提供遮蔽的 API Key 输入、“保存”和“稍后设置”。空白输入不能提交；稍后设置不影响已完成的登录或本地工作区。刷新 Provider Settings 失败时不猜测密钥是否缺失，也不阻塞登录；用户仍可从模型设置配置 UCAS。
+- 密钥只写入默认 UCAS 的现有 Personal Provider 配置，不写入身份会话、日志或模板。弹窗调用 `IProviderSettingsService.setUcasApiKeyIfMissing`；ProviderConfigService 在 Personal Repository 的文件锁事务中重读当前 UCAS 记录，若已有非空密钥则不替换，若缺少则仅覆盖 `access.apiKey`，保留当时最新的其它个人配置、模型关联与 headers。失败保留对话框与输入以供重试，且不撤销企业登录。登录退出不清除已保存密钥。
+- 登录 UI 仅拥有本窗口对话框开关与未提交输入；IdentitySessionStore 继续唯一拥有认证事实，ProviderConfigService/Personal Provider Repository 继续唯一拥有 UCAS 配置。两者不互相复制状态或凭据。新的扫码尝试、退出或组件卸载使旧引导检查失效，迟到检查不能重新打开对话框。
+- 扫码 surface 的取消控制器只在 Host 返回带 callbackUrl 的 native attempt 后创建；外部浏览器轮询路径不持有该控制器。轮询认证事件即使快于 `beginLogin` 调用的继续执行，也不能被误判为 surface 取消而撤销已完成的身份；继续执行前复核当前认证状态，已完成时不再打开过期授权 URL。
+
+```mermaid
+sequenceDiagram
+    participant UI as 本窗口登录 UI
+    participant Identity as Host 身份 owner
+    participant Provider as 本机 Provider Settings
+    participant Repo as Personal Provider Repository
+    UI->>Identity: completeLogin(attemptId, callbackUrl)
+    Identity-->>UI: {authenticated view, committedAttemptId=本次 ID}
+    UI->>Provider: refresh(ucas-login-prompt) 重读默认 UCAS
+    alt 已有非空 Key
+        Provider-->>UI: 跳过引导
+    else 缺少 Key
+        UI->>UI: 显示输入对话框
+        UI->>Provider: setUcasApiKeyIfMissing(Key)
+        Provider->>Repo: 锁内重读、缺 Key 才覆盖 access.apiKey
+        Provider-->>UI: 新视图；关闭对话框
+    end
+```
+
+验收：真实扫码成功路径在无 Key 时显示对话框；保存后重新加载能从 UCAS 配置读取密钥，原有配置不丢失。已有 Key 不弹；稍后设置和保存失败不影响认证；恢复、跨窗口同步、取消、失败和只读 attachment 不弹。共享 UI 浏览器 E2E 用隔离 fixture 覆盖原生回调后的交互；实际扫码与已安装 Desktop 客户端另行验收。执行相关测试、`pnpm typecheck`、`pnpm lint` 和架构检查，区分 fixture 与真实扫码证据。
+
+### 本次验证记录
+
+- 2026-09-30：29 项定向服务及 surface 测试通过，覆盖本次 Host 提交回执、旧回调、跨窗口认证、UCAS 缺 Key 原子补录与其它 Host 的配置更新。隔离 browser-harness E2E 通过，覆盖无 Key 弹窗、保存/重载、稍后设置、已有 Key、刷新看到其它窗口新 Key、提交时并发写入、失败重试、窄屏布局和取消。
+- `pnpm typecheck`、架构检查及改动文件格式检查通过；`pnpm lint` 为 0 错误、57 条既有警告。当前 shell 是 Node 25.9.0，仓库 `mise.toml` 指定 24.14.0，本机未找到 `mise`。本轮未运行实际企业微信扫码或已安装 Desktop 客户端验证。
+
 ## 主窗口内嵌扫码改版
 
 ### 新版独立授权页布局修复（2026-09-29）

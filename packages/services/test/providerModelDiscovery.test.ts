@@ -550,6 +550,101 @@ test("UCAS connection is immutable while its API key can be saved", async () => 
   }
 });
 
+test("UCAS prompt only adds a missing key and preserves current personal settings", async () => {
+  const fixture = await runtimeFixture(async () => []);
+  try {
+    const original = requireProvider(await fixture.service.getView(), "ucas");
+    await fixture.service.savePersonalProviderOverlay("ucas", {
+      ...original.personalConfig,
+      access: { type: "api-key", apiKey: "" },
+      api: {
+        type: "openai-chat-completions",
+        baseUrl: "https://llm.ucas.com.cn:15000/v1",
+        headers: { "x-fixture": "keep" },
+      },
+    });
+
+    const saved = requireProvider(
+      await fixture.service.setUcasApiKeyIfMissing(" prompt-key "),
+      "ucas",
+    );
+    assert.equal(saved.personalConfig?.access?.apiKey, "prompt-key");
+    assert.equal(saved.personalConfig?.api?.headers?.["x-fixture"], "keep");
+    assert.deepEqual(
+      saved.personalConfig?.personalModelIds,
+      original.personalConfig?.personalModelIds,
+    );
+    assert.deepEqual(saved.personalConfig?.modelOrder, original.personalConfig?.modelOrder);
+    assert.equal(saved.models.length, 6);
+
+    const repeated = requireProvider(
+      await fixture.service.setUcasApiKeyIfMissing("replacement-key"),
+      "ucas",
+    );
+    assert.equal(repeated.personalConfig?.access?.apiKey, "prompt-key");
+    assert.equal(repeated.personalConfig?.api?.headers?.["x-fixture"], "keep");
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("UCAS prompt uses locked current state after another Host updates the provider", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { fileURLToPath } = await import("node:url");
+  const { createProviderRuntime } = await import("../src/model-provider/providerRuntime.js");
+  const dir = await mkdtemp(join(tmpdir(), "ucas-key-race-"));
+  const options = {
+    zcodeBuiltinFilePath: fileURLToPath(
+      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+    ),
+    personalFilePath: join(dir, "personal.json"),
+    personalPollingIntervalMs: false as const,
+    watch: false,
+  };
+  const first = createProviderRuntime(options);
+  const second = createProviderRuntime(options);
+  try {
+    await Promise.all([first.start(), second.start()]);
+    const staleUiView = await first.providerSettings.getView();
+    assert.equal(requireProvider(staleUiView, "ucas").personalConfig?.access?.apiKey ?? "", "");
+
+    const otherHostView = await second.providerSettings.getView();
+    await second.providerSettings.savePersonalProviderOverlay("ucas", {
+      ...requireProvider(otherHostView, "ucas").personalConfig,
+      access: { type: "api-key", apiKey: "other-window-key" },
+      api: {
+        type: "openai-chat-completions",
+        baseUrl: "https://llm.ucas.com.cn:15000/v1",
+        headers: { "x-other-window": "keep" },
+      },
+    });
+    assert.equal(
+      requireProvider(await first.providerSettings.getView(), "ucas").personalConfig?.access
+        ?.apiKey ?? "",
+      "",
+    );
+    const refreshed = requireProvider(
+      await first.providerSettings.refresh("ucas-login-prompt"),
+      "ucas",
+    );
+    assert.equal(refreshed.personalConfig?.access?.apiKey, "other-window-key");
+
+    const result = requireProvider(
+      await first.providerSettings.setUcasApiKeyIfMissing("stale-dialog-key"),
+      "ucas",
+    );
+    assert.equal(result.personalConfig?.access?.apiKey, "other-window-key");
+    assert.equal(result.personalConfig?.api?.headers?.["x-other-window"], "keep");
+    assert.equal(result.models.length, 6);
+  } finally {
+    first.dispose();
+    second.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent Host startup seeds UCAS once and preserves its saved key on restart", async () => {
   const { mkdtemp, rm } = await import("node:fs/promises");
   const { join } = await import("node:path");

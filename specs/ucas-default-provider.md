@@ -7,6 +7,7 @@
 - 默认模型来自图片所示目录：`ucas-deepseek-flash`、`ucas-gpt-max`、`ucas-gpt-mini`、`ucas-kimi`、`ucas-glm`、`ucas-gemini-flash`。
 - 默认模型及此后由 UCAS 自动发现的新模型均使用 1,000,000 上下文，启用文本和图片输入，推理等级为 low/high/max。重新获取不能覆盖已经存在的模型配置。
 - “添加供应商”初始显示为灰色但仍响应点击。用户在同一次模型设置挂载期间连续点击此按钮 20 次后解锁；期间发生其他点击则清零。解锁是界面交互，不作为 Host/API 的安全授权边界。
+- 本窗口企业微信扫码认证成功后，若默认 UCAS 尚无非空 API Key，按 [企业身份规范](enterprise-identity.md#扫码成功后的-ucas-api-key-引导2026-09-30)显示一次可跳过的输入对话框。身份认证不产生或代替 UCAS Key；已有密钥和会话恢复不重复提示。
 
 ## 状态所有者与接口
 
@@ -14,6 +15,7 @@
 - UCAS API 地址和格式由随包模板提供，并在 ProviderConfigService 保存边界校验，Renderer 隐藏编辑不构成唯一约束。每次启动播种都会将绑定 UCAS 默认模板的连接地址纠正为模板当前地址，保留 API Key、模型配置、顺序和 headers；其他个人供应商不受影响。
 - ModelProviderSection 唯一拥有添加按钮的点击序列；组件卸载重置序列，其他区域点击重置计数。
 - 自动发现继续使用现有 Provider Settings facade 和 Host 请求；结果在 revision 校验后与模型元数据一起原子保存。API Key 仅在保存的个人配置中，不写入模板或日志。
+- 登录后引导使用 `IProviderSettingsService.setUcasApiKeyIfMissing`，由 ProviderConfigService 在个人仓库事务内检查现有密钥并仅更新 `access.apiKey`。其它窗口已保存密钥时不覆盖，headers、模型成员与顺序均以事务内最新记录为准；常规模型设置编辑仍走原有保存接口。
 
 ```mermaid
 sequenceDiagram

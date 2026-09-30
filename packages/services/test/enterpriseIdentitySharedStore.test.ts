@@ -135,6 +135,63 @@ test("two Host services synchronize login/logout without token/profile broadcast
   assert.doesNotMatch(JSON.stringify(messages), /fixture-session|Fixture|displayName/);
   assert.equal((await a.getView()).profile, null);
 });
+test("stale native callback returns peer-authenticated view without a local commit marker", async () => {
+  const stores = setup();
+  const channelA = new Emitter<BroadcastMessage>();
+  const nativeId = "fixture-native-state";
+  const callback = "https://auth.example.com/callback";
+  let nativeExchanges = 0;
+  const a = createEnterpriseIdentityService({
+    credentials: stores.credentials,
+    sessionStore: stores.a,
+    now: () => 1000,
+    adapter: {
+      start: async () => ({
+        id: nativeId,
+        callbackUrl: callback,
+        authorizationUrl: `https://login.work.weixin.qq.com/wwlogin/sso/login?state=${nativeId}`,
+        expiresAt: 1500,
+      }),
+      complete: async () => {
+        nativeExchanges++;
+        return session;
+      },
+      restore: async () => session,
+    },
+    broadcast: {
+      onMessage: channelA.event,
+      send: async () => {},
+    },
+  });
+  const b = createEnterpriseIdentityService({
+    credentials: stores.credentials,
+    sessionStore: stores.b,
+    now: () => 1000,
+    adapter: {
+      start: async () => ({
+        id: "peer-poll",
+        authorizationUrl: "https://example.com/login",
+        expiresAt: 1500,
+      }),
+      poll: async () => ({ status: "authenticated", session }),
+      restore: async () => session,
+    },
+    broadcast: {
+      onMessage: () => ({ dispose() {} }),
+      send: async (message) => channelA.fire(message),
+    },
+  });
+
+  await a.beginLogin();
+  const peerAuthenticated = waitForStatus(a, "authenticated");
+  await b.beginLogin();
+  await b.pollLogin("peer-poll");
+  await peerAuthenticated;
+  const stale = await a.completeLogin(nativeId, `${callback}?code=old-code&state=${nativeId}`);
+  assert.equal(stale.view.status, "authenticated");
+  assert.equal(stale.committedAttemptId, null);
+  assert.equal(nativeExchanges, 0);
+});
 test("a global logout invalidates a native login started in another Host even without its broadcast", async () => {
   const stores = setup();
   const callback = "https://auth.example.com/callback";

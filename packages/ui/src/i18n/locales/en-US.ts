@@ -13,6 +13,13 @@ const enUS: Record<string, string> = {
   "enterpriseIdentity.signedOut": "Signed out · Sign in",
   "enterpriseIdentity.source": "Signed in with WeCom",
   "enterpriseIdentity.logout": "Sign out",
+  "enterpriseIdentity.ucasKey.title": "Set up your UCAS API key",
+  "enterpriseIdentity.ucasKey.description":
+    "WeCom sign-in is complete. UCAS models need a separate API key. You can also add it later in Model Settings.",
+  "enterpriseIdentity.ucasKey.label": "UCAS API key",
+  "enterpriseIdentity.ucasKey.save": "Save",
+  "enterpriseIdentity.ucasKey.later": "Set up later",
+  "enterpriseIdentity.ucasKey.failure": "Could not save the key. Please try again.",
 
   "startPlan.recommendation.subagentDescription":
     "Your Start Plan has quota available for {model}. Switch this subagent’s model to the Start Plan?",

@@ -162,6 +162,7 @@ function createSettingsMutationTarget(
 ): ProviderSettingsMutationTarget {
   const configService = configRuntime.configService;
   return {
+    setUcasApiKeyIfMissing: (apiKey) => configService.setUcasApiKeyIfMissing(apiKey),
     createPersonalProvider: (input) => configService.createPersonalProvider(input),
     savePersonalProviderOverlay: (providerId, config, membership, metadata) =>
       configService.savePersonalProviderOverlay(providerId, config, membership, metadata),
