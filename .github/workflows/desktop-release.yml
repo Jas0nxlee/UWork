@@ -110,7 +110,7 @@ jobs:
           retention-days: 14
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/uwork')
     needs: [checks, build]
     runs-on: ubuntu-24.04
     permissions:
@@ -142,11 +142,16 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$tag" ]]; then
             echo 'Tag does not match package version'; exit 1
           fi
+          if [[ "$GITHUB_REF" != refs/tags/* && "$GITHUB_REF" != refs/heads/uwork ]]; then
+            echo 'Manual publish requires the uwork branch'; exit 1
+          fi
+          # Tag 必须预先存在且指向本次已检查的提交；禁止 release create 隐式创建 tag。
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')" = "$GITHUB_SHA"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' > existing-release.txt 2>/dev/null; then
             if [ "$(cat existing-release.txt)" != true ]; then echo 'Release is already public; refusing to overwrite'; exit 1; fi
             test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')" = "$GITHUB_SHA"
           else
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "UWork $version" --notes-file release-assets/release-notes.md
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "UWork $version" --notes-file release-assets/release-notes.md
           fi
           gh release upload "$tag" release-assets/UWork-* release-assets/uwork-*.json release-assets/SHA256SUMS release-assets/dependency-audit.json --repo "$GITHUB_REPOSITORY" --clobber
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest

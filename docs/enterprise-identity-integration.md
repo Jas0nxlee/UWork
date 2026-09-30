@@ -61,6 +61,16 @@ IdentitySessionStore 用跨 Host 文件锁和全局 revision 持久化设备共�
 
 配置修改后重启 App。apiBaseUrl 必须为 HTTPS 根地址，callbackUrl 必须同源且无 query/hash。普通 Web 没有原生视图能力，本轮不自动启用此适配器；手机远控继续只读。
 
+### Windows 安装后的本机配置
+
+企业身份配置按设备保存，不随安装包或 Mac 登录状态同步。Windows 上若登录按钮呈灰色且显示“企业微信登录暂未配置”，表示当前 Local Host 未找到本机配置；这不是按钮的点击命中问题。
+
+1. 完全退出 UWork（包括系统托盘中的进程）。
+2. 将已确认有效、仅含 `corpId`、`agentId`、`orgId`、`apiBaseUrl`、`callbackUrl` 的 `enterprise-identity.json` 复制到 `%USERPROFILE%\.zcode\v2\enterprise-identity.json`。若设置了自定义 `dataBaseDir`，目标改为该目录下的 `.zcode\v2\enterprise-identity.json`。保留 UTF-8 JSON 文件名，避免资源管理器隐藏扩展名后变成 `.json.txt`。已有目标文件先备份。
+3. 重新启动 UWork；确认“暂未配置”提示消失且企业微信登录按钮可点击，再检查二维码与回调。若按钮仍灰色，核对实际数据目录、文件名与 JSON 结构。网络不可达或授权失败属于后续链路，不能用按钮恢复可点击代替真实登录验证。
+
+不要复制 `credentials.json`：设备会话凭据按本机加密保存，企业身份配置文件也不得加入 Git、安装包或公开下载链接。
+
 ## 内嵌扫码展示
 
 登录页通过平台接口发送已挂载二维码槽位的 bounds、主题颜色、字体和语言，Main 挂载独立 WebContentsView，不创建第二个窗口。内嵌地址完整沿用已验证成功的新版 Web 登录 URL，不能为展示改造转换到旧版 qrConnect；旧版入口在当前配置下已实测出现回调域不匹配。固定 CSS 只移除装饰性标题与外卡片，保持二维码对比度和授权状态；远端页没有应用 preload 或 Node 权限。授权文档切换后重新应用 UI zoom/CSS，窗口尺寸和主题更新不会重载二维码。规范与事件顺序见 [spec](../specs/enterprise-identity.md)。
