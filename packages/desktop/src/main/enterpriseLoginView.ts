@@ -60,6 +60,10 @@ export function openEnterpriseLoginView(
   let surface: EnterpriseLoginSurface | null = request.surface;
   let styleTask: Promise<void> = Promise.resolve();
   let loaded = false;
+  // 授权页原始布局先于固定样式出现：直接显示会先露出一屏未适配的网页再跳到二维码。
+  // 首次显示必须等该文档的样式写入完成，之后不再隐藏，避免重载/刷新二维码时二次闪烁。
+  let revealed = false;
+  let revealTimer: ReturnType<typeof setTimeout> | null = null;
   let scheduledCss: string | null = null;
   let documentGeneration = 0;
   let resolve!: (value: string | null) => void;
@@ -72,6 +76,8 @@ export function openEnterpriseLoginView(
     if (settled) return;
     settled = true;
     clearTimeout(timer);
+    if (revealTimer) clearTimeout(revealTimer);
+    clearTimeout(revealDeadline);
     parent.removeListener("closed", cancel);
     parent.removeListener("resize", place);
     owner.removeListener("destroyed", cancel);
@@ -99,7 +105,21 @@ export function openEnterpriseLoginView(
     ]);
     view.setBounds(bounds);
     guest.setZoomFactor(zoom);
-    view.setVisible(bounds.width > 0 && bounds.height > 0);
+    view.setVisible(revealed && bounds.width > 0 && bounds.height > 0);
+  };
+  const reveal = () => {
+    if (settled || revealed) return;
+    revealed = true;
+    place();
+    style(true);
+  };
+  const scheduleReveal = () => {
+    if (settled || revealed || revealTimer) return;
+    // 样式写入完成后再等一帧：二维码图片仍需绘制，过早显示会看到半成品布局。
+    revealTimer = setTimeout(() => {
+      revealTimer = null;
+      reveal();
+    }, 200);
   };
   const style = (force = false) => {
     if (!loaded || !surface || settled) return;
@@ -146,6 +166,8 @@ export function openEnterpriseLoginView(
     if (isMainFrame) cancel();
   };
   const timer = setTimeout(cancel, remaining);
+  // 样式通道异常（帧销毁、脚本注入失败）时不能让二维码一直不可见：到期直接显示。
+  const revealDeadline = setTimeout(reveal, 4000);
   views.set(owner.id, { id: request.id, view, result, update, cancel });
   parent.contentView.addChildView(view);
   parent.once("closed", cancel);
@@ -197,6 +219,14 @@ export function openEnterpriseLoginView(
     // Electron 导航提交会恢复新 origin 的 zoom；每个授权文档加载后重新同步 UI 缩放。
     place();
     style(true);
+    // 首次显示与本文档的固定样式绑定：样式写入完成后再显示，避免露出未适配的页面。
+    if (!revealed) {
+      const pending = styleTask;
+      void pending.then(
+        () => scheduleReveal(),
+        () => undefined,
+      );
+    }
   });
   guest.on("did-frame-finish-load", () => {
     // 包括异步挂载和重载的授权子 frame；只对官方白名单 frame 做固定样式写入。

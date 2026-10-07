@@ -12,25 +12,27 @@ This fork is maintained independently and is not an official upstream distributi
 
 ## Features
 
-| Feature                | Description                                                                                                                                                                                                        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Default UCAS provider  | Six initial models with a fixed name, endpoint, and Chat Completions format. Edit the API key, model parameters, and enabled states, or fetch more models.                                                         |
-| Custom model providers | Unlock the add-provider entry to configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                |
-| Model discovery        | Fetch model IDs and add new entries in a batch. Existing parameters, enabled states, and ordering are preserved.                                                                                                   |
-| Model configuration    | Edit context windows, output limits, input types, and reasoning options. The missing revision that prevented saving imported model settings has been fixed.                                                        |
-| Assistant / Developer  | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Assistant emphasizes summaries and results; Developer shows more code, commands, and change details. |
-| WeCom identity         | Scan inside the desktop login card or skip login. Verified users see their name below UWork. Windows on the same device share one enterprise account; workspaces and unsent drafts remain window-local.            |
-| Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                               |
-| Updated interface      | UWork SVG wordmark, U app icon, fading UCAS background, light and dark themes, and a top-right Help menu containing only Resource Manager.                                                                         |
+| Feature                | Description                                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default UCAS provider  | Six initial models with a fixed name, endpoint, and Chat Completions format. Edit the API key, model parameters, and enabled states, or fetch more models.                                                                        |
+| Custom model providers | Unlock the add-provider entry to configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                               |
+| Model discovery        | Fetch model IDs and add new entries in a batch. Existing parameters, enabled states, and ordering are preserved.                                                                                                                  |
+| Model configuration    | Edit context windows, output limits, input types, and reasoning options. The missing revision that prevented saving imported model settings has been fixed.                                                                       |
+| Assistant / Developer  | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Assistant emphasizes summaries and results; Developer shows more code, commands, and change details.                |
+| WeCom identity         | Scan inside the desktop login card or skip login. Verified users see their name, department, and position below UWork. Windows on the same device share one enterprise account; workspaces and unsent drafts remain window-local. |
+| Enterprise gateway     | Reuses the enterprise backend (ucas-proxy): after sign-in it writes the UCAS gateway endpoint and API key, appends models allowed by the plan, and shows plan quota and request / cost / token usage under Usage stats.           |
+| Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                                              |
+| Updated interface      | UWork SVG wordmark, U app icon, fading UCAS background, light and dark themes, and a top-right Help menu containing only Resource Manager.                                                                                        |
 
 Interface modes do not change tool permissions or model-service access. Official automatic updates are disabled; update this customized version by rebuilding and installing it.
 
 ## Connect a model service
 
 1. Start the desktop app. If you do not need enterprise identity, choose **Skip login and continue**.
-2. Open **Settings → Model Settings**, select the default `ucas` provider, and enter your API key. Its name, Base URL, and API format are fixed, and it cannot be deleted. Upgrades apply the bundled connection configuration while preserving your key and existing model parameters.
+2. When signing in with WeCom, the client calls the enterprise backend to write the gateway endpoint and API key for the default `ucas` provider and to append the models allowed by your plan. Without an enterprise backend, or when automatic provisioning fails, open **Settings → Model Settings** and enter the API key manually. The provider's name, Base URL, and API format are fixed, and it cannot be deleted. Upgrades apply the bundled connection configuration while preserving your key and existing model parameters.
 3. Use **Fetch models**, or enter a model ID manually with **Add Model**.
 4. Configure parameters according to the provider's actual capabilities, then select the provider and model in chat. The six initial UCAS models and newly discovered models default to a 1M context window, text / image input, and `low` / `high` / `max` reasoning levels. These are client configuration defaults; actual capabilities depend on the service.
+5. Enterprise accounts can open **Settings → Usage stats → Enterprise gateway** to review the account, gateway endpoint, plan quota, and usage, and to sync or replace the key explicitly.
 
 ### Use another model provider
 
@@ -58,9 +60,13 @@ Set the complete API prefix required by your custom provider, such as `https://a
 
 Unauthenticated desktop users can scan inside the login card or skip login and continue. Skipping applies only to the current window; login remains available after restarting. Use the entry below the UWork wordmark to reopen login, or click your verified name to view its source and sign out.
 
-This identity provides a local name label. It does not add account-based data isolation, cloud sync, or extra permissions. Enterprise login does not supply a model API key. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
+This identity provides a local name label. It does not add account-based data isolation, cloud sync, or extra permissions. Gateway provisioning is driven by the same sign-in: the service address comes from `apiBaseUrl` in the WeCom configuration, and after sign-in the client writes the UCAS gateway endpoint, reuses or creates an enterprise API key, appends models allowed by the plan, and reads plan and usage data. An existing local API key is never overwritten automatically; use the Enterprise gateway panel to replace it explicitly. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
 
-Official GitHub installers include the default public WeCom login parameters. Windows, macOS, and Linux users can scan after installation without copying a configuration file. After a verified scan, a skippable dialog asks for a UCAS API key if the default provider has none. The client includes no WeCom Secret, user Token, or UCAS API key. Administrators can override the defaults with a local configuration; see [WeCom integration](docs/enterprise-identity-integration.md) for its location and interface requirements. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
+Official GitHub installers include the default public WeCom login parameters. Windows, macOS, and Linux users can scan after installation without copying a configuration file. A verified scan also provisions the gateway configuration automatically; the skippable UCAS API key dialog appears only when the enterprise backend returns no usable key. The client includes no WeCom Secret, user Token, or UCAS API key. Administrators can override the defaults with a local configuration; see [WeCom integration](docs/enterprise-identity-integration.md) for its location, interface requirements, and provisioning rules. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
+
+## Data directory
+
+UWork keeps its own user data root at `~/.uwork` (config in `~/.uwork/v2`), fully separate from upstream ZCode's `~/.zcode`. A fresh install starts with an empty profile and nothing is migrated. Override the root with `UWORK_DATA_BASE_DIR`; `ZCODE_DATA_BASE_DIR` is accepted only as a legacy alias. See [separate data root](specs/uwork-data-root-separation.md).
 
 ## Run from source
 
@@ -72,7 +78,7 @@ Install Git, Node.js **24.14.0**, and pnpm **10.33.2**. [mise.toml](mise.toml) d
 git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
 cd UWork
 pnpm bootstrap
-ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
+UWORK_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
 ```
 
 `bootstrap` installs dependencies, prepares local runtime assets, and builds the relevant packages. It skips remote assets by default. Agent source is included in `apps/zcode-cli/`.
@@ -82,7 +88,7 @@ The development command above uses test configuration, a separate data directory
 To use production service configuration, keep specifying a separate data directory:
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
+UWORK_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 ```
 
 | Entry point                             | Command                        |
@@ -169,9 +175,10 @@ pnpm fmt:check
 pnpm architecture:check --changed
 pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
 pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
+pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
 ```
 
-Test entry points and environment dependencies are defined by each package's `package.json` and test files. The Node tests above use local test data to check model discovery, UCAS configuration, and identity lifecycle; they do not establish real inference or WeCom authentication.
+Test entry points and environment dependencies are defined by each package's `package.json` and test files. The Node tests above use local test data to check model discovery, UCAS configuration, enterprise gateway provisioning, and identity lifecycle; they do not establish real inference or WeCom authentication.
 
 The [enterprise identity Electron E2E script](packages/desktop/test/enterpriseIdentity.e2e.mjs) targets an isolated source instance without authentication-service configuration. It covers startup, skipping, reopening, Esc, mode switching, and reload. Launch that instance separately and set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The [shared UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs) uses a test adapter and requires browser-harness. Real scanning and server-side session refresh need separate validation.
 
@@ -191,6 +198,7 @@ The [enterprise identity Electron E2E script](packages/desktop/test/enterpriseId
 - [Model discovery and parameter editing](specs/provider-model-discovery.md)
 - [Default UCAS provider and add-provider rules](specs/ucas-default-provider.md)
 - [Optional enterprise identity and cross-window sync](specs/enterprise-identity.md) · [Authentication-service integration](docs/enterprise-identity-integration.md)
+- [Enterprise gateway provisioning, plans, and usage](specs/enterprise-gateway-provisioning.md)
 - [UWork branding, mode switching, and interface rules](specs/uwork-branding.md)
 - [UI design system](DESIGN.md) · [Development conventions](AGENTS.md)
 

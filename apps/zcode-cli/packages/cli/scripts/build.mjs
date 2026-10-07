@@ -196,6 +196,12 @@ export const resolveBuildAliases = ({
     rootDirectory,
     "../../packages/shared/src/zcodeEndpoint.ts",
   ),
+  // 企业网关端点规范化被 provider 直接复用；漏声明会被通用 "@zcode/shared"
+  // 前缀改写成 `src/index.ts/ucas-gateway`，Desktop agent/SEA 打包失败（同上）。
+  "@zcode/shared/ucas-gateway": resolve(
+    rootDirectory,
+    "../../packages/shared/src/ucas-gateway.ts",
+  ),
   "@zcode/shared/node": resolve(rootDirectory, "../../packages/shared/src/node.ts"),
   "@zcode/shared": resolve(rootDirectory, "../../packages/shared/src/index.ts"),
   "@zcode/core": resolve(cliDirectory, "../core/dist/index.js"),

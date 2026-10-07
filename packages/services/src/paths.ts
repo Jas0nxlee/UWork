@@ -4,11 +4,19 @@ import { cp } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, join, win32 } from "node:path";
 import { homedir } from "node:os";
-import { DATA_BASE_DIR_FORBIDDEN_WINDOWS_INSTALL_DIR_ERROR_CODE } from "@zcode/shared";
+import {
+  DATA_BASE_DIR_FORBIDDEN_WINDOWS_INSTALL_DIR_ERROR_CODE,
+  LEGACY_DATA_BASE_DIR_ENV,
+  UWORK_DATA_BASE_DIR_ENV,
+  UWORK_DATA_ROOT_DIR_NAME,
+} from "@zcode/shared";
 
 let _dataBaseDir: string | null = null;
 export const ZCODE_WINDOWS_APP_INSTALL_DIR_ENV = "ZCODE_WINDOWS_APP_INSTALL_DIR";
-const envDataBaseDir = process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
+const envDataBaseDir =
+  process.env[UWORK_DATA_BASE_DIR_ENV]?.trim() ||
+  process.env[LEGACY_DATA_BASE_DIR_ENV]?.trim() ||
+  null;
 const defaultDataBaseDir = process.env.HOME?.trim() || homedir();
 
 interface DataBaseDirTargetValidationOptions {
@@ -30,7 +38,7 @@ export function setDataBaseDir(dir: string | null): void {
   _dataBaseDir = dir?.trim() || null;
 }
 
-/** Get the current base directory. Priority: setDataBaseDir() > env ZCODE_DATA_BASE_DIR > homedir(). */
+/** Get the current base directory. Priority: setDataBaseDir() > env UWORK_DATA_BASE_DIR > env ZCODE_DATA_BASE_DIR（兼容） > homedir(). */
 export function getDataBaseDir(): string {
   if (_dataBaseDir) return _dataBaseDir;
   if (envDataBaseDir) return envDataBaseDir;
@@ -39,19 +47,22 @@ export function getDataBaseDir(): string {
   return defaultDataBaseDir;
 }
 
-/** {dataBaseDir}/.zcode */
-export function getZCodeDataRootDir(): string {
-  return join(getDataBaseDir(), ".zcode");
+/** {dataBaseDir}/.uwork —— UWork 自己的用户级数据根，与上游 ZCode 的 ~/.zcode 分离。 */
+export function getUWorkDataRootDir(): string {
+  return join(getDataBaseDir(), UWORK_DATA_ROOT_DIR_NAME);
 }
+
+/** 兼容既有调用名；返回的是 UWork 数据根（不再是 .zcode）。 */
+export const getZCodeDataRootDir = getUWorkDataRootDir;
 
 /** 非项目对话共享的真实工作目录；默认 ~/.zcode/workspace/default。 */
 export function getConversationWorkspaceDir(): string {
   return join(getZCodeDataRootDir(), "workspace", "default");
 }
 
-/** {dataBaseDir}/.zcode/v2 */
+/** {dataBaseDir}/.uwork/v2 */
 export function getAppConfigDir(): string {
-  return join(getZCodeDataRootDir(), "v2");
+  return join(getUWorkDataRootDir(), "v2");
 }
 
 function readEnvValue(env: Record<string, string | undefined>, key: string): string | undefined {
@@ -224,13 +235,13 @@ export function getLegacyDeletedTaskSessionSnapshotPath(
 }
 
 /**
- * Copy the .zcode/v2 data directory from one base dir to another.
+ * Copy the .uwork/v2 data directory from one base dir to another.
  * Excludes setting.json and its transient atomic-write siblings — bootstrap
  * state must only live at the default homedir location.
  */
 export async function copyDataDirectory(oldBaseDir: string, newBaseDir: string): Promise<void> {
-  const oldDir = join(oldBaseDir, ".zcode", "v2");
-  const newDir = join(newBaseDir, ".zcode", "v2");
+  const oldDir = join(oldBaseDir, UWORK_DATA_ROOT_DIR_NAME, "v2");
+  const newDir = join(newBaseDir, UWORK_DATA_ROOT_DIR_NAME, "v2");
   await cp(oldDir, newDir, {
     recursive: true,
     force: false,

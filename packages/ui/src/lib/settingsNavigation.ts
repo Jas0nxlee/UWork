@@ -21,7 +21,7 @@ export type SettingsSectionId =
   | "automations"
   | "shortcuts";
 
-type SettingsUsageTabTarget = "app" | "codingPlan";
+type SettingsUsageTabTarget = "app" | "codingPlan" | "enterprise";
 type SettingsPluginTabTarget = "plugins" | "mcps" | "skills" | "commands";
 type SettingsPluginNavigationOrigin = "plugin-store";
 
@@ -188,6 +188,11 @@ export function setPendingSettingsUsageCodingPlanIntent(): void {
   // 剩余额度详情入口需要直达 Coding Plan 使用统计；
   // 头像菜单入口则只打开 Usage 分区，避免覆盖用户上次查看的统计 tab。
   setPendingSettingsSectionIntent("usage", { usageTab: "codingPlan" });
+}
+
+export function setPendingSettingsUsageEnterpriseIntent(): void {
+  // 企业网关入口直达套餐与用量面板；仍属于 Usage 分区，不新增设置分区。
+  setPendingSettingsSectionIntent("usage", { usageTab: "enterprise" });
 }
 
 export function setPendingSettingsPluginIntent(
@@ -384,7 +389,7 @@ export function consumePendingSettingsUsageTab(): SettingsUsageTabTarget | undef
     if (raw !== null) {
       window.sessionStorage.removeItem(SETTINGS_USAGE_TAB_INTENT_KEY);
     }
-    return raw === "app" || raw === "codingPlan" ? raw : undefined;
+    return raw === "app" || raw === "codingPlan" || raw === "enterprise" ? raw : undefined;
   } catch {
     // 忽略浏览器存储异常，不影响主流程。
     return undefined;

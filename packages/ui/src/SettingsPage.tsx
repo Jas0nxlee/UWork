@@ -91,7 +91,7 @@ import { WorkspaceSidebarFooter } from "@/WorkspaceSidebarFooter.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { cn } from "@/components/lib/utils.js";
 import { useSelectDirectory } from "@/hooks/usePlatform.js";
-import { ServiceProvider, useServices } from "@/hooks/useServices.js";
+import { ServiceProvider, useServices, useOptionalServices } from "@/hooks/useServices.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import type { CreateTaskRequest } from "@/app-shell/types.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
@@ -144,6 +144,10 @@ function SettingsUsageProviderTabs({
 }) {
   const { intl } = useZCodeIntl();
   const tabItems = [
+    {
+      id: "enterprise" as const,
+      label: intl.formatMessage({ id: "settings.usage.tab.enterpriseGateway" }),
+    },
     {
       id: "app" as const,
       label: intl.formatMessage({ id: "settings.usage.tab.appUsage" }),
@@ -443,9 +447,15 @@ export function SettingsPage({
       usageZaiEnterpriseProducts.snapshot?.productList,
     ],
   );
+  // 早于 `services` 声明读取一次：首屏默认 tab 需要在 useState 初始化时决定。
+  const usageGatewayAvailable = Boolean(useOptionalServices()?.ucasGatewayService);
   const [usageActiveTab, setUsageActiveTab] = useState<UsageStatsSectionTab>(() => {
     const pendingTab = consumePendingSettingsUsageTab();
-    return pendingTab === "codingPlan" ? "codingPlan" : (pendingTab ?? "app");
+    if (pendingTab === "codingPlan") return "codingPlan";
+    if (pendingTab) return pendingTab;
+    // UWork 的套餐与用量以企业网关为唯一真实来源；本地应用用量与退役的
+    // Coding Plan 入口都不该占据「使用统计」的首屏。
+    return usageGatewayAvailable ? "enterprise" : "app";
   });
   const usagePersonalCodingPlanSources = useMemo(() => {
     const sources: CodingPlanUsageSource[] = [];
@@ -573,6 +583,9 @@ export function SettingsPage({
   useEffect(() => {
     if (
       usageActiveTab === "app" ||
+      // 企业网关不是 coding-plan 来源：缺这条早退时本 effect 会把它当成失效来源，
+      // 重写为第一个 coding-plan 来源或回退 app，表现为「点企业网关跳到应用用量」。
+      usageActiveTab === "enterprise" ||
       usageActiveTab === "codingPlan" ||
       selectedUsageCodingPlanSource
     ) {
@@ -696,7 +709,10 @@ export function SettingsPage({
   useEffect(() => {
     if (
       !shouldFallbackSettingsUsageTabToApp({
-        activeTab: usageActiveTab === "app" ? "app" : "codingPlan",
+        activeTab:
+          usageActiveTab === "app" || usageActiveTab === "enterprise"
+            ? usageActiveTab
+            : "codingPlan",
         checkingCodingPlanTab: checkingUsageCodingPlanTab,
         loadingModelProviders: usageProviderSettingsLoading,
         showCodingPlanTab: showUsageCodingPlanTab,

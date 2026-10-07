@@ -11,6 +11,7 @@ import {
   appSettingsSchema,
   formatLogPrefix,
   formatZodError,
+  UWORK_DATA_ROOT_DIR_NAME,
 } from "@zcode/shared";
 import type { ISettingService } from "./setting.js";
 import { normalizeSettingsPatch } from "#src/setting/normalizeSettingsPatch.js";
@@ -53,7 +54,8 @@ function resolveUserHomeDir() {
 }
 
 function getSettingsDir() {
-  return join(resolveUserHomeDir(), ".zcode", "v2");
+  // 设置启动目录必须与 UWork 数据根同名，否则 UWork 会继续读写 ZCode 的 setting.json。
+  return join(resolveUserHomeDir(), UWORK_DATA_ROOT_DIR_NAME, "v2");
 }
 
 function getSettingsFile() {

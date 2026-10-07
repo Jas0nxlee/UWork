@@ -4,11 +4,14 @@ export {
   IEnterpriseIdentityService,
   type EnterpriseIdentityAdapter,
 } from "./enterprise-identity/contract.js";
+export { IUcasGatewayService } from "./ucas-gateway/contract.js";
 export { ServiceCollection } from "./collection.js";
 export {
   IModelSelectionService,
   IProviderSettingsService,
   type ProviderModelDiscoveryResult,
+  type UcasGatewayProvisioningInput,
+  type UcasGatewayProvisioningResult,
   type ModelSelectionView,
   type ModelSelectionViewInput,
   type ProviderSettingsProviderView,

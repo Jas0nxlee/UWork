@@ -18,6 +18,7 @@ import {
   IFileWatcherService,
   IOAuthService,
   IEnterpriseIdentityService,
+  IUcasGatewayService,
   IModelSelectionService,
   IProviderSettingsService,
   IProviderProvisioningTargetService,
@@ -70,6 +71,8 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly fileWatcherService: IFileWatcherService;
   readonly oauthService: IOAuthService;
   readonly enterpriseIdentityService: IEnterpriseIdentityService;
+  /** 企业网关自动配置与套餐/用量；Host 未注册时不提供。 */
+  readonly ucasGatewayService?: IUcasGatewayService;
   readonly providerSettingsService: IProviderSettingsService;
   readonly modelSelectionService: IModelSelectionService;
   /** Host-only target proxy；不属于 IServiceAccessor，避免向 Renderer 暴露 Secret 写入接口。 */
@@ -96,6 +99,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
   constructor(channelClient: IChannelClient) {
     this.enterpriseIdentityService = ProxyChannel.toService<IEnterpriseIdentityService>(
       channelClient.getChannel(IEnterpriseIdentityService.channelName),
+    );
+    this.ucasGatewayService = ProxyChannel.toService<IUcasGatewayService>(
+      channelClient.getChannel(IUcasGatewayService.channelName),
     );
     this.fileService = ProxyChannel.toService<IFileService>(
       channelClient.getChannel(IFileService.channelName),

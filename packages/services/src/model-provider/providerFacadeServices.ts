@@ -1,6 +1,7 @@
 import type { Event } from "@zcode/rpc";
 import { ServiceChannels } from "@zcode/shared";
 import {
+  UCAS_PROVIDER_ID,
   type ModelConfigObject,
   type ModelId,
   type ModelSelection,
@@ -35,6 +36,22 @@ export interface ProviderModelDiscoveryResult {
 }
 export type ProviderModelDiscoverer = (config: ProviderConfigObject) => Promise<readonly string[]>;
 
+/** 企业网关写入 Provider 的入参/结果；模型只追加，Key 只补缺或显式替换。 */
+export interface UcasGatewayProvisioningInput {
+  readonly baseUrl: string;
+  readonly apiKey?: string;
+  readonly replaceApiKey?: boolean;
+  readonly modelIds?: readonly string[];
+}
+
+export interface UcasGatewayProvisioningResult {
+  readonly view: ProviderSettingsView;
+  readonly apiKeyApplied: boolean;
+  readonly hasApiKey: boolean;
+  readonly modelsAdded: number;
+  readonly modelsSkipped: number;
+}
+
 export interface IProviderSettingsService {
   readonly onDidChange: Event<ProviderSettingsView>;
   getView(): Promise<ProviderSettingsView>;
@@ -50,6 +67,10 @@ export interface IProviderSettingsService {
     metadata?: Parameters<ProviderSettingsFacade["savePersonalProviderOverlay"]>[2],
   ): Promise<ProviderSettingsView>;
   setUcasApiKeyIfMissing(apiKey: string): Promise<ProviderSettingsView>;
+  /** 企业网关自动配置：网关地址必写，Key 只补缺/显式替换，模型按套餐追加。 */
+  applyUcasGatewayProvisioning(
+    input: UcasGatewayProvisioningInput,
+  ): Promise<UcasGatewayProvisioningResult>;
   deletePersonalProvider(providerId: ProviderId): Promise<ProviderSettingsView>;
   reorderPersonalProviders(providerIds: readonly ProviderId[]): Promise<ProviderSettingsView>;
   reorderPersonalModels(
@@ -175,6 +196,37 @@ export function createProviderSettingsService(
     setUcasApiKeyIfMissing: async (apiKey) => {
       await ensureReady();
       return facade.setUcasApiKeyIfMissing(apiKey);
+    },
+    applyUcasGatewayProvisioning: async (input) => {
+      await ensureReady();
+      await facade.waitForProviderOperations(UCAS_PROVIDER_ID);
+      const applied = await facade.applyUcasGatewayConfig({
+        baseUrl: input.baseUrl,
+        ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
+        ...(input.replaceApiKey === undefined ? {} : { replaceApiKey: input.replaceApiKey }),
+      });
+      const provider = applied.view.providers.find((item) => item.providerId === UCAS_PROVIDER_ID);
+      if (!provider) throw new Error("UCAS 默认供应商不可用");
+      const ids = [
+        ...new Set((input.modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean)),
+      ];
+      const existing = new Set(provider.models.map((model) => model.modelId));
+      const added = ids.filter((modelId) => !existing.has(modelId));
+      const view =
+        added.length === 0
+          ? applied.view
+          : await facade.addDiscoveredModels(UCAS_PROVIDER_ID, ids, applied.view.revision);
+      const effective = view.providers.find((item) => item.providerId === UCAS_PROVIDER_ID);
+      const access = effective?.effectiveConfig.access;
+      return {
+        view,
+        apiKeyApplied: applied.apiKeyApplied,
+        hasApiKey: Boolean(
+          access?.type === "api-key" && typeof access.apiKey === "string" && access.apiKey.trim(),
+        ),
+        modelsAdded: added.length,
+        modelsSkipped: ids.length - added.length,
+      };
     },
     deletePersonalProvider: async (providerId) => {
       await ensureReady();

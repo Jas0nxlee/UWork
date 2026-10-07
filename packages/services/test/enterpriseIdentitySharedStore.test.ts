@@ -248,7 +248,7 @@ test("real file-lock transaction preserves encrypted shared session and unrelate
     assert.equal(results.filter((r) => r.accepted).length, 1);
     assert.equal((await b.read()).session?.token, session.token);
     assert.equal(await credentials.load("fixture-model-key"), "fixture-model-value");
-    const raw = await readFile(join(dir, ".zcode/v2/credentials.json"), "utf8");
+    const raw = await readFile(join(dir, ".uwork/v2/credentials.json"), "utf8");
     assert.doesNotMatch(raw, /fixture-session|fixture-model-value/);
   } finally {
     setDataBaseDir(null);

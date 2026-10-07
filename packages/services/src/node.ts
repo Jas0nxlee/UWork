@@ -10,6 +10,7 @@ import {
   NodeModelSelectionConfigRepository,
   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
 } from "@zcode/provider-node";
+import { UCAS_PROVIDER_ID } from "@zcode/provider";
 import { getAppConfigDir as resolveAppConfigDir } from "./paths.js";
 import {
   buildLocalMediaPreviewUrl,
@@ -321,8 +322,20 @@ import {
   createEnterpriseIdentityService,
   disposeEnterpriseIdentityService,
 } from "./enterprise-identity/enterpriseIdentityService.js";
-import { createSharedIdentitySessionStore } from "./enterprise-identity/identitySessionStore.js";
-import { loadWeComIdentityAdapter } from "./enterprise-identity/wecomIdentityConfig.js";
+import {
+  createLocalIdentitySessionStore,
+  createSharedIdentitySessionStore,
+} from "./enterprise-identity/identitySessionStore.js";
+import {
+  loadWeComIdentityAdapter,
+  loadWeComIdentityConfig,
+} from "./enterprise-identity/wecomIdentityConfig.js";
+import {
+  IUcasGatewayService,
+  type UcasGatewayProvisioningTarget,
+} from "./ucas-gateway/contract.js";
+import { createUcasGatewayService } from "./ucas-gateway/ucasGatewayService.js";
+import { createUcasGatewayStore } from "./ucas-gateway/ucasGatewayStore.js";
 import { withFileLock as withEnterpriseIdentityFileLock } from "@zcode/shared/node";
 import { IUsageStatsService } from "./usage-stats/usageStats.js";
 import { ICodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscription.js";
@@ -1527,8 +1540,28 @@ export function createLocalServices(options: {
     }),
   );
   const providerConfigLog = createServiceLogger("provider-config");
+  const ucasGatewayLog = createServiceLogger("ucas-gateway");
+  // 身份会话库与网关状态文件在本窗口 Host 内共享同一份读路径：身份服务仍是唯一写者，
+  // 网关只读取已持久化的会话 Token；端点覆盖值供 Provider 播种与保存边界使用。
+  const enterpriseIdentitySessionStore =
+    options.serviceAuthorityMode === "desktop-local"
+      ? createSharedIdentitySessionStore(credentialService, (operation) =>
+          withEnterpriseIdentityFileLock(
+            join(resolveAppConfigDir(), "enterprise-identity-state"),
+            operation,
+          ),
+        )
+      : createLocalIdentitySessionStore(credentialService);
+  const ucasGatewayStore = createUcasGatewayStore({
+    filePath: join(resolveAppConfigDir(), "ucas-gateway.json"),
+    onCorrupt: () =>
+      ucasGatewayLog.warn(undefined, "UCAS gateway state file was invalid and ignored"),
+  });
   const providerConfigRuntime = createProviderConfigRuntime({
     zcodeBuiltinFilePath: options.zcodeBuiltinProviderConfigFilePath,
+    ucasEndpointSource: {
+      read: async () => (await ucasGatewayStore.read())?.endpoint.baseUrl,
+    },
     // 本地自定义版本只读随包模板；旧 CDN 缓存与后台刷新不能重新注入账号供应商。
     onPersonalConfigRecovery: (event) => {
       providerConfigLog.warn(
@@ -1630,6 +1663,44 @@ export function createLocalServices(options: {
       accountProviderRefreshErrorDispose();
       accountProviderConfigSource.dispose();
     },
+  });
+  const ucasGatewayProvisioning: UcasGatewayProvisioningTarget = {
+    apply: async (input) => {
+      const applied = await providerRuntime.providerSettings.applyUcasGatewayProvisioning(input);
+      return {
+        apiKeyApplied: applied.apiKeyApplied,
+        hasApiKey: applied.hasApiKey,
+        modelsAdded: applied.modelsAdded,
+        modelsSkipped: applied.modelsSkipped,
+      };
+    },
+    listModels: async () => {
+      const view = await providerRuntime.providerSettings.getView();
+      return (
+        view.providers
+          .find((provider) => provider.providerId === UCAS_PROVIDER_ID)
+          ?.models.map((model) => model.modelId) ?? []
+      );
+    },
+  };
+  const ucasGatewayService = createUcasGatewayService({
+    store: ucasGatewayStore,
+    readIdentitySession: async () => (await enterpriseIdentitySessionStore.read()).session,
+    resolveApiBaseUrl: async () => {
+      // 非 desktop-local（Web/远控）不启用本机企业配置读取，网关能力保持未配置空态。
+      if (options.serviceAuthorityMode !== "desktop-local") return undefined;
+      try {
+        const config = await loadWeComIdentityConfig(
+          join(resolveAppConfigDir(), "enterprise-identity.json"),
+          options.enterpriseIdentityBuiltinConfigFilePath,
+        );
+        return config?.apiBaseUrl;
+      } catch {
+        return undefined;
+      }
+    },
+    provisioning: ucasGatewayProvisioning,
+    fetchImpl: (input, init) => hostApiNetworkTransport.fetch(input, init),
   });
   handleOAuthProviderLogout = createOAuthProviderLogoutHandler({
     accountProviderCredentialStore,
@@ -2443,6 +2514,8 @@ export function createLocalServices(options: {
       createEnterpriseIdentityService({
         credentials: credentialService,
         adapter: options.enterpriseIdentityAdapter,
+        // 网关服务读取同一份会话库；身份服务仍是唯一写者与验证者。
+        sessionStore: enterpriseIdentitySessionStore,
         ...(options.serviceAuthorityMode === "desktop-local"
           ? {
               loadAdapter: () =>
@@ -2451,17 +2524,12 @@ export function createLocalServices(options: {
                   hostApiNetworkTransport.fetch,
                   options.enterpriseIdentityBuiltinConfigFilePath,
                 ),
-              sessionStore: createSharedIdentitySessionStore(credentialService, (operation) =>
-                withEnterpriseIdentityFileLock(
-                  join(resolveAppConfigDir(), "enterprise-identity-state"),
-                  operation,
-                ),
-              ),
               broadcast: broadcastService,
             }
           : {}),
       }),
     )
+    .register(IUcasGatewayService, ucasGatewayService)
     .register(
       IUsageStatsService,
       createUsageStatsService({
@@ -2749,6 +2817,7 @@ export function disposeServiceResources(services: ServiceCollection): void {
     services.getOptional(IZCodeSessionService),
     services.getOptional(IFileWatcherService),
     services.getOptional(IOffPeakTaskService),
+    services.getOptional(IUcasGatewayService),
   ].filter((service) => service !== undefined);
 
   for (const service of disposableServices) {
@@ -2787,6 +2856,7 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
     services.getOptional(IZCodeSessionService),
     services.getOptional(IFileWatcherService),
     services.getOptional(IOffPeakTaskService),
+    services.getOptional(IUcasGatewayService),
   ].filter((service) => service !== undefined);
 
   for (const service of disposableServices) {

@@ -30,7 +30,7 @@ try {
     return button instanceof HTMLButtonElement && !button.disabled;
   });
   assert.doesNotMatch(await page.getByTestId("enterprise-login-page").innerText(), /暂未配置/);
-  await assert.rejects(access(join(data, ".zcode/v2/enterprise-identity.json")), {
+  await assert.rejects(access(join(data, ".uwork/v2/enterprise-identity.json")), {
     code: "ENOENT",
   });
   const nativeChildren = await app.evaluate(

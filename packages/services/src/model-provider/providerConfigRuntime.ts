@@ -20,6 +20,8 @@ export interface ProviderConfigRuntimeOptions {
   readonly personalFilePath?: string;
   readonly personalPollingIntervalMs?: number | false;
   readonly readLegacyProviders?: () => Promise<readonly ModelProviderConfig[]>;
+  /** 企业网关解析出的 UCAS 端点覆盖值；由 Host 装配层提供。 */
+  readonly ucasEndpointSource?: NodeProviderConfigRuntimeOptions["ucasEndpointSource"];
   readonly watch?: boolean;
 }
 
@@ -43,6 +45,7 @@ export class ProviderConfigRuntime {
       personalFilePath:
         options.personalFilePath ?? join(getAppConfigDir(), PERSONAL_PROVIDER_CONFIG_FILE_NAME),
       personalPollingIntervalMs: options.personalPollingIntervalMs,
+      ucasEndpointSource: options.ucasEndpointSource,
       watch: options.watch,
       ...(options.readLegacyProviders
         ? {
