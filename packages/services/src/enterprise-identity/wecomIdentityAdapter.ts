@@ -56,6 +56,8 @@ export function createWeComIdentityAdapter(
   const config = wecomIdentityConfigSchema.parse(rawConfig);
   const request = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;
+  /** 本次进程内登记的桌面握手 secret；不落盘、不进日志，仅用于 poll 认领。 */
+  const handoffSecrets = new Map<string, string>();
   const logger = createServiceLogger("WeComIdentityAdapter");
   const diagnostics = createIdentityIssuerDiagnostics(
     options.onDiagnostic ??
@@ -155,10 +157,38 @@ export function createWeComIdentityAdapter(
     }
     return verified;
   };
+  /** 尝试登记桌面握手；服务不支持时返回 null，由窗口内回调路径兜底。 */
+  const startHandoff = async (
+    signal: AbortSignal,
+  ): Promise<{ id: string; secret: string } | null> => {
+    try {
+      const response = await post("/api/auth/handoff/start", signal, undefined, {
+        org_id: config.orgId,
+      });
+      if (!response.ok) return null;
+      const parsed = z
+        .object({
+          handoff_id: z.string().trim().min(1).max(256),
+          handoff_secret: z.string().trim().min(1).max(256),
+        })
+        .safeParse(await readAuthResponse(response));
+      return parsed.success
+        ? { id: parsed.data.handoff_id, secret: parsed.data.handoff_secret }
+        : null;
+    } catch {
+      return null;
+    }
+  };
   return {
     async start(signal) {
       signal.throwIfAborted();
-      const id = randomUUID();
+      // 企业微信桌面端会把回调交给系统浏览器，窗口内看不到一次性 code；
+      // 因此尝试登记的 handoff id 同时充当本次尝试 id（进入回调地址的 uwork_nonce），
+      // 桌面端再凭只留在本进程的 secret 认领会话。
+      const handoff = await startHandoff(signal);
+      signal.throwIfAborted();
+      const id = handoff?.id ?? randomUUID();
+      if (handoff) handoffSecrets.set(id, handoff.secret);
       // 服务侧 state 固定承载组织；随机请求绑定放在回调地址，不能拿 orgId 代替防伪 nonce。
       const callback = new URL(config.callbackUrl);
       callback.searchParams.set("uwork_nonce", id);
@@ -178,6 +208,24 @@ export function createWeComIdentityAdapter(
         expectedState: config.orgId,
         expiresAt: now() + 300000,
       };
+    },
+    /** 桌面握手认领：网页（含桌面端打开的浏览器）完成登录后取回同一会话。 */
+    async poll(attemptId, signal) {
+      const secret = handoffSecrets.get(attemptId);
+      // 没有握手记录的尝试只能靠窗口内回调完成；轮询不得把它判成过期。
+      if (!secret) return { status: "pending" as const };
+      const response = await post("/api/auth/handoff/claim", signal, undefined, {
+        handoff_id: attemptId,
+        handoff_secret: secret,
+      });
+      if (response.status === 202) return { status: "pending" as const };
+      if (!response.ok) {
+        handoffSecrets.delete(attemptId);
+        return { status: "expired" as const };
+      }
+      const { session } = toSession(await readAuthResponse(response));
+      handoffSecrets.delete(attemptId);
+      return { status: "authenticated" as const, session };
     },
     async complete(code, signal) {
       z.string().min(1).max(4096).parse(code);

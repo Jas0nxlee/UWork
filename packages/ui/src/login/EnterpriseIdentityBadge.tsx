@@ -1,6 +1,9 @@
-import { ChevronDown, UserRound } from "lucide-react";
+import { ChevronDown, RefreshCw, UserRound } from "lucide-react";
 import { useEnterpriseIdentity } from "@/hooks/useEnterpriseIdentity.js";
+import { useUcasGateway } from "@/hooks/useUcasGateway.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { setPendingSettingsUsageEnterpriseIntent } from "@/lib/settingsNavigation.js";
+import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -12,10 +15,14 @@ import {
 
 export function EnterpriseIdentityBadge() {
   const identity = useEnterpriseIdentity();
+  const gateway = useUcasGateway();
+  const openSettingsTab = useOptionalTabStore((state) => state.openSettingsTab);
   const { intl } = useZCodeIntl();
   if (!identity) return null;
   const t = (id: string) => intl.formatMessage({ id: `enterpriseIdentity.${id}` });
   const profile = identity.view?.status === "authenticated" ? identity.view.profile : null;
+  const gatewayUser = gateway.view?.user ?? null;
+  const subtitle = [gatewayUser?.department, gatewayUser?.position].filter(Boolean).join(" · ");
   const className =
     "flex max-w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-1 text-ui-sm text-foreground-subtle hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   if (!profile) {
@@ -47,11 +54,35 @@ export function EnterpriseIdentityBadge() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuLabel>{profile.displayName}</DropdownMenuLabel>
+        {subtitle ? (
+          <DropdownMenuLabel className="text-ui-sm text-foreground-subtle">
+            {subtitle}
+          </DropdownMenuLabel>
+        ) : null}
         <DropdownMenuLabel className="text-ui-sm text-foreground-subtle">
           {t("source")}
         </DropdownMenuLabel>
         {identity.allowLogin ? (
           <>
+            <DropdownMenuSeparator />
+            {gateway.available ? (
+              <DropdownMenuItem
+                onSelect={() => void gateway.sync()}
+                data-testid="enterprise-identity-sync-gateway"
+              >
+                <RefreshCw className="size-3.5" aria-hidden="true" />
+                {t("syncGateway")}
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem
+              onSelect={() => {
+                setPendingSettingsUsageEnterpriseIntent();
+                openSettingsTab();
+              }}
+              data-testid="enterprise-identity-open-gateway"
+            >
+              {t("gateway")}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => void identity.logout()}>
               {t("logout")}

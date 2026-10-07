@@ -2,6 +2,7 @@ import {
   ProviderConfigService,
   type ProviderConfigLayerSnapshot,
   type ProviderConfigLayerUpdate,
+  type UcasEndpointSource,
 } from "@zcode/provider";
 import { NodeZCodeBuiltinProviderConfigSource } from "./zcode-builtin-provider-config-source.js";
 import {
@@ -34,6 +35,8 @@ export interface NodeProviderConfigRuntimeOptions {
   readonly importLegacy?: (
     zcodeBuiltin: ProviderConfigLayerSnapshot,
   ) => Promise<ProviderConfigLayerUpdate | null>;
+  /** 企业网关解析出的 UCAS 端点覆盖值；Host 装配层唯一提供。 */
+  readonly ucasEndpointSource?: UcasEndpointSource;
   readonly watch?: boolean;
 }
 
@@ -86,6 +89,7 @@ export class NodeProviderConfigRuntime {
     this.configService = new ProviderConfigService({
       zcodeBuiltinSource: this.#zcodeBuiltinSource,
       personalRepository: this.#personalRepository,
+      ...(options.ucasEndpointSource ? { ucasEndpointSource: options.ucasEndpointSource } : {}),
     });
   }
 

@@ -6,6 +6,8 @@ import type { ConnectOptions } from "@zcode/server/remote";
 import { listSSHConfigAliasesFromLocalConfig } from "@zcode/services/node";
 import { DEV_HELPER_APP_NAME, HELPER_APP_NAME } from "@zcode/zcode-cua/broker/helperConstants";
 import {
+  UWORK_DATA_ROOT_DIR_NAME,
+  UWORK_STORAGE_DIR_ENV,
   ZCODE_APP_VERSION_ENV,
   ZCODE_AGENT_RUNTIME,
   ZCODE_DYNAMIC_WORKFLOW_MODE_ENV,
@@ -76,10 +78,10 @@ export const runtimeUserDataPath =
         getElectronAppPath("appData"),
         readRuntimeEnvOverride("ZCODE_DESKTOP_APPLICATION_NAME") ??
           (isLocalDevelopmentRuntime
-            ? "ZCode Dev"
+            ? "UWork Dev"
             : isPreviewPackagedRuntime
-              ? "ZCode Preview"
-              : "ZCode"),
+              ? "UWork Preview"
+              : "UWork"),
       ));
 export const runtimeSessionDataPath =
   readRuntimeEnvOverride("ZCODE_DESKTOP_SESSION_DATA_DIR") ??
@@ -544,6 +546,11 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
 
   return {
     ...inheritedEnv,
+    // Agent/CLI 的用户级状态（cli/skills/plugins/workflows）跟随 UWork 数据根，
+    // 不能继续写上游 ZCode 的 ~/.zcode；用户显式覆盖优先。
+    ...(inheritedEnv[UWORK_STORAGE_DIR_ENV]?.trim()
+      ? {}
+      : { [UWORK_STORAGE_DIR_ENV]: join(dataBaseDir, UWORK_DATA_ROOT_DIR_NAME) }),
     // OTLP 凭据只定向传到 host；host 初始化 services 时会立即捕获并从 process.env 清除，
     // 后续只在启动 Agent 时短暂注入，不会进入 Bash/MCP/tool env。
     ...agentTelemetryEnv,

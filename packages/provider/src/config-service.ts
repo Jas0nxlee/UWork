@@ -25,6 +25,7 @@ import {
   UCAS_PROVIDER_TEMPLATE_ID,
   createUcasDefaultModelConfig,
 } from "./ucas-defaults.js";
+import { normalizeUcasGatewayBaseUrl } from "@zcode/shared/ucas-gateway";
 import type { ModelSelection } from "@zcode/shared/model-selection";
 import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
 
@@ -54,6 +55,28 @@ export interface PersonalProviderConfigRepository extends ProviderSource<Provide
 export interface ProviderConfigServiceDependencies {
   readonly zcodeBuiltinSource: ProviderSource<ProviderConfigLayerSnapshot>;
   readonly personalRepository: PersonalProviderConfigRepository;
+  /**
+   * 企业网关解析出的 UCAS 端点（含 `/v1`）。Provider 不认识网关服务本身，
+   * 只把覆盖值当作「当前固定 Base URL」；缺省或读取失败时退回随包默认地址。
+   */
+  readonly ucasEndpointSource?: UcasEndpointSource;
+}
+
+export interface UcasEndpointSource {
+  read(): Promise<string | undefined>;
+}
+
+/** 企业网关写入 UCAS 的入参；`apiKey` 缺省表示只同步 Base URL。 */
+export interface UcasGatewayConfigInput {
+  readonly baseUrl: string;
+  readonly apiKey?: string;
+  /** 仅显式替换才覆盖用户已有密钥；默认只补缺失。 */
+  readonly replaceApiKey?: boolean;
+}
+
+export interface UcasGatewayConfigApplication {
+  readonly snapshot: ProviderConfigLayerSnapshot;
+  readonly apiKeyApplied: boolean;
 }
 
 export interface PersonalProviderCreation {
@@ -112,6 +135,7 @@ function writableProviderOverlay(
 export class ProviderConfigService implements ProviderSource<ProviderConfigSnapshot> {
   readonly #zcodeBuiltinSource: ProviderSource<ProviderConfigLayerSnapshot>;
   readonly #personalRepository: PersonalProviderConfigRepository;
+  readonly #ucasEndpointSource?: UcasEndpointSource;
   readonly #listeners = new Set<(reason: string) => void>();
   readonly #sourceDisposers: Array<() => void>;
   #disposed = false;
@@ -119,10 +143,17 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
   constructor(dependencies: ProviderConfigServiceDependencies) {
     this.#zcodeBuiltinSource = dependencies.zcodeBuiltinSource;
     this.#personalRepository = dependencies.personalRepository;
+    this.#ucasEndpointSource = dependencies.ucasEndpointSource;
     this.#sourceDisposers = [
       this.#zcodeBuiltinSource.onDidChange((reason) => this.#emit(`zcodeBuiltin:${reason}`)),
       this.#personalRepository.onDidChange((reason) => this.#emit(`personal:${reason}`)),
     ];
+  }
+
+  /** 「固定地址」= 企业网关覆盖值（若存在）?? 随包默认地址。 */
+  async #resolveUcasBaseUrl(): Promise<string> {
+    const override = (await this.#ucasEndpointSource?.read())?.trim();
+    return override ? normalizeUcasGatewayBaseUrl(override) : UCAS_BASE_URL;
   }
 
   async read(): Promise<ProviderConfigSnapshot> {
@@ -165,6 +196,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
   ): Promise<ProviderConfigLayerSnapshot> {
     assertNonEmptyId("providerId", providerId);
     const zcodeBuiltin = await this.#zcodeBuiltinSource.read();
+    const ucasBaseUrl = await this.#resolveUcasBaseUrl();
     return this.#updatePersonal((current) => {
       assertMembershipCurrent(membership, providerId, current);
       const builtin = zcodeBuiltin.providers.get(providerId);
@@ -178,7 +210,9 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
         if (
           !baseline ||
           (config.api?.type !== undefined && config.api.type !== baseline.api?.type) ||
-          (config.api?.baseUrl !== undefined && config.api.baseUrl !== baseline.api?.baseUrl) ||
+          (config.api?.baseUrl !== undefined &&
+            config.api.baseUrl !== ucasBaseUrl &&
+            config.api.baseUrl !== baseline.api?.baseUrl) ||
           (metadata?.providerName !== undefined && metadata.providerName !== "ucas") ||
           (metadata?.templateId !== undefined && metadata.templateId !== UCAS_PROVIDER_TEMPLATE_ID)
         ) {
@@ -283,6 +317,40 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     });
   }
 
+  /** 企业网关写入边界：Base URL 采用网关解析值；Key 只在缺失或显式替换时写入，保留其它字段。 */
+  applyUcasGatewayConfig(input: UcasGatewayConfigInput): Promise<UcasGatewayConfigApplication> {
+    const baseUrl = normalizeUcasGatewayBaseUrl(input.baseUrl);
+    const apiKey = input.apiKey?.trim();
+    if (input.apiKey !== undefined && !apiKey) throw new Error("UCAS API Key 不能为空");
+    let apiKeyApplied = false;
+    return this.#updatePersonal((current) => {
+      const rule = current.providers.getRule(UCAS_PROVIDER_ID);
+      if (rule?.templateId !== UCAS_PROVIDER_TEMPLATE_ID) {
+        throw new Error("UCAS 默认供应商不可用");
+      }
+      const access = rule.config.access;
+      if (access != null && access.type !== "api-key") {
+        throw new Error("UCAS API Key 配置类型无效");
+      }
+      apiKeyApplied = Boolean(apiKey) && (input.replaceApiKey === true || !access?.apiKey?.trim());
+      const nextAccess = apiKeyApplied ? new ApiKeyAccessConfig({ apiKey }) : access;
+      const api = rule.config.api
+        ? rule.config.api.overlay(new ProviderApiConfig({ baseUrl }))
+        : new ProviderApiConfig({ type: UCAS_API_TYPE, baseUrl });
+      const config = rule.config.overlay(
+        new ProviderConfigValue({
+          access: nextAccess ?? new ApiKeyAccessConfig(),
+          api,
+        }),
+      );
+      return {
+        providers: current.providers.setRule({ ...rule, config }),
+        models: current.models,
+        providerOrder: current.providerOrder,
+      };
+    }).then((snapshot) => ({ snapshot, apiKeyApplied }));
+  }
+
   /** 多 Host 并发启动时仍以固定 ID 单次播种；已有个人记录和模型配置一律保留。 */
   async ensureSeededPersonalProvider(input: EnsureSeededPersonalProviderInput): Promise<void> {
     const providerId = normalizeId("providerId", input.providerId);
@@ -293,6 +361,8 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     if (!zcodeBuiltin.providerTemplates?.has(templateId)) {
       throw new Error(`Provider Template 不存在: ${templateId}`);
     }
+    // 网关覆盖值随启动播种写回，用户在设置页看到的固定地址始终是当前解析值。
+    const ucasBaseUrl = await this.#resolveUcasBaseUrl();
 
     await this.#updatePersonal((current) => {
       const currentRule = current.providers.getRule(providerId);
@@ -374,7 +444,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
         access,
         api: new ProviderApiConfig({
           type: UCAS_API_TYPE,
-          baseUrl: UCAS_BASE_URL,
+          baseUrl: ucasBaseUrl,
           ...(Object.keys(headers).length === 0 ? {} : { headers }),
         }),
         personalModelIds,

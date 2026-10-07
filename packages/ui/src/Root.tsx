@@ -117,6 +117,7 @@ export function Root(props: RootProps) {
                       <EnterpriseIdentityProvider
                         service={props.services.enterpriseIdentityService}
                         providerSettingsService={props.services.providerSettingsService}
+                        ucasGatewayService={props.services.ucasGatewayService}
                         showOnStartup={!props.enterpriseIdentityReadOnly}
                         allowLogin={!props.enterpriseIdentityReadOnly}
                       >

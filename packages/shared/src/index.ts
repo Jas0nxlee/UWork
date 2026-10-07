@@ -306,3 +306,5 @@ export * from "./session-debug.js";
 export { redactFeedbackText } from "./feedbackPrivacy.js";
 export * from "./enterprise-identity.js";
 export * from "./wecom-identity-config.js";
+export * from "./ucas-gateway.js";
+export * from "./uwork-paths.js";

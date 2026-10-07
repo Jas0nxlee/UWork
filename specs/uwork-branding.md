@@ -2,7 +2,7 @@
 
 显示名称统一为 UWork；应用、窗口标题、菜单、启动页、引导、关于页和主界面使用 UWork。主界面背景为 UCAS SVG 字样，深浅主题保持原有弱化效果。界面标识采用 SVG；macOS 图标从同一 U 造型的 SVG 源生成原生 ICNS/PNG。
 
-只替换产品展示与打包名称，不修改内部包名、RPC/协议、用户数据目录 `.zcode`、workspaceIdentity、凭据格式或供应商配置。Electron 历史 userData 目录继续保留原路径，避免重命名后丢失窗口/浏览器数据。macOS 最终安装为 `/Applications/UWork.app`，原应用备份后移出应用程序目录。
+只替换产品展示与打包名称，不修改内部包名、RPC/协议、workspaceIdentity、凭据格式或供应商配置。数据目录与 Electron userData 目录按 [UWork 独立数据根](uwork-data-root-separation.md) 使用 UWork 自己的命名空间（`~/.uwork`、`~/Library/Application Support/UWork*`），不做迁移。macOS 最终安装为 `/Applications/UWork.app`，原应用备份后移出应用程序目录。
 
 验收：浅色/深色主界面展示 UCAS；SVG 图标可渲染；Finder/菜单/窗口为 UWork；原供应商和会话配置保持；自动获取模型功能同时交付。
 
@@ -48,3 +48,10 @@ sequenceDiagram
 2026-09-23：Electron 窗口验证了 UWork SVG 字标、模式入口顺序与重载持久化、帮助菜单仅含资源管理器。深浅主题截图确认 UCAS 放大与下半部渐隐；背景容器最大宽度 832px。macOS 包显示名和主可执行名均为 UWork，旧 Electron userData 路径保留。
 
 单按钮修订验证：Electron E2E 确认 Logo 右侧仅有一个按钮，点击切换当前模式，重载保留选择，Enter 可切回；同时验证帮助菜单及模型自动获取未回归。类型检查、架构检查通过，Lint 0 错误、57 项既有警告。
+
+## 图标柔化（2026-10-05）
+
+- 图标与界面共用同一 U 造型：`packages/desktop/build/uwork.svg` 是唯一源，经 `scripts/build-uwork-icons.cjs` 生成 PNG/ICNS/ICO 与 `icons/*.png`；界面标记（`UWORK_MARK_PATH`）使用同一几何。
+- 轮廓从方头直角改为圆头笔画 + 连续圆角（外底 r88 / 内底 r32 / 圆头 r28，笔画宽度 **56**，外接尺寸 176×204 不变），底板改为近 macOS 连续曲率的 squircle，并加入轻微渐变、柔光与极淡顶缘内高光；不改变单色深底 + 浅色 U 的品牌识别。
+- 字形在底板内必须**几何居中**：以 1024 画布为例，字标包围盒 x 292..731 / y 257..766（`translate(192 227) scale(2.5)`），左右留白 228/229、上下留白 193/194（容差 2px）；字形占底板约 49% 宽 × 57% 高，1024 下笔画实测 140px（对应 16px 图标约 2.2px）。缩小字形时必须同步加粗笔画（46 → 56），否则笔画相对底板显细。调整大小只改 scale 与配套 translate（`translate = 边距 - 路径左上偏移×scale`）。生成后按像素掩码复核，不能只看小尺寸是否"顺眼"——`transform` 必须减去路径自身左上偏移（路径 x 从 40 起，`translate` 要用 `左边距 - 40×scale`）。
+- 开发态（未打包、macOS）由 Main 用 `build/icon.png` 覆盖 Dock 图标：dev 运行的是 Electron 原生包，不覆盖会显示 Electron 默认图标，无法核对真实图标。

@@ -176,3 +176,82 @@ test("email-enrichment session cannot authenticate if refresh rejects or changes
     assert.equal(calls, 2);
   }
 });
+
+// 桌面握手：网页（含企微桌面端交给系统浏览器的回调）完成登录后，桌面端凭 secret 认领会话。
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+test("desktop handoff registers on the issuer and poll claims the bound session", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  let bound = false;
+  const adapter = createWeComIdentityAdapter(config, {
+    now: () => 1000,
+    fetchImpl: async (url, init) => {
+      const target = String(url);
+      calls.push({
+        url: target,
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      });
+      if (target.endsWith("/api/auth/handoff/start")) {
+        return json({ handoff_id: "handoff-1", handoff_secret: "secret-1", expires_at: 1600 }, 201);
+      }
+      if (target.endsWith("/api/auth/handoff/claim")) {
+        return bound ? json(response) : json({ status: "pending" }, 202);
+      }
+      return json({ error: "unexpected" }, 404);
+    },
+  });
+  const attempt = await adapter.start(new AbortController().signal);
+  assert.equal(attempt.id, "handoff-1");
+  assert.equal(new URL(attempt.callbackUrl!).searchParams.get("uwork_nonce"), "handoff-1");
+  assert.deepEqual(calls[0], {
+    url: `${config.apiBaseUrl}/api/auth/handoff/start`,
+    body: { org_id: config.orgId },
+  });
+
+  const pending = await adapter.poll!("handoff-1", new AbortController().signal);
+  assert.equal(pending.status, "pending");
+  assert.deepEqual(calls[1].body, { handoff_id: "handoff-1", handoff_secret: "secret-1" });
+
+  bound = true;
+  const claimed = await adapter.poll!("handoff-1", new AbortController().signal);
+  assert.equal(claimed.status, "authenticated");
+  if (claimed.status !== "authenticated") throw new Error("expected an authenticated claim");
+  assert.equal(claimed.session.profile.id, "fixture-user");
+  assert.equal(claimed.session.profile.tenantId, "fixture-org");
+  assert.equal(claimed.session.expiresAt, 2000000);
+});
+
+test("handoff registration failure falls back to a window-local attempt without false expiry", async () => {
+  const adapter = createWeComIdentityAdapter(config, {
+    now: () => 1000,
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/api/auth/handoff/start")) return json({ error: "not found" }, 404);
+      throw new Error("unexpected network");
+    },
+  });
+  const attempt = await adapter.start(new AbortController().signal);
+  assert.match(attempt.id, /^[0-9a-f-]{36}$/u);
+  assert.equal(new URL(attempt.callbackUrl!).searchParams.get("uwork_nonce"), attempt.id);
+  const polled = await adapter.poll!(attempt.id, new AbortController().signal);
+  assert.equal(polled.status, "pending");
+});
+
+test("a rejected handoff claim reports expired exactly once", async () => {
+  const adapter = createWeComIdentityAdapter(config, {
+    now: () => 1000,
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/api/auth/handoff/start")) {
+        return json({ handoff_id: "handoff-2", handoff_secret: "secret-2", expires_at: 1600 }, 201);
+      }
+      return json({ status: "expired" }, 410);
+    },
+  });
+  const attempt = await adapter.start(new AbortController().signal);
+  assert.equal(attempt.id, "handoff-2");
+  const first = await adapter.poll!("handoff-2", new AbortController().signal);
+  assert.equal(first.status, "expired");
+  // secret 已作废：后续轮询退回 pending，交由窗口内回调路径与尝试过期处理。
+  const second = await adapter.poll!("handoff-2", new AbortController().signal);
+  assert.equal(second.status, "pending");
+});

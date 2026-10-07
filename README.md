@@ -12,25 +12,27 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 
 ## 当前功能
 
-| 功能            | 说明                                                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| UCAS 默认供应商 | 首次启动预置六个模型，名称、连接地址和 Chat Completions 格式固定；可编辑 API Key、模型参数与启停状态，并自动获取模型。    |
-| 自定义模型服务  | 解锁添加入口后，可配置 Base URL、API Key 和 API 格式，支持 Chat Completions、Responses、Anthropic Messages。              |
-| 自动获取模型    | 从供应商读取模型 ID，去重后批量添加；已有模型的参数、启停状态和顺序保持不变。                                             |
-| 模型参数编辑    | 编辑上下文窗口、输出上限、输入类型及推理选项；已修复导入模型后保存参数时漏传版本号的问题。                                |
-| 助理 / 开发     | UWork Logo 右侧显示当前模式，点击同一个按钮切换，选择会被记住。助理侧重过程摘要与结果，开发展示更多代码、命令和修改细节。 |
-| 企业微信身份    | 桌面登录卡片内扫码，可跳过；认证后在 UWork 字标下显示姓名。同一设备各窗口共享企业账号，工作区和未提交草稿仍由各窗口管理。 |
-| 工作区与任务    | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                |
-| 定制界面        | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                        |
+| 功能             | 说明                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| UCAS 默认供应商  | 首次启动预置六个模型，名称、连接地址和 Chat Completions 格式固定；可编辑 API Key、模型参数与启停状态，并自动获取模型。                     |
+| 自定义模型服务   | 解锁添加入口后，可配置 Base URL、API Key 和 API 格式，支持 Chat Completions、Responses、Anthropic Messages。                               |
+| 自动获取模型     | 从供应商读取模型 ID，去重后批量添加；已有模型的参数、启停状态和顺序保持不变。                                                              |
+| 模型参数编辑     | 编辑上下文窗口、输出上限、输入类型及推理选项；已修复导入模型后保存参数时漏传版本号的问题。                                                 |
+| 助理 / 开发      | UWork Logo 右侧显示当前模式，点击同一个按钮切换，选择会被记住。助理侧重过程摘要与结果，开发展示更多代码、命令和修改细节。                  |
+| 企业微信身份     | 桌面登录卡片内扫码，可跳过；认证后在 UWork 字标下显示姓名、部门与职位。同一设备各窗口共享企业账号，工作区和未提交草稿仍由各窗口管理。      |
+| 企业网关自动配置 | 复用企业后台（ucas-proxy）：登录后自动写入 UCAS 网关地址与 API Key、按套餐补齐模型，并在使用统计中展示套餐额度、请求 / 费用 / Token 用量。 |
+| 工作区与任务     | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                                 |
+| 定制界面         | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                                         |
 
 模式切换只改变界面呈现，不改变工具权限或模型服务权限。官方自动更新已停用，更新本定制版需要重新构建安装。
 
 ## 配置模型并开始使用
 
 1. 启动桌面应用；如不使用企业身份，点击 **跳过登录，继续使用**。
-2. 打开 **设置 → 模型设置**，选择默认的 `ucas` 供应商并填写自己的 API Key。该供应商的名称、Base URL 和 API 格式固定，不能删除；升级时会同步随包连接配置并保留密钥和已有模型参数。
+2. 使用企业微信登录时，客户端会调用企业后台自动写入默认 `ucas` 供应商的网关地址与 API Key，并按当前套餐追加可用模型；没有企业后台或自动配置失败时，打开 **设置 → 模型设置** 手工填写 API Key。该供应商的名称、Base URL 和 API 格式固定，不能删除；升级时会同步随包连接配置并保留密钥和已有模型参数。
 3. 点击 **自动获取**，或通过 **添加模型** 手动输入模型 ID。
 4. 按服务商实际能力调整模型参数，再在聊天窗口选择供应商和模型。UCAS 的六个默认模型及自动获取的新模型预设 1M 上下文、文本 / 图片输入和 `low` / `high` / `max` 推理等级；这些是客户端配置默认值，实际能力以服务端为准。
+5. 企业账号可在 **设置 → 使用统计 → 企业网关** 查看账号、网关地址、套餐额度与用量，并显式同步或替换密钥。
 
 ### 使用其他模型供应商
 
@@ -58,9 +60,13 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 
 桌面启动时，未认证用户可以在登录卡片内扫码，也可以跳过并继续使用。跳过只对当前窗口生效，重启后仍可选择登录；工作区内可通过 UWork 字标下的入口再次打开登录页，认证后点击姓名查看来源或退出。
 
-此身份用于本地姓名展示，不引入账号数据隔离、云同步或额外操作权限。企业登录不提供模型 API Key，登录或退出也不会迁移、认领或删除已有工作区、会话与模型配置。退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
+此身份用于本地姓名展示，不引入账号数据隔离、云同步或额外操作权限。企业网关自动配置由身份登录驱动：服务地址取自企微配置的 `apiBaseUrl`，登录后自动写入 UCAS 供应商的网关地址、复用或生成企业内部 API Key、按套餐补齐模型，并读取套餐与用量。已有本地 API Key 不会被自动覆盖，可在「企业网关」面板显式替换。登录或退出不会迁移、认领或删除已有工作区、会话与模型配置；退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
 
-GitHub 正式安装包已携带默认企业微信公开登录参数，Windows、macOS 和 Linux 安装后可直接扫码，无需复制配置文件。扫码认证成功后，默认 UCAS 尚未配置 API Key 时会弹出可跳过的输入对话框。客户端不内置企业微信 Secret、用户 Token 或 UCAS Key；管理员可使用本机配置覆盖默认参数，位置与接口要求见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
+GitHub 正式安装包已携带默认企业微信公开登录参数，Windows、macOS 和 Linux 安装后可直接扫码，无需复制配置文件。扫码认证成功后会自动完成网关配置；只有企业后台没有返回可用 Key 时才弹出可跳过的输入对话框。客户端不内置企业微信 Secret、用户 Token 或 UCAS Key；管理员可使用本机配置覆盖默认参数，位置、接口与自动配置规则见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
+
+## 数据目录
+
+UWork 使用自己的用户级数据根 `~/.uwork`（配置目录 `~/.uwork/v2`），与上游 ZCode 的 `~/.zcode` 完全分离，首次启动即为空目录、不迁移旧数据。可用 `UWORK_DATA_BASE_DIR` 覆盖数据根；`ZCODE_DATA_BASE_DIR` 仅作旧脚本兼容。详见 [独立数据根](specs/uwork-data-root-separation.md)。
 
 ## 从源码运行
 
@@ -72,7 +78,7 @@ GitHub 正式安装包已携带默认企业微信公开登录参数，Windows、
 git clone --branch uwork https://github.com/Jas0nxlee/UWork.git
 cd UWork
 pnpm bootstrap
-ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
+UWORK_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:desktop:test
 ```
 
 `bootstrap` 安装依赖、准备本机运行资源并构建相关包，默认跳过远程资源。Agent 源码已包含在 `apps/zcode-cli/` 中。
@@ -82,7 +88,7 @@ ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" ZCODE_SKIP_REMOTE_ASSETS=1 pnpm dev:deskt
 需要使用 production 服务配置时，继续指定独立数据目录：
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
+UWORK_DATA_BASE_DIR="$HOME/.uwork-dev" pnpm dev:desktop
 ```
 
 | 入口               | 命令                           |
@@ -169,9 +175,10 @@ pnpm fmt:check
 pnpm architecture:check --changed
 pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
 pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
+pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
 ```
 
-测试入口与环境依赖以目标包的 `package.json` 和实际测试文件为准。上述 Node 测试使用本地测试数据验证模型发现、UCAS 配置及身份生命周期，不代表真实模型推理或企业微信认证通过。
+测试入口与环境依赖以目标包的 `package.json` 和实际测试文件为准。上述 Node 测试使用本地测试数据验证模型发现、UCAS 配置、企业网关自动配置及身份生命周期，不代表真实模型推理或企业微信认证通过。
 
 [企业身份 Electron E2E 脚本](packages/desktop/test/enterpriseIdentity.e2e.mjs)用于未配置认证服务的隔离源码实例，覆盖启动、跳过、再次打开、Esc、模式切换和重载。运行前需单独启动该实例，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点。[共享 UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs)使用测试适配器，并依赖 browser-harness。真实扫码与服务端续期需要另行验证。
 
@@ -191,7 +198,9 @@ pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 - [模型自动获取与参数编辑](specs/provider-model-discovery.md)
 - [UCAS 默认供应商与添加入口规则](specs/ucas-default-provider.md)
 - [可选企业身份与跨窗口同步](specs/enterprise-identity.md) · [认证服务对接](docs/enterprise-identity-integration.md)
+- [企业网关自动配置、套餐与用量](specs/enterprise-gateway-provisioning.md)
 - [UWork 品牌、模式切换和界面规范](specs/uwork-branding.md)
+- [UWork 独立数据根（与 ZCode 分离）](specs/uwork-data-root-separation.md)
 - [UI 设计规范](DESIGN.md) · [开发约定](AGENTS.md)
 
 复现和排查问题时，请记录系统版本、提交版本、API 格式、脱敏后的路径和操作步骤，不要附带真实密钥。

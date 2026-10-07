@@ -1,6 +1,10 @@
 /* oxlint-disable eslint(max-lines) -- Settings/Selection Facade 共享同一套 Registry 投影与写入边界。 */
 import type { ConfigValidationIssue } from "./config-overlay.js";
-import type { ProviderModelMembership } from "./config-service.js";
+import type {
+  ProviderModelMembership,
+  UcasGatewayConfigApplication,
+  UcasGatewayConfigInput,
+} from "./config-service.js";
 import type {
   ModelConfig,
   ModelConfigObject,
@@ -48,6 +52,7 @@ export interface ProviderRegistryFacadeSource {
 
 export interface ProviderSettingsMutationTarget {
   setUcasApiKeyIfMissing(apiKey: string): Promise<unknown>;
+  applyUcasGatewayConfig(input: UcasGatewayConfigInput): Promise<UcasGatewayConfigApplication>;
   createPersonalProvider(input?: {
     readonly templateId?: ProviderTemplateId;
     readonly providerName?: string;
@@ -345,6 +350,16 @@ export class ProviderSettingsFacade {
     return this.#mutateProvider(UCAS_PROVIDER_ID, "set-ucas-api-key-if-missing", (target) =>
       target.setUcasApiKeyIfMissing(apiKey),
     );
+  }
+
+  /** 企业网关写入：Base URL 必写，Key 只补缺或显式替换；返回 Key 是否真的写入。 */
+  applyUcasGatewayConfig(input: UcasGatewayConfigInput): Promise<{
+    readonly view: ProviderSettingsView;
+    readonly apiKeyApplied: boolean;
+  }> {
+    return this.#mutateWithResult("apply-ucas-gateway", (target) =>
+      target.applyUcasGatewayConfig(input),
+    ).then(({ result, view }) => ({ view, apiKeyApplied: result.apiKeyApplied }));
   }
 
   deletePersonalProvider(providerId: ProviderId): Promise<ProviderSettingsView> {

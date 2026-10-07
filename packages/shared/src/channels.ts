@@ -105,6 +105,8 @@ export const ServiceChannels = {
   OAuth: "oauth",
   /** 可选企业身份；独立于退役的模型供应商 OAuth。 */
   EnterpriseIdentity: "enterprise-identity",
+  /** 企业网关（ucas-proxy control-plane）自动配置、套餐与用量读取。 */
+  UcasGateway: "ucas-gateway",
   /** 新 Provider Config 的设置读写 Facade */
   ProviderSettings: "provider-settings",
   /** 新 Provider Registry 的模型选择 Facade */

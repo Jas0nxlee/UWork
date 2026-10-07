@@ -45,6 +45,7 @@ import {
 } from "electron";
 import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -1818,6 +1819,16 @@ app.on("second-instance", (_event, argv, _workingDirectory, additionalData) => {
 
 app.whenReady().then(async () => {
   markMainLaunchAppReady();
+  // 开发态 Dock 图标：打包版由 Info.plist 的 icns 决定，dev 运行的是 Electron 原生包，
+  // 不设置就会在 Dock 里显示 Electron 默认图标，无法核对 UWork 图标本身。
+  if (!app.isPackaged && process.platform === "darwin") {
+    try {
+      const devIconPath = join(app.getAppPath(), "build", "icon.png");
+      if (existsSync(devIconPath)) app.dock?.setIcon(devIconPath);
+    } catch {
+      // 图标只是外观；缺失或平台不支持都不影响启动。
+    }
+  }
   installLocalMediaPreviewProtocol(session.defaultSession.protocol, {
     isPathAuthorized: localMediaPreviewPathRegistry.isAuthorized,
   });

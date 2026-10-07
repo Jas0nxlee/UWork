@@ -7,7 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { IEnterpriseIdentityService, IProviderSettingsService } from "@zcode/services";
+import type {
+  IEnterpriseIdentityService,
+  IProviderSettingsService,
+  IUcasGatewayService,
+} from "@zcode/services";
 import {
   enterpriseIdentityAttemptSchema,
   enterpriseIdentityCompletionSchema,
@@ -36,12 +40,15 @@ const IdentityContext = createContext<IdentityContextValue | null>(null);
 export function EnterpriseIdentityProvider({
   service,
   providerSettingsService,
+  ucasGatewayService,
   showOnStartup,
   allowLogin = true,
   children,
 }: {
   service?: IEnterpriseIdentityService;
   providerSettingsService: Pick<IProviderSettingsService, "refresh" | "setUcasApiKeyIfMissing">;
+  /** 企业网关自动配置；旧 Host 或只读 attachment 不提供。 */
+  ucasGatewayService?: IUcasGatewayService;
   showOnStartup: boolean;
   allowLogin?: boolean;
   children: ReactNode;
@@ -56,6 +63,7 @@ export function EnterpriseIdentityProvider({
   const actionGeneration = useRef(0);
   const nativeAttemptId = useRef<string | null>(null);
   const activeAttemptId = useRef<string | null>(null);
+  const gatewaySyncRef = useRef<string | null>(null);
   const [surfaceGate] = useState(createEnterpriseLoginSurfaceGate);
   const surfaceController = useRef<AbortController | null>(null);
   const onSurface = useCallback(
@@ -122,7 +130,22 @@ export function EnterpriseIdentityProvider({
   }, [view?.status, platform]);
 
   useEffect(() => {
-    if (!owner || !allowLogin || view?.status !== "waiting" || view.pending.callbackUrl) return;
+    if (!ucasGatewayService || !allowLogin) return;
+    if (view?.status !== "authenticated" || !view.profile) {
+      gatewaySyncRef.current = null;
+      return;
+    }
+    // 每个已认证身份只自动同步一次；失败后由面板的「同步」按钮显式重试。
+    const identityKey = `${view.profile.tenantId}:${view.profile.id}`;
+    if (gatewaySyncRef.current === identityKey) return;
+    gatewaySyncRef.current = identityKey;
+    void ucasGatewayService.sync("startup");
+  }, [ucasGatewayService, allowLogin, view?.status, view?.profile?.id, view?.profile?.tenantId]);
+
+  useEffect(() => {
+    // 轮询与内嵌扫码并行：企业微信桌面端把回调交给系统浏览器时，窗口内永远等不到
+    // 一次性 code，只能靠 Host 的握手轮询认领会话；窗口内回调路径仍由 completeLogin 结算。
+    if (!owner || !allowLogin || view?.status !== "waiting") return;
     const pollGeneration = actionGeneration.current;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -216,7 +239,10 @@ export function EnterpriseIdentityProvider({
               completion.committedAttemptId === attempt.id
             ) {
               try {
-                const providerView = await providerSettingsService.refresh("ucas-login-prompt");
+                // 登录完成后先自动配置网关地址与 API Key；只有拿不到 Key 才回退手工输入。
+                const provisioning = ucasGatewayService
+                  ? await ucasGatewayService.sync("login")
+                  : null;
                 const latest = useEnterpriseIdentityStore.getState();
                 // 只接受本窗口这次扫码完成后的身份版本；恢复、退出、其它窗口更新及迟到读取无效。
                 if (
@@ -224,13 +250,14 @@ export function EnterpriseIdentityProvider({
                   latest.owner === owner &&
                   latest.view?.status === "authenticated" &&
                   latest.view.revision === completion.view.revision &&
-                  !hasConfiguredUcasApiKey(providerView)
+                  provisioning?.providerHasApiKey !== true
                 ) {
-                  setShowUcasApiKeyPrompt(true);
+                  const providerView = await providerSettingsService.refresh("ucas-login-prompt");
+                  if (!hasConfiguredUcasApiKey(providerView)) setShowUcasApiKeyPrompt(true);
                 }
               } catch {
-                // Provider Settings 刷新失败不影响已完成的企业登录；模型设置仍可单独录入密钥。
-                logger.warn("UCAS API key prompt check failed");
+                // 网关同步或 Provider Settings 刷新失败不影响已完成的企业登录；模型设置仍可单独录入密钥。
+                logger.warn("UCAS provisioning after enterprise login failed");
               }
             }
           }
@@ -270,7 +297,7 @@ export function EnterpriseIdentityProvider({
       if (controller && surfaceController.current === controller) surfaceController.current = null;
       if (generation === actionGeneration.current) setBusy(false);
     }
-  }, [owner, allowLogin, platform, busy, surfaceGate, providerSettingsService]);
+  }, [owner, allowLogin, platform, busy, surfaceGate, providerSettingsService, ucasGatewayService]);
   const logout = useCallback(async () => {
     if (!owner || !allowLogin) return;
     actionGeneration.current++;
