@@ -10,10 +10,31 @@ import {
   stageReleaseAssets,
   validateReleaseAssets,
   validateDependencyAudit,
+  buildReleaseNotes,
 } from "../desktop-release.mjs";
 
 const version = "3.14.4";
 const sha = "a".repeat(40);
+test("release notes use current version changes and retain identity and installer details", () => {
+  const changes = "## 本次更新\n\n- 企业网关与独立数据目录。\n- 历史 MCP 凭据需重新授权。";
+  const name = "UWork-3.15.0-win-x64.exe";
+  const notes = buildReleaseNotes({ version: "3.15.0", sha, changes, files: [{ name }] });
+  assert.ok(notes.startsWith("UWork 3.15.0\n"));
+  assert.ok(notes.includes(sha));
+  assert.ok(notes.includes(changes));
+  assert.ok(notes.includes(name));
+  assert.match(notes, /SHA256SUMS/);
+  assert.match(notes, /未经过 Apple 公证/);
+  assert.doesNotMatch(notes, /缺少默认 UCAS API Key 时弹出/);
+});
+test("missing current release changes cannot silently reuse old notes", () => {
+  for (const changes of [undefined, "", " \n"]) {
+    assert.throws(
+      () => buildReleaseNotes({ version, sha, changes, files: [] }),
+      /Missing release changes/,
+    );
+  }
+});
 test("packaged Electron runtime uses the version pinned in the desktop manifest", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../../packages/desktop/package.json", import.meta.url), "utf8"),

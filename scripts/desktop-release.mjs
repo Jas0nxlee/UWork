@@ -110,6 +110,30 @@ export async function validateReleaseAssets({ directory, version, sha }) {
   }
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
+export function buildReleaseNotes({ version, sha, changes, files }) {
+  identity(version, sha);
+  // 发布文案此前硬编码上一版 Key 引导，无法反映网关与目录隔离的升级规则。
+  // 当前版本必须提供独立说明；缺失时阻止发布，避免把历史说明当作本次交付。
+  if (typeof changes !== "string" || !changes.trim()) throw new Error("Missing release changes");
+  return [
+    `UWork ${version}`,
+    "",
+    `源码提交：${sha}`,
+    "",
+    changes.trim(),
+    "",
+    "安装后无需手工复制企业微信配置。管理员仍可使用本机文件覆盖默认参数；安装包不包含企业微信 Secret、用户会话或 UCAS API Key。",
+    "",
+    "包含 macOS Apple Silicon / Intel、Windows x64、Linux x64 / ARM64 安装包。",
+    "",
+    "macOS 使用 ad-hoc 签名，未经过 Apple 公证；Windows 包未配置发布者证书。Linux AppImage 下载后需添加执行权限。",
+    "",
+    "依赖审计无 high/critical 报告；完整报告及 SHA256SUMS 随本次发布提供。",
+    "",
+    ...files.map((file) => `- ${file.name}`),
+    "",
+  ].join("\n");
+}
 async function main() {
   const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
   const sha = process.env.GITHUB_SHA || process.env.RELEASE_SHA;
@@ -131,29 +155,11 @@ async function main() {
     );
     const audit = JSON.parse(await readFile(join(directory, "dependency-audit.json"), "utf8"));
     validateDependencyAudit(audit);
-    const notes = [
-      `UWork ${version}`,
-      "",
-      `源码提交：${sha}`,
-      "",
-      "本次修复：",
-      "- Windows、macOS、Linux 正式包预置企业微信公开登录参数，新设备安装后可直接扫码。",
-      "- 企业微信扫码认证成功后，缺少默认 UCAS API Key 时弹出可跳过的输入对话框。",
-      "- UCAS Key 原子补录保留其它窗口的配置，旧扫码回调和自动恢复不会误触发引导。",
-      "- 发布构建逐平台校验随包配置，并在隔离新数据目录验证扫码入口。",
-      "",
-      "安装后无需手工复制企业微信配置。管理员仍可使用本机文件覆盖默认参数；安装包不包含企业微信 Secret、用户会话或 UCAS API Key。",
-      "",
-      "包含 macOS Apple Silicon / Intel、Windows x64、Linux x64 / ARM64 安装包。",
-      "",
-      "macOS 使用 ad-hoc 签名，未经过 Apple 公证；Windows 包未配置发布者证书。Linux AppImage 下载后需添加执行权限。",
-      "",
-      "依赖审计无 high/critical 报告；完整报告及 SHA256SUMS 随本次发布提供。",
-      "",
-      ...files.map((file) => `- ${file.name}`),
-      "",
-    ];
-    await writeFile(join(directory, "release-notes.md"), notes.join("\n"));
+    const changes = await readFile(join(root, "docs/releases", `${version}.md`), "utf8");
+    await writeFile(
+      join(directory, "release-notes.md"),
+      buildReleaseNotes({ version, sha, changes, files }),
+    );
     console.log(`Verified ${files.length} installers across ${releaseTargets.length} targets`);
   } else throw new Error("Use desktop-release.mjs stage <mac|win|linux> <arch>, or assemble");
 }
