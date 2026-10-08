@@ -8,7 +8,10 @@ function findPackageRoot(entryPath) {
   while (currentDir !== root) {
     const packageJsonPath = resolve(currentDir, "package.json");
     if (existsSync(packageJsonPath)) {
-      return currentDir;
+      // 构建子目录的 package.json 可能只声明 type=commonjs（如 @peculiar/utils/build/cjs），
+      // 不能把它当作包根，否则复制不到 exports 和 dependencies，子路径解析仍会缺包。
+      const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+      if (typeof manifest.name === "string" && manifest.name.trim()) return currentDir;
     }
     currentDir = dirname(currentDir);
   }
