@@ -22,6 +22,8 @@ export function EnterpriseIdentityBadge() {
   const t = (id: string) => intl.formatMessage({ id: `enterpriseIdentity.${id}` });
   const profile = identity.view?.status === "authenticated" ? identity.view.profile : null;
   const gatewayUser = gateway.view?.user ?? null;
+  // 公司名来自回包的组织（tenantId）在配置清单里的展示名，不用本地选择值冒充。
+  const companyName = profile ? identity.organizationLabel(profile.tenantId) : null;
   const subtitle = [gatewayUser?.department, gatewayUser?.position].filter(Boolean).join(" · ");
   const className =
     "flex max-w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-1 text-ui-sm text-foreground-subtle hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -44,7 +46,7 @@ export function EnterpriseIdentityBadge() {
         <button
           type="button"
           className={className}
-          title={profile.displayName}
+          title={companyName ? `${profile.displayName} · ${companyName}` : profile.displayName}
           data-testid="enterprise-identity-name"
         >
           <UserRound className="size-3 shrink-0" aria-hidden="true" />
@@ -54,6 +56,14 @@ export function EnterpriseIdentityBadge() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuLabel>{profile.displayName}</DropdownMenuLabel>
+        {companyName ? (
+          <DropdownMenuLabel
+            className="text-ui-sm text-foreground-subtle"
+            data-testid="enterprise-identity-company"
+          >
+            {companyName}
+          </DropdownMenuLabel>
+        ) : null}
         {subtitle ? (
           <DropdownMenuLabel className="text-ui-sm text-foreground-subtle">
             {subtitle}

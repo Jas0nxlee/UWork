@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 身份是单写者状态机：generation/invalidate 的次序保证（迟到回调不得复活身份）在同一处才看得清；视图投影与组织选择已抽到 enterpriseIdentityViewPublisher / enterpriseIdentityOrganizations。 */
 import { Emitter } from "@zcode/rpc";
 import {
   enterpriseIdentityAttemptSchema,
@@ -17,6 +18,9 @@ import {
   type IdentitySessionRecord,
   type IdentitySessionStore,
 } from "./identitySessionStore.js";
+import type { IdentityOrganizationStore } from "./identityOrganizationStore.js";
+import { createEnterpriseIdentityOrganizationSelection } from "./enterpriseIdentityOrganizations.js";
+import { createEnterpriseIdentityViewPublisher } from "./enterpriseIdentityViewPublisher.js";
 import type { EnterpriseIdentityAdapter, IEnterpriseIdentityService } from "./contract.js";
 import {
   registerIdentityServiceDisposer,
@@ -33,6 +37,8 @@ export function createEnterpriseIdentityService(options: {
   adapter?: EnterpriseIdentityAdapter;
   loadAdapter?: () => Promise<EnterpriseIdentityAdapter | undefined>;
   sessionStore?: IdentitySessionStore;
+  /** 本机记住的登录组织（设备偏好）；缺省时不记忆。 */
+  organizationStore?: IdentityOrganizationStore;
   broadcast?: Pick<IBroadcastService, "send" | "onMessage">;
   now?: () => number;
 }): IEnterpriseIdentityService {
@@ -40,39 +46,43 @@ export function createEnterpriseIdentityService(options: {
   const store = options.sessionStore ?? createLocalIdentitySessionStore(options.credentials);
   const now = options.now ?? Date.now;
   const changed = new Emitter<EnterpriseIdentityView>();
-  let view: EnterpriseIdentityView = {
-    revision: 0,
-    configured: Boolean(adapter),
-    status: "signed-out",
-    profile: null,
-    pending: null,
-    error: adapter ? null : "unconfigured",
-  };
+  const organizations = createEnterpriseIdentityOrganizationSelection({
+    // 兼容未实现多组织的适配器（旧 Host / Web 注入）：视为「无清单」，行为与单组织一致。
+    listOrganizations: () => adapter?.listOrganizations?.() ?? [],
+    resolveOrganization: (orgId) => adapter?.resolveOrganization?.(orgId),
+    persist: (orgId) =>
+      enqueue(async () => {
+        await options.organizationStore?.write(orgId);
+      }),
+    ...(options.organizationStore ? { store: options.organizationStore } : {}),
+  });
+  const publisher = createEnterpriseIdentityViewPublisher({
+    emit: (next) => changed.fire(next),
+    isConfigured: () => Boolean(adapter),
+    organizations: () => organizations.options(),
+    selectedOrgId: () => organizations.current(),
+    initialError: adapter ? null : "unconfigured",
+  });
+  const publish = publisher.publish;
+  const signedOut = publisher.signedOut;
   let generation = 0;
   let knownRevision = 0;
   let attemptRevision = 0;
   let controller = new AbortController();
   let session: EnterpriseIdentitySession | null = null;
   let attempt: EnterpriseIdentityAttempt | null = null;
+  /** 本次尝试所属组织：兑换 code 时与服务端回包一起校验，不跟着选择后续漂移。 */
+  let attemptOrgId: string | null = null;
   let nativeAttemptClaimed = false;
   let startTask: Promise<EnterpriseIdentityAttempt> | null = null;
   let resultTask: Promise<EnterpriseIdentityCompletion> | null = null;
   let restoreTask: Promise<EnterpriseIdentityView> | null = null;
   let adapterTask: Promise<void> | null = null;
+  let selectionHydrated = false;
   let writes: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
 
-  const publish = (next: Omit<EnterpriseIdentityView, "revision" | "configured">) => {
-    view = {
-      ...next,
-      revision: view.revision + 1,
-      configured: Boolean(adapter),
-    } as EnterpriseIdentityView;
-    changed.fire(structuredClone(view));
-  };
-  const signedOut = (error: EnterpriseIdentityView["error"] = null) =>
-    publish({ status: "signed-out", profile: null, pending: null, error });
   const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = writes.then(operation, operation);
     writes = result.catch(() => {});
@@ -83,6 +93,7 @@ export function createEnterpriseIdentityService(options: {
     controller.abort();
     controller = new AbortController();
     attempt = null;
+    attemptOrgId = null;
     nativeAttemptClaimed = false;
     startTask = null;
     resultTask = null;
@@ -91,12 +102,18 @@ export function createEnterpriseIdentityService(options: {
   };
   const ensureAdapter = async () => {
     if (disposed) return;
-    if (adapter || !options.loadAdapter) return;
-    adapterTask ??= options.loadAdapter().then((loaded) => {
-      adapter = loaded;
-      signedOut(loaded ? null : "unconfigured");
-    });
-    await adapterTask;
+    if (!adapter && options.loadAdapter) {
+      adapterTask ??= options.loadAdapter().then((loaded) => {
+        adapter = loaded;
+      });
+      await adapterTask;
+    }
+    // 适配器就绪（注入或懒加载）后水合一次组织清单与记忆选择，再发布未登录视图。
+    if (!selectionHydrated) {
+      selectionHydrated = true;
+      await organizations.hydrate();
+      signedOut(adapter ? null : "unconfigured");
+    }
   };
   const broadcast = async () => {
     try {
@@ -170,18 +187,18 @@ export function createEnterpriseIdentityService(options: {
   };
   const restoreOwned = async (current: number): Promise<EnterpriseIdentityView> => {
     await ensureAdapter();
-    if (disposed || !adapter || current !== generation) return structuredClone(view);
+    if (disposed || !adapter || current !== generation) return structuredClone(publisher.current());
     const record = await store.read();
-    if (current !== generation) return structuredClone(view);
+    if (current !== generation) return structuredClone(publisher.current());
     knownRevision = record.revision;
     if (!record.session) {
       session = null;
       signedOut();
-      return structuredClone(view);
+      return structuredClone(publisher.current());
     }
     // 本地到期时间只是调度提示；issuer 的 refresh 才能判定旧 Token 是否还能续期。
     const restored = await adapter.restore(record.session, controller.signal);
-    if (current !== generation) return structuredClone(view);
+    if (current !== generation) return structuredClone(publisher.current());
     if (restored) await commit(restored, current, record);
     else
       await enqueue(async () => {
@@ -199,7 +216,7 @@ export function createEnterpriseIdentityService(options: {
           await broadcast();
         }
       });
-    return structuredClone(view);
+    return structuredClone(publisher.current());
   };
   const expireSession = async () => {
     if (disposed) return;
@@ -222,7 +239,7 @@ export function createEnterpriseIdentityService(options: {
       await ensureAdapter();
       await expireSession();
     }
-    return structuredClone(view);
+    return structuredClone(publisher.current());
   };
   const completeResult = (
     current: number,
@@ -255,7 +272,7 @@ export function createEnterpriseIdentityService(options: {
     restoreSession() {
       if (disposed) return getView();
       if (restoreTask) return restoreTask;
-      if (view.status === "authenticated") return getView();
+      if (publisher.current().status === "authenticated") return getView();
       const current = generation;
       const task = restoreOwned(current).catch(() => {
         fail(current);
@@ -266,12 +283,20 @@ export function createEnterpriseIdentityService(options: {
         if (restoreTask === task) restoreTask = null;
       });
     },
+    async selectOrganization(orgId) {
+      await ensureAdapter();
+      if (disposed) throw new Error("企业身份服务已关闭");
+      await organizations.select(orgId);
+      publisher.republish();
+      return getView();
+    },
     beginLogin() {
       if (disposed) return Promise.reject(new Error("企业身份服务已关闭"));
       if (startTask) return startTask;
       if (attempt && (!nativeAttemptClaimed || resultTask) && attempt.expiresAt > now())
         return Promise.resolve(structuredClone(attempt));
-      if (view.status === "authenticated") return Promise.reject(new Error("请先退出当前企业账号"));
+      if (publisher.current().status === "authenticated")
+        return Promise.reject(new Error("请先退出当前企业账号"));
       const current = invalidate();
       const task = (async () => {
         await ensureAdapter();
@@ -282,11 +307,15 @@ export function createEnterpriseIdentityService(options: {
           if (current !== generation) throw new Error("企业登录已取消");
           attemptRevision = record.revision;
           knownRevision = record.revision;
-          const response = await adapter.start(controller.signal);
+          const response = await adapter.start(
+            controller.signal,
+            organizations.current() ?? undefined,
+          );
           const started = enterpriseIdentityAttemptSchema.parse(response);
           if (current !== generation || started.expiresAt <= now())
             throw new Error("企业登录已取消或过期");
           attempt = started;
+          attemptOrgId = started.expectedState ?? organizations.current();
           publish({
             status: "waiting",
             profile: null,
@@ -345,14 +374,20 @@ export function createEnterpriseIdentityService(options: {
       // 领取一次性授权码后保留 attempt 身份用于取消，但即使 CAS 拒绝也不能重复兑换。
       if (nativeAttemptClaimed) return resultTask ?? currentView();
       nativeAttemptClaimed = true;
-      const redeem = () => adapter!.complete!(code, controller.signal);
+      const redeem = () =>
+        adapter!.complete!(
+          code,
+          controller.signal,
+          attemptOrgId ?? organizations.current() ?? undefined,
+        );
       return completeResult(generation, attemptId, redeem);
     },
     async cancelLogin(attemptId) {
       // 缺失/过时 ID 绝不能中断共享 restore controller；仅当前尝试可被取消。
       if (!attemptId || attempt?.id !== attemptId) return;
       invalidate();
-      if (view.status !== "authenticated") signedOut(adapter ? null : "unconfigured");
+      if (publisher.current().status !== "authenticated")
+        signedOut(adapter ? null : "unconfigured");
       await writes;
     },
     async logout() {

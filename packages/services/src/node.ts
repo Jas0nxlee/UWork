@@ -326,6 +326,7 @@ import {
   createLocalIdentitySessionStore,
   createSharedIdentitySessionStore,
 } from "./enterprise-identity/identitySessionStore.js";
+import { createIdentityOrganizationStore } from "./enterprise-identity/identityOrganizationStore.js";
 import {
   loadWeComIdentityAdapter,
   loadWeComIdentityConfig,
@@ -1552,6 +1553,15 @@ export function createLocalServices(options: {
           ),
         )
       : createLocalIdentitySessionStore(credentialService);
+  // 登录组织是设备偏好（不是凭据）：缺失或损坏都按「未选择」处理，由配置默认组织兜底。
+  const identityOrganizationStore = createIdentityOrganizationStore({
+    filePath: join(resolveAppConfigDir(), "enterprise-identity-organization.json"),
+    onCorrupt: () =>
+      createServiceLogger("enterprise-identity").warn(
+        undefined,
+        "Identity organization preference was invalid and ignored",
+      ),
+  });
   const ucasGatewayStore = createUcasGatewayStore({
     filePath: join(resolveAppConfigDir(), "ucas-gateway.json"),
     onCorrupt: () =>
@@ -2516,6 +2526,7 @@ export function createLocalServices(options: {
         adapter: options.enterpriseIdentityAdapter,
         // 网关服务读取同一份会话库；身份服务仍是唯一写者与验证者。
         sessionStore: enterpriseIdentitySessionStore,
+        organizationStore: identityOrganizationStore,
         ...(options.serviceAuthorityMode === "desktop-local"
           ? {
               loadAdapter: () =>

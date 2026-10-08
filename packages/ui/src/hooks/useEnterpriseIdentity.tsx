@@ -33,6 +33,12 @@ interface IdentityContextValue {
   allowLogin: boolean;
   openLogin(): void;
   logout(): Promise<void>;
+  /** 配置里的可选组织（多公司时登录卡片展示选择器）。 */
+  organizations: EnterpriseIdentityView["organizations"];
+  selectedOrgId: string | null;
+  /** 组织展示名（label 优先）；传入的身份组织不在清单内时返回 null。 */
+  organizationLabel(orgId: string): string | null;
+  selectOrganization(orgId: string): Promise<void>;
 }
 const IdentityContext = createContext<IdentityContextValue | null>(null);
 
@@ -188,6 +194,23 @@ export function EnterpriseIdentityProvider({
         .cancelLogin(attemptId)
         .catch(() => logger.warn("Enterprise login cancellation failed"));
   }, [owner, allowLogin, platform]);
+  /** 二维码阶段返回公司选择：取消本次尝试但保留登录入口（与「跳过」的区别是不关弹窗）。 */
+  const backToOrganizations = useCallback(() => {
+    actionGeneration.current++;
+    setShowUcasApiKeyPrompt(false);
+    surfaceController.current?.abort();
+    surfaceController.current = null;
+    setBusy(false);
+    setError(false);
+    if (nativeAttemptId.current) platform.cancelEnterpriseLogin?.(nativeAttemptId.current);
+    nativeAttemptId.current = null;
+    const attemptId = activeAttemptId.current;
+    activeAttemptId.current = null;
+    if (owner && allowLogin && attemptId)
+      void owner
+        .cancelLogin(attemptId)
+        .catch(() => logger.warn("Enterprise login cancellation failed"));
+  }, [owner, allowLogin, platform]);
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
     const generation = ++actionGeneration.current;
@@ -310,6 +333,28 @@ export function EnterpriseIdentityProvider({
       logger.warn("Enterprise logout failed");
     }
   }, [owner, allowLogin]);
+  const organizations = view?.organizations ?? [];
+  const selectedOrgId = view?.selectedOrgId ?? null;
+  const organizationLabel = useCallback(
+    (orgId: string) => {
+      const match = organizations.find((organization) => organization.id === orgId);
+      return match ? (match.label ?? match.id) : null;
+    },
+    [organizations],
+  );
+  const selectOrganization = useCallback(
+    async (orgId: string) => {
+      if (!owner) return;
+      try {
+        // 选择只是设备偏好；授权判断仍由服务端与回包校验决定，这里失败不弹错误页。
+        const candidate = enterpriseIdentityViewSchema.parse(await owner.selectOrganization(orgId));
+        useEnterpriseIdentityStore.getState().project(owner, candidate);
+      } catch {
+        logger.warn("Enterprise identity organization selection failed");
+      }
+    },
+    [owner],
+  );
 
   return (
     <IdentityContext.Provider
@@ -321,6 +366,10 @@ export function EnterpriseIdentityProvider({
           setOpen(true);
         },
         logout,
+        organizations,
+        selectedOrgId,
+        organizationLabel,
+        selectOrganization,
       }}
     >
       {children}
@@ -329,9 +378,13 @@ export function EnterpriseIdentityProvider({
         <EnterpriseLoginPage
           configured={owner ? (view?.configured ?? null) : false}
           waiting={busy || view?.status === "waiting"}
+          organizations={organizations}
+          selectedOrgId={selectedOrgId}
           error={error || view?.error === "failed"}
           expired={view?.error === "expired"}
           onLogin={() => void login()}
+          onSelectOrg={(orgId) => void selectOrganization(orgId)}
+          onBackToOrganizations={backToOrganizations}
           onSkip={skip}
           onSurface={onSurface}
         />
