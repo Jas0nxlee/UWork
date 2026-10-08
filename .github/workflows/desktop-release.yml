@@ -43,6 +43,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm architecture:check
+      - name: Validate complete desktop Agent and shared runtime build
+        run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
         run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs
       - name: Validate provider and enterprise login behavior

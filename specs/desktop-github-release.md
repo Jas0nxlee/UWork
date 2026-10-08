@@ -8,6 +8,7 @@
 - 下一版 `v3.14.7` 修复新设备企业微信按钮禁用：五个平台构建均从 GitHub Actions 加密配置注入默认公开参数，随包资源必须通过严格字段校验和内容一致性校验。安装后无需复制配置文件；保留本机覆盖与用户凭据隔离，并发布本次 UCAS Key 引导。`v3.14.6` 构建因新增 Linux 启动测试误用可执行文件名而未发布，标签保留。
 - 本次发布为 `v3.15.0`：包含企业网关自动配置、套餐/用量展示、独立 UWork 数据目录、目录规则测试与依赖安全修复。根版本是唯一版本所有者；发布说明从 `docs/releases/<version>.md` 读取，不继续复用上一版硬编码的变更说明。缺少当前版本说明时汇总失败，不发布。
 - `v3.15.0` 升级说明必须明确：用户级数据改为 `~/.uwork`，不迁移或删除 `~/.zcode`；首次升级可能需要重新登录与配置。未保存 issuer 的历史 MCP OAuth 凭据刷新时需重新授权。调试 forge 固定到尚未正式发布的上游安全修复提交；历史许可原文缺口保持待复核标记，不声称材料已经全部核验完成。
+- `v3.15.0` 未公开发布：干净环境的共享 `node_repl` 主机构建引用未声明的旧 MCP SDK 类型而失败。保留该标签，修正版使用 `v3.15.1`；Computer Use bridge 的 `CallToolResult` 从主机已声明的 `@modelcontextprotocol/server` 公共入口读取，不恢复旧 SDK 或依赖 hoist。桥接协议、能力令牌、工作区身份和代际校验保持原实现。检查阶段新增完整桌面 Agent 构建，覆盖 CLI 依赖顺序、主机类型与 runtime 产物，在进入平台打包前拒绝缺失模块。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。

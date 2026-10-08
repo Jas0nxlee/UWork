@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
 import type { NodeReplCuaAppIdentity, NodeReplRequestMeta, NodeReplSession } from "@zcode/core";
 import { CUA_APP_ASSOCIATIONS_META_KEY } from "@zcode/zcode-cua/host-display-contract";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+// 旧 SDK 并未在本包声明，曾借用 shadcn 的间接依赖；精简依赖后干净构建无法解析。
+// 与主机的 MCP 2 server 使用同一公开协议类型，不依赖 hoist 或重新引入旧 SDK。
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 export const NODE_REPL_CUA_BRIDGE_SYMBOL = Symbol.for("zcode.node-repl.computer-use-bridge");
 export const CUA_UNAVAILABLE_IN_SUBAGENT_MESSAGE = "Computer Use is not available in subagent";
