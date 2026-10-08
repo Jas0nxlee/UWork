@@ -70,7 +70,6 @@
     "react-resizable-panels": "^4.8.0",
     "recharts": "^3.8.0",
     "remark-cjk-friendly-gfm-strikethrough": "^2.0.1",
-    "shadcn": "4.1.1",
     "shiki": "^4.0.2",
     "streamdown": "^2.5.0",
     "swr": "^2.5.1",

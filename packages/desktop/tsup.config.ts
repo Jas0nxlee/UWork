@@ -119,9 +119,8 @@ const desktopNodeRuntimeExternals = [
   "ssh2",
   "undici",
   "yaml",
-  // node-forge 内部用动态 require("crypto")，内联进 ESM main/host bundle 后 Electron 会报
-  // Dynamic require of "crypto" is not supported。和 undici 同样保留为运行时外部依赖。
-  "node-forge",
+  "@peculiar/asn1-schema",
+  "@peculiar/asn1-x509",
   // ZIP 解包器内部依赖 CommonJS require("fs")，不能内联到 ESM main/host 产物。
   "yauzl",
 ];

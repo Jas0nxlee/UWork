@@ -13,12 +13,13 @@ allowBuilds:
   koffi: true
   msw: true
   node-pty: true
+  node-forge: false
   protobufjs: true
   ssh2: true
   unsafe-pointer: true
 overrides:
   axios: ^1.16.0
-  basic-ftp: ^5.3.1
+  basic-ftp: 6.2.1
   brace-expansion@^5: ^5.0.9
   browserslist: ^4.28.7
   builder-util-runtime: ^9.7.0
@@ -31,11 +32,13 @@ overrides:
   linkify-it: ^5.0.2
   nanoid@^3: ^3.3.18
   nanoid@^5: ^5.1.16
+  node-forge: https://codeload.github.com/digitalbazaar/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65
   postcss: ^8.5.18
   protobufjs@^7: ^7.6.1
   react: 19.2.7
   react-dom: 19.2.7
   shell-quote: ^1.9.0
+  source-map-js: 1.2.2
   smol-toml: ^1.7.1
   undici@^6: ^6.27.0
   undici@^7: ^7.29.0

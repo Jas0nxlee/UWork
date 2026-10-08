@@ -119,12 +119,33 @@ async function refreshLocked(
     });
   }
 
+  // GHSA-6qxp-vccf-f47h：直接调用 refreshAuthorization 不受 SDK auth() 的 issuer
+  // 绑定保护。旧凭据未记录 issuer 时不能把秘密交给服务器刚声明的任意授权方。
+  if (!current.issuer) {
+    throw createInteractiveAuthorizationRequiredError({
+      reason: "unauthorized",
+      serverName: input.serverName,
+    });
+  }
+
   let resolved: ResolvedAsMetadata;
   try {
     resolved = await resolveAsMetadata(input, current);
   } catch (error) {
     // discovery 失败绝不能当作 grant 失效。
     return failSoft(input, current, error);
+  }
+
+  // 只校验 discovery 缓存不够：缓存缺失或失效后，必须校验本次真正使用的 AS URL。
+  // 此检查在网络失败的 fail-soft 分支之外，issuer 改变不能继续使用旧凭据刷新。
+  if (
+    new URL(current.issuer).href.replace(/\/$/, "") !==
+    new URL(resolved.authorizationServerUrl).href.replace(/\/$/, "")
+  ) {
+    throw createInteractiveAuthorizationRequiredError({
+      reason: "unauthorized",
+      serverName: input.serverName,
+    });
   }
 
   try {

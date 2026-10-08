@@ -78,12 +78,6 @@
     "source": "https://raw.githubusercontent.com/vercel/ai/@ai-sdk/provider-utils@4.0.39/LICENSE"
   },
   {
-    "package": "data-uri-to-buffer@4.0.1",
-    "file": "third-party/upstream/9b7a157a0079ef346f3215b964071fa460d0dd251ca93cbf581bcc91595066ca.txt",
-    "sha256": "9b7a157a0079ef346f3215b964071fa460d0dd251ca93cbf581bcc91595066ca",
-    "source": "node_modules/node-fetch/node_modules/data-uri-to-buffer/README.md"
-  },
-  {
     "package": "@rive-app/react-webgl2@4.28.0",
     "file": "third-party/upstream/cf81859d85e99ff2fad83d51d9dfd85ca5189b23c4442aacf1890c54665d92f4.txt",
     "sha256": "cf81859d85e99ff2fad83d51d9dfd85ca5189b23c4442aacf1890c54665d92f4",
@@ -128,24 +122,6 @@
       "npmArchiveSha256": "48b94f87b85ca84428491d7275f0fad16450254bd49d9b2b4f621539fda8a2af",
       "sourceRevision": "2c026b9d5bfff006dc9abdc1b33c53856d2d784f",
       "sourceTreeUrl": "https://api.github.com/repos/honojs/middleware/git/trees/2c026b9d5bfff006dc9abdc1b33c53856d2d784f?recursive=1",
-      "upstreamLicenseFiles": []
-    }
-  },
-  {
-    "package": "strict-event-emitter@0.5.1",
-    "repo": "open-draft/strict-event-emitter",
-    "refs": ["v0.5.1", "strict-event-emitter@0.5.1", "0.5.1"],
-    "file": "third-party/upstream/93f24a47f95aea2be1b0dad78de98dc6d3de01ce22c0b72dc73e453c7917b955.txt",
-    "sha256": "93f24a47f95aea2be1b0dad78de98dc6d3de01ce22c0b72dc73e453c7917b955",
-    "source": "https://registry.npmjs.org/strict-event-emitter/0.5.1",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT",
-    "reviewEvidence": {
-      "checkedOn": "2026-09-21",
-      "result": "The versioned npm archive contains no standalone complete LICENSE; existing publisher declaration and original README license sections remain preserved. Upstream authorization/copyright material is still required to close this review.",
-      "npmArchiveSha256": "43c456f72612074a13e8399c29ffd59c8c277274924b633f6e4fa07342f63cab",
-      "sourceRevision": "56e004cf2793053ea9ece4330fd52cace96acbff",
-      "sourceTreeUrl": "https://api.github.com/repos/open-draft/strict-event-emitter/git/trees/56e004cf2793053ea9ece4330fd52cace96acbff?recursive=1",
       "upstreamLicenseFiles": []
     }
   },
@@ -279,24 +255,6 @@
     }
   },
   {
-    "package": "@open-draft/deferred-promise@2.2.0",
-    "repo": "open-draft/deferred-promise",
-    "refs": ["b30f1b683311030e92fcdd08d2bd6574d652b77f"],
-    "file": "third-party/upstream/b1688598c3e32605b3973902a546225e0159349c05a0f74db67f76e08e116e65.txt",
-    "sha256": "b1688598c3e32605b3973902a546225e0159349c05a0f74db67f76e08e116e65",
-    "source": "https://registry.npmjs.org/@open-draft%2fdeferred-promise/2.2.0",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT",
-    "reviewEvidence": {
-      "checkedOn": "2026-09-21",
-      "result": "The versioned npm archive contains no standalone complete LICENSE; existing publisher declaration and original README license sections remain preserved. Upstream authorization/copyright material is still required to close this review.",
-      "npmArchiveSha256": "57f8d0cf303951c66dcdab2a10c2fe57194ad4cbb851880c604d4c3e521def2b",
-      "sourceRevision": "b30f1b683311030e92fcdd08d2bd6574d652b77f",
-      "sourceTreeUrl": "https://api.github.com/repos/open-draft/deferred-promise/git/trees/b30f1b683311030e92fcdd08d2bd6574d652b77f?recursive=1",
-      "upstreamLicenseFiles": []
-    }
-  },
-  {
     "package": "@radix-ui/react-use-size@1.1.1",
     "file": "third-party/upstream/0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138.txt",
     "sha256": "0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138",
@@ -387,24 +345,6 @@
     "source": "node_modules/isarray/README.md"
   },
   {
-    "package": "is-node-process@1.2.0",
-    "repo": "mswjs/is-node-process",
-    "refs": ["v1.2.0", "is-node-process@1.2.0", "1.2.0"],
-    "file": "third-party/upstream/000ffa2d773c511f4459fb31d89f841806f93bf5caf2050468ab2097c081b443.txt",
-    "sha256": "000ffa2d773c511f4459fb31d89f841806f93bf5caf2050468ab2097c081b443",
-    "source": "https://registry.npmjs.org/is-node-process/1.2.0",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT",
-    "reviewEvidence": {
-      "checkedOn": "2026-09-21",
-      "result": "The versioned npm archive contains no standalone complete LICENSE; existing publisher declaration and original README license sections remain preserved. Upstream authorization/copyright material is still required to close this review.",
-      "npmArchiveSha256": "810d5c86ac247ffbfab3dcdee3cef95fb830e1f5eea9674858e8dcd6de4accba",
-      "sourceRevision": "8a6152c795d8705be97166bd5167e70ac6efc67c",
-      "sourceTreeUrl": "https://api.github.com/repos/mswjs/is-node-process/git/trees/8a6152c795d8705be97166bd5167e70ac6efc67c?recursive=1",
-      "upstreamLicenseFiles": []
-    }
-  },
-  {
     "package": "@dukelib/sheets-wasm@0.1.21",
     "file": "third-party/upstream/ebb2e920800c6353474e3e23d84f714ee8aaecd8f5a71851aa03594a4129d855.txt",
     "sha256": "ebb2e920800c6353474e3e23d84f714ee8aaecd8f5a71851aa03594a4129d855",
@@ -477,14 +417,6 @@
     "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
   },
   {
-    "package": "keyv@4.5.4",
-    "file": "third-party/upstream/6f7e6eae2a2afbaa67b266650f7342e7bf8e82cb57f6ab98148b3d6e0fb4450a.txt",
-    "sha256": "6f7e6eae2a2afbaa67b266650f7342e7bf8e82cb57f6ab98148b3d6e0fb4450a",
-    "source": "https://registry.npmjs.org/keyv/4.5.4",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT"
-  },
-  {
     "package": "@arms/rum-browser@0.1.8",
     "file": "third-party/upstream/2c976d327b293bd74c257cd53e9b4ecef97a06b1651baa3b24327c97192cb3de.txt",
     "sha256": "2c976d327b293bd74c257cd53e9b4ecef97a06b1651baa3b24327c97192cb3de",
@@ -507,5 +439,38 @@
     "source": "https://registry.npmjs.org/%40arms%2frum-electron%400.0.3",
     "evidenceKind": "publisher-license-identifier-and-standard-terms",
     "license": "MIT"
+  },
+  {
+    "package": "@electron-internal/extract-zip@1.0.5",
+    "file": "third-party/upstream/edab8abb78d9c5b36944c3e00aebf6a90eb32378993f49ac8a3904007029c629.txt",
+    "sha256": "edab8abb78d9c5b36944c3e00aebf6a90eb32378993f49ac8a3904007029c629",
+    "source": "https://raw.githubusercontent.com/electron/extract-zip/101670cab89b03fe642633e777efb10670c9cff8/LICENSE",
+    "evidenceKind": "pinned-upstream-project-license-reference",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-08",
+      "result": "Published archive declares BSD-2-Clause; pinned later upstream project LICENSE is MIT. The original version-specific copyright/license material is absent and requires upstream clarification."
+    }
+  },
+  {
+    "package": "agent-base@6.0.2",
+    "file": "third-party/upstream/8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a.txt",
+    "sha256": "8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a",
+    "source": "https://raw.githubusercontent.com/TooTallNate/proxy-agents/4813885d3f4e2ff837878ceffdba656a71dc31f0/packages/agent-base/LICENSE",
+    "evidenceKind": "pinned-upstream-project-license-reference",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-08",
+      "result": "Historical archive/source revision has no LICENSE. Preserve the pinned upstream project MIT notice as supplementary reference, without asserting it is the original version-specific notice."
+    }
+  },
+  {
+    "package": "https-proxy-agent@5.0.1",
+    "file": "third-party/upstream/8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a.txt",
+    "sha256": "8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a",
+    "source": "https://raw.githubusercontent.com/TooTallNate/proxy-agents/4813885d3f4e2ff837878ceffdba656a71dc31f0/packages/https-proxy-agent/LICENSE",
+    "evidenceKind": "pinned-upstream-project-license-reference",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-08",
+      "result": "Historical archive/source revision has no LICENSE. Preserve the pinned upstream project MIT notice as supplementary reference, without asserting it is the original version-specific notice."
+    }
   }
 ]

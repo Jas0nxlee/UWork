@@ -103,9 +103,8 @@ const requiredRuntimeModules = [
   // 如果这里只校验 pngjs/ssh2 依赖，打包链路就会放过“产物能生成但主进程启动即缺 undici”的坏包。
   // 这里把 undici 纳入机械校验，让 bundle 阶段就能把问题拦下来。
   "undici",
-  // app 自签 CA 生成用 node-forge，它内部动态 require("crypto") 内联进 ESM main bundle 会崩，
-  // 因此作为外部依赖保留；生产包必须显式校验 app.asar 中存在该包，避免漏打导致启动即崩。
-  "node-forge",
+  "@peculiar/asn1-schema",
+  "@peculiar/asn1-x509",
   // 与 tsup external 对齐，保留 ZIP 解包器的 CommonJS 运行时边界。
   "yauzl",
   // ssh2 的关键依赖链（asn1/bcrypt-pbkdf/tweetnacl）若缺失，

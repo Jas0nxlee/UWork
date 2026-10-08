@@ -7,7 +7,11 @@
     "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f",
     "importRevision": null,
     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
-    "roots": ["packages/ui/src/components/ui", "packages/ui/src/styles.css"],
+    "roots": [
+      "packages/ui/src/components/ui",
+      "packages/ui/src/styles.css",
+      "packages/ui/src/styles/shadcn-4.1.1.css"
+    ],
     "scope": "Upstream-derived portions only; ZCode-specific files in the same directory are not attributed to the upstream project.",
     "license": "MIT"
   },

@@ -1,7 +1,8 @@
 @import "tailwindcss" source(".");
 @import "tw-animate-css";
 @import "tailwind-scrollbar-hide/v4";
-@import "shadcn/tailwind.css";
+/* shadcn 4.1.1 静态 CSS，许可见 styles/shadcn-LICENSE.txt；不引入未使用的 CLI 依赖链。 */
+@import "./styles/shadcn-4.1.1.css";
 @import "@xterm/xterm/css/xterm.css";
 @import "katex/dist/katex.min.css";
 @source "../../../node_modules/streamdown/dist/*.js"; /* 显式扫描 streamdown 的运行时类名 */
@@ -25,11 +26,11 @@
 /*
  * 当前 UI 直接使用了 shadcn 的 radix-mira 风格组件源码，这些组件大量依赖
  * data-active / data-horizontal / data-vertical 这类语义 variant。
- * 上游并不是靠单个组件手写 data-[state=active]，而是通过 shadcn/tailwind.css 里的
+ * 上游并不是靠单个组件手写 data-[state=active]，而是通过 静态 shadcn CSS 里的
  * @custom-variant 把 Radix 的 data-state、data-orientation 统一映射过来。
  * 之前仓库只引了 tailwindcss，本地编译就只会匹配裸 data-active 属性，
  * 导致 Tabs、Separator、ScrollArea、ButtonGroup 等一批组件样式“类名在、效果不在”。
- * 这里按官方 registry 的接法补上 shadcn/tailwind.css 和 tw-animate-css，
+ * 这里按官方 registry 的接法保留本地 shadcn CSS 和 tw-animate-css，
  * 让这批组件一次性恢复和上游一致的编译语义与动画工具类。
  */
 
