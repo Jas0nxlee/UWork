@@ -12,7 +12,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type {
   PluginSyncCandidate,
@@ -212,16 +212,14 @@ export function createPluginSyncService(options?: {
   };
 }
 
-function resolveUserHomeDir(): string {
-  return process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || homedir();
-}
+import { getUworkUserCliConfigPath, getUworkUserPluginsRoot } from "#src/paths.js";
 
 function getUserZcodeConfigPath(): string {
-  return join(resolveUserHomeDir(), ".zcode", "cli", "config.json");
+  return getUworkUserCliConfigPath();
 }
 
 function getUserZcodePluginRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "plugins");
+  return getUworkUserPluginsRoot();
 }
 
 async function collectLocalUserPluginCandidates(): Promise<PluginSyncCandidate[]> {

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { getUWorkDataRootDir, getUworkUserCliConfigPath } from "#src/paths.js";
 
 const HOME_PREFIX = "~/";
 
@@ -34,7 +35,7 @@ export async function resolveZCodeStorageRoot(options?: SubagentStorageOptions):
   const storageDir =
     typeof storage.dir === "string" && storage.dir.trim().length > 0
       ? storage.dir.trim()
-      : "~/.zcode";
+      : getUWorkDataRootDir();
   return resolveConfigPath(storageDir, options);
 }
 
@@ -46,13 +47,10 @@ export function resolveConfigPath(path: string, options?: SubagentStorageOptions
 }
 
 async function readUserCliConfig(
-  options?: SubagentStorageOptions,
+  _options?: SubagentStorageOptions,
 ): Promise<Record<string, unknown>> {
   try {
-    const raw = await readFile(
-      join(resolveUserHomeDir(options), ".zcode", "cli", "config.json"),
-      "utf8",
-    );
+    const raw = await readFile(getUworkUserCliConfigPath(), "utf8");
     const parsed = JSON.parse(raw) as unknown;
     return isObjectRecord(parsed) ? parsed : {};
   } catch {

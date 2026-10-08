@@ -1,9 +1,14 @@
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
-/* eslint-disable max-lines -- 商店列表页把标题/搜索/已安装条/公开-个人分段/Featured/分类折叠聚合成一个连贯浏览面，拆散反而难以维持 1:1 布局。 */
-import { useMemo, useState } from "react";
+/* eslint-disable max-lines -- 商店列表页把标题/搜索/已安装条/公开-公司-个人分段/Featured/分类折叠聚合成一个连贯浏览面，拆散反而难以维持 1:1 布局。 */
+import { useCallback, useMemo, useState } from "react";
 import { Download, Loader2, Settings2 } from "lucide-react";
 import type { PluginStoreOrder, ZCodePluginMarketplaceSummary } from "@zcode/shared";
-import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID } from "@zcode/shared";
+import {
+  isCompanyStoreMarketplaceId,
+  isCuratedStoreMarketplaceId,
+  isPublicStoreMarketplaceId,
+  ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID,
+} from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -16,7 +21,6 @@ import {
   KNOWN_CATEGORY_LABEL_IDS,
   canUpdatePluginItem,
   groupItemsByCategory,
-  isPublicStoreMarketplaceId,
   resolveItemDisplayName,
   selectFeaturedItems,
   sortInstalledStripItems,
@@ -31,7 +35,7 @@ import { resolveMarketplaceDisplayName } from "@/settings/pluginSourceLabel.js";
 const CATEGORY_VISIBLE_LIMIT = 6;
 const RETIRED_STORE_PLUGIN_ID = `restore-legacy-sessions@${ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID}`;
 
-export type PluginStoreSegment = "public" | "personal";
+export type PluginStoreSegment = "public" | "company" | "personal";
 
 export function PluginStoreListView({
   items: allItems,
@@ -80,8 +84,12 @@ export function PluginStoreListView({
     () => items.filter((item) => isPublicStoreMarketplaceId(item.marketplace)),
     [items],
   );
+  const companyItems = useMemo(
+    () => items.filter((item) => isCompanyStoreMarketplaceId(item.marketplace)),
+    [items],
+  );
   const personalItems = useMemo(
-    () => items.filter((item) => !isPublicStoreMarketplaceId(item.marketplace)),
+    () => items.filter((item) => !isCuratedStoreMarketplaceId(item.marketplace)),
     [items],
   );
 
@@ -101,28 +109,40 @@ export function PluginStoreListView({
     [locale, publicItems, modeOrder],
   );
 
-  // 个人分段：按市场分组，最近刷新的市场排最前（见 sortPersonalMarketplaceGroups）。
-  const personalGroups = useMemo(() => {
-    const groups = new Map<string, StorePluginItem[]>();
-    for (const item of personalItems) {
-      const group = groups.get(item.marketplace) ?? [];
-      group.push(item);
-      groups.set(item.marketplace, group);
-    }
-    const titled: PersonalMarketplaceGroup[] = [...groups.entries()].map(
-      ([marketplace, groupItems]) => ({
-        marketplace,
-        title: resolveMarketplaceDisplayName(marketplace, marketplaces),
-        items: groupItems.toSorted((left, right) =>
-          resolveItemDisplayName(left, locale).localeCompare(
-            resolveItemDisplayName(right, locale),
-            locale,
+  // 公司/个人分段都按市场分组，最近刷新的市场排最前（见 sortPersonalMarketplaceGroups）。
+  const groupByMarketplace = useCallback(
+    (source: StorePluginItem[]): PersonalMarketplaceGroup[] => {
+      const groups = new Map<string, StorePluginItem[]>();
+      for (const item of source) {
+        const group = groups.get(item.marketplace) ?? [];
+        group.push(item);
+        groups.set(item.marketplace, group);
+      }
+      const titled: PersonalMarketplaceGroup[] = [...groups.entries()].map(
+        ([marketplace, groupItems]) => ({
+          marketplace,
+          title: resolveMarketplaceDisplayName(marketplace, marketplaces),
+          items: groupItems.toSorted((left, right) =>
+            resolveItemDisplayName(left, locale).localeCompare(
+              resolveItemDisplayName(right, locale),
+              locale,
+            ),
           ),
-        ),
-      }),
-    );
-    return sortPersonalMarketplaceGroups(titled, marketplaces, locale);
-  }, [intl, locale, marketplaces, personalItems]);
+        }),
+      );
+      return sortPersonalMarketplaceGroups(titled, marketplaces, locale);
+    },
+    [locale, marketplaces],
+  );
+
+  const companyGroups = useMemo(
+    () => groupByMarketplace(companyItems),
+    [companyItems, groupByMarketplace],
+  );
+  const personalGroups = useMemo(
+    () => groupByMarketplace(personalItems),
+    [groupByMarketplace, personalItems],
+  );
 
   const searchResults = useMemo(() => {
     if (!keyword) return [];
@@ -229,7 +249,7 @@ export function PluginStoreListView({
         </section>
       ) : null}
 
-      {/* 公开 / 个人分段。 */}
+      {/* 公开 / 公司 / 个人分段：公司技能市场是受控的内部来源，独立成段，不混进公开列表。 */}
       <div className="flex items-center gap-1.5">
         <SegmentPill
           active={segment === "public"}
@@ -238,6 +258,14 @@ export function PluginStoreListView({
             id: "settings.plugins.store.segment.public",
           })}
           onClick={() => onSegmentChange("public")}
+        />
+        <SegmentPill
+          active={segment === "company"}
+          testId="plugin-store-segment-company"
+          label={intl.formatMessage({
+            id: "settings.plugins.store.segment.company",
+          })}
+          onClick={() => onSegmentChange("company")}
         />
         <SegmentPill
           active={segment === "personal"}
@@ -276,9 +304,19 @@ export function PluginStoreListView({
           resolveCategoryLabel={resolveCategoryLabel}
           onToggleGroup={toggleGroup}
         />
-      ) : (
-        <PersonalSegment
+      ) : segment === "company" ? (
+        <MarketplaceGroupsSegment
           actions={actions}
+          emptyMessageId="settings.plugins.store.companyEmpty"
+          expandedGroups={expandedGroups}
+          groups={companyGroups}
+          locale={locale}
+          onToggleGroup={toggleGroup}
+        />
+      ) : (
+        <MarketplaceGroupsSegment
+          actions={actions}
+          emptyMessageId="settings.plugins.store.personalEmpty"
           expandedGroups={expandedGroups}
           groups={personalGroups}
           locale={locale}
@@ -499,14 +537,17 @@ function PublicSegment({
   );
 }
 
-function PersonalSegment({
+/** 按市场分组的浏览面；公司分段与个人分段共用（只有空态文案不同）。 */
+function MarketplaceGroupsSegment({
   actions,
+  emptyMessageId,
   expandedGroups,
   groups,
   locale,
   onToggleGroup,
 }: {
   actions: PluginStoreActions;
+  emptyMessageId: string;
   expandedGroups: Record<string, boolean>;
   groups: PersonalMarketplaceGroup[];
   locale: string;
@@ -516,7 +557,7 @@ function PersonalSegment({
   if (groups.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-border px-4 py-3 text-ui-base text-foreground-subtle">
-        {intl.formatMessage({ id: "settings.plugins.store.personalEmpty" })}
+        {intl.formatMessage({ id: emptyMessageId })}
       </p>
     );
   }

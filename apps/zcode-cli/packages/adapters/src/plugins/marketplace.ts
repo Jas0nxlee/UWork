@@ -21,6 +21,13 @@ import { enumeratePluginComponents, type PluginComponentGroup } from "./plugin-c
 import { applyNetworkEgressEnv } from "../network/subprocess-env.js";
 import { createNodeWebFetchHttpClientAdapter } from "../http/index.js";
 import { writeCdnOfficialMarketplacePartitionSync } from "./official-marketplace.js";
+import { createSkillhubHttpClient, normalizeSkillhubBaseUrl } from "./skillhub-common.js";
+import {
+  buildSkillhubMarketplaceManifestRaw,
+  discoverSkillhubApiBase,
+  fetchSkillhubCatalog,
+} from "./skillhub-source.js";
+import { readSkillhubPluginSource, resolveSkillhubPluginSource } from "./skillhub-package.js";
 import {
   isZipPluginUrlSource,
   readZipPluginSourceSha256,
@@ -70,6 +77,7 @@ export type MarketplaceSource =
   | { package: string; source: "npm" }
   | { source: "file"; path: string }
   | { source: "directory"; path: string }
+  | { baseUrl: string; description?: string; name?: string; source: "skillhub" }
   | { hostPattern: string; source: "hostPattern" }
   | { pathPattern: string; source: "pathPattern" }
   | { source: "settings"; marketplace: PluginMarketplaceManifest };
@@ -224,6 +232,12 @@ export async function parseMarketplaceSourceInput(input: string): Promise<Market
     throw new Error("Marketplace source is empty");
   }
 
+  if (trimmed.startsWith("skillhub:")) {
+    const target = trimmed.slice("skillhub:".length).trim();
+    if (target.length === 0) throw new Error("Skillhub marketplace source requires a base URL");
+    return { baseUrl: normalizeSkillhubBaseUrl(target), source: "skillhub" };
+  }
+
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     const { url, ref } = splitRef(trimmed);
     if (url.endsWith(".git") || url.includes("/_git/")) {
@@ -282,17 +296,25 @@ export function ensureDefaultPluginMarketplaces(storageRoot: string): KnownMarke
   const now = new Date().toISOString();
   const missing = DEFAULT_PLUGIN_MARKETPLACES.filter(
     (marketplace) => !existingIds.has(marketplace.id),
-  ).map(
-    (marketplace): KnownMarketplaceRecord => ({
+  ).map((marketplace): KnownMarketplaceRecord => {
+    // 结构化来源（如 skillhub）优先；字符串来源继续走原有的 github/url 解析。
+    const source: MarketplaceSource = marketplace.sourceConfig
+      ? { ...marketplace.sourceConfig }
+      : marketplace.source
+        ? defaultMarketplaceSourceFromString(marketplace.source)
+        : (() => {
+            throw new Error(`Default marketplace ${marketplace.id} declares no source`);
+          })();
+    return {
       id: marketplace.id,
-      source: defaultMarketplaceSourceFromString(marketplace.source),
+      source,
       name: marketplace.name,
       description: marketplace.description,
       addedAt: now,
       ...(marketplace.lastUpdated ? { lastUpdated: marketplace.lastUpdated } : {}),
       pluginCount: marketplace.pluginCount,
-    }),
-  );
+    };
+  });
   if (missing.length === 0) return known;
   const next = [...known, ...missing];
   writeKnownMarketplacesSync(storageRoot, next);
@@ -491,6 +513,29 @@ async function requestMarketplaceJson(
 
 function isMarketplaceJsonRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+/**
+ * SkillHub 市场：只落 manifest（与 url 源一致，由 addMarketplace 走 stageMarketplaceManifest），
+ * 技能包在安装单个插件时才下载并校验指纹。
+ */
+async function loadSkillhubMarketplaceManifest(
+  source: { baseUrl: string; description?: string; name?: string },
+  signal?: AbortSignal,
+): Promise<PluginMarketplaceManifest> {
+  const client = createSkillhubHttpClient();
+  const baseUrl = normalizeSkillhubBaseUrl(source.baseUrl);
+  const apiBase = await discoverSkillhubApiBase({ baseUrl, client, signal });
+  const items = await fetchSkillhubCatalog({ apiBase, client, signal });
+  return normalizeMarketplaceManifest(
+    buildSkillhubMarketplaceManifestRaw({
+      apiBase,
+      baseUrl,
+      items,
+      ...(source.description !== undefined ? { description: source.description } : {}),
+      ...(source.name !== undefined ? { name: source.name } : {}),
+    }),
+  );
 }
 
 export async function updateMarketplace(input: {
@@ -1290,6 +1335,12 @@ async function resolvePluginSourceRoot(input: {
     if (sourceKind === "npm" || sourceKind === "pip") {
       throw new UnsupportedPluginSourceError(sourceKind);
     }
+    if (sourceKind === "skillhub") {
+      return resolveSkillhubPluginSource({
+        plugin: readSkillhubPluginSource(source),
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    }
     // 显式 object source 配置错误时不能降级到 marketplace 内同名目录，否则会安装错误来源。
     throw new Error(
       `Plugin source is invalid or unsupported for ${input.entry.name}@${input.marketplace}: ${sourceKind || "missing kind"}`,
@@ -1600,6 +1651,8 @@ async function loadMarketplaceFromSource(
         throw appendPluginSourceCleanupError(error, cleanupError);
       }
     }
+    case "skillhub":
+      return { manifest: await loadSkillhubMarketplaceManifest(source, options.signal) };
     case "npm":
       throw new UnsupportedMarketplaceSourceError("npm");
     case "hostPattern":
@@ -2398,6 +2451,19 @@ function validateMarketplaceEntryShape(
         });
       }
     }
+    if (sourceKind === "skillhub") {
+      // 条目必须自带 slug/version/baseUrl，否则安装时才失败；这里提前给出可读诊断。
+      try {
+        readSkillhubPluginSource(entry.source);
+      } catch (error) {
+        diagnostics.push({
+          code: "plugin_marketplace_invalid",
+          message: error instanceof Error ? error.message : String(error),
+          pluginId,
+          severity: "error",
+        });
+      }
+    }
   }
   if (options.includeEntryCompatibility !== false) {
     pushEntryCompatibilityDiagnostics({ diagnostics, entry, marketplace });
@@ -2430,7 +2496,7 @@ function getMarketplaceSourceValidationDeferral(
     const sourceType = typeof entry.source.type === "string" ? entry.source.type : "";
     if (sourceType && sourceType !== "git" && sourceType !== "zip") return null;
   }
-  if (!["github", "git", "url", "git-subdir"].includes(sourceKind)) return null;
+  if (!["github", "git", "url", "git-subdir", "skillhub"].includes(sourceKind)) return null;
   const pluginId = `${entry.name}@${marketplace}`;
   const sourceLabel =
     typeof entry.source.repo === "string"

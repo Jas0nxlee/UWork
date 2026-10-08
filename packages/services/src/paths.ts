@@ -65,6 +65,24 @@ export function getAppConfigDir(): string {
   return join(getUWorkDataRootDir(), "v2");
 }
 
+/** Agent/CLI 用户级目录 `<dataRoot>/cli`：与 Host 下发给 Agent 的 ZCODE_STORAGE_DIR 同根。 */
+export function getUworkUserCliRootDir(): string {
+  return join(getUWorkDataRootDir(), "cli");
+}
+
+/**
+ * CLI 用户配置文件 `<dataRoot>/cli/config.json`：插件启用状态、MCP 服务、技能开关都在这里。
+ * 桌面侧读写必须与 Agent 同路径，否则两边各认一份（见 specs/uwork-data-root-separation.md）。
+ */
+export function getUworkUserCliConfigPath(): string {
+  return join(getUworkUserCliRootDir(), "config.json");
+}
+
+/** 桌面侧插件同步根 `<dataRoot>/plugins`（区别于 CLI 缓存 `<dataRoot>/cli/plugins`）。 */
+export function getUworkUserPluginsRoot(): string {
+  return join(getUWorkDataRootDir(), "plugins");
+}
+
 function readEnvValue(env: Record<string, string | undefined>, key: string): string | undefined {
   const direct = env[key]?.trim();
   if (direct) {

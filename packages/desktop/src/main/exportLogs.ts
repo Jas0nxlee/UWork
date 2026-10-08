@@ -12,7 +12,6 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, posix } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -27,13 +26,15 @@ import {
 } from "@zcode/services/node";
 import { createAboutSnapshot, formatAboutDetail, readBuildMetadata } from "./about.js";
 import { logger } from "./logger.js";
+import { resolveDesktopCliDir, resolveDesktopDataRootDir } from "./desktopHomePath.js";
 
 function getZCodeDataDir() {
   return getAppConfigDir();
 }
 
 function getZCodeCliDir() {
-  return join(homedir(), ".zcode", "cli");
+  // UWork 的 Agent CLI 运行目录跟随产品数据根（<dataRoot>/cli），与 Agent 的 ZCODE_STORAGE_DIR 同根。
+  return resolveDesktopCliDir();
 }
 
 function getZCodeCliLogDir() {
@@ -46,7 +47,7 @@ function getZCodeCliLogDir() {
  * helperExitLogPathFor）。同目录下还有 `.tokens` broker 凭据，收集时必须按文件名白名单。
  */
 function getCuaHelperRunDir() {
-  return join(homedir(), ".zcode", "computer-use", "run");
+  return join(resolveDesktopDataRootDir(), "computer-use", "run");
 }
 
 function isCuaHelperDiagnosticFileName(fileName: string): boolean {
@@ -962,7 +963,7 @@ async function createLogArchiveArtifacts(
   // 如果导出日志只扫描 v2，定位 agent CLI 启动、协议或崩溃问题时会缺少最关键的原生侧日志。
   await collectLogArchiveFilesFromDirectory(
     zcodeCliLogDir,
-    posix.join(".zcode", "cli", "log"),
+    posix.join(".uwork", "cli", "log"),
     visitedDirs,
     files,
   );
@@ -973,12 +974,12 @@ async function createLogArchiveArtifacts(
   // 二者都不在 ~/.zcode/cli/log 下，需要额外收集才能完整还原现场。
   await collectLogArchiveFile(
     join(zcodeCliDir, "config.json"),
-    posix.join(".zcode", "cli", "config.json"),
+    posix.join(".uwork", "cli", "config.json"),
     files,
   );
   await collectLogArchiveFilesFromDirectory(
     join(zcodeCliDir, "rollout"),
-    posix.join(".zcode", "cli", "rollout"),
+    posix.join(".uwork", "cli", "rollout"),
     visitedDirs,
     files,
   );
@@ -990,7 +991,7 @@ async function createLogArchiveArtifacts(
   // 同目录下有 .tokens broker 凭据，因此按文件名白名单只收 *.exit.log，不递归该目录。
   await collectLogArchiveFilesByName(
     getCuaHelperRunDir(),
-    posix.join(".zcode", "computer-use", "run"),
+    posix.join(".uwork", "computer-use", "run"),
     isCuaHelperDiagnosticFileName,
     files,
   );

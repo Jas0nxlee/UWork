@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveUserStorageRoot } from "@zcode/shared";
 import {
   WORKFLOW_RUN_ID_PATTERN,
   createCoreError,
@@ -315,7 +315,7 @@ async function resolveNamedWorkflowPath(
   const fileName = workflowFileName(name);
   const candidates = [
     join(deps.workingDirectory, ".zcode", "workflows", fileName),
-    join(homedir(), ".zcode", "workflows", fileName),
+    join(resolveUserStorageRoot(), "workflows", fileName),
   ];
   const builtIn = BUILTIN_WORKFLOW_ALLOWLIST.get(name);
   if (builtIn) candidates.push(builtIn);

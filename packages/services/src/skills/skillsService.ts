@@ -29,6 +29,12 @@ import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
 import type { ISkillsService } from "./skills.js";
 import { SKILL_FILE_NAME, walkSkillMarkdownPaths } from "./skillDiscoveryWalk.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
+import {
+  getAppConfigDir,
+  getUWorkDataRootDir,
+  getUworkUserCliConfigPath,
+  getUworkUserCliRootDir,
+} from "#src/paths.js";
 
 interface DiscoverResult {
   skills: SkillSummary[];
@@ -47,9 +53,9 @@ interface ParsedFrontmatter {
 }
 
 const SKILL_META_FILE_NAME = "_meta.json";
-const SKILL_SETTINGS_DIR = join(resolveUserHomeDir(), ".zcode", "v2");
-const SKILL_CLI_SETTINGS_DIR = join(resolveUserHomeDir(), ".zcode", "cli");
-const SKILL_CLI_CONFIG_FILE = join(SKILL_CLI_SETTINGS_DIR, "config.json");
+const SKILL_SETTINGS_DIR = getAppConfigDir();
+const SKILL_CLI_SETTINGS_DIR = getUworkUserCliRootDir();
+const SKILL_CLI_CONFIG_FILE = getUworkUserCliConfigPath();
 const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
 const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE = "zcode-plugins-official";
@@ -81,7 +87,7 @@ function getWorkspaceAgentsSkillRoot(workspacePath: string): string {
 
 /** ZCode Agent 用户级技能目录。 */
 function getUserZcodeSkillRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "skills");
+  return join(getUWorkDataRootDir(), "skills");
 }
 
 /** 兼容目录: 用户级 `~/.agents/skills`。 */

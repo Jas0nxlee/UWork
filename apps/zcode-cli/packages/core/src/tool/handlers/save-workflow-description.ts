@@ -1,12 +1,18 @@
 // Composed at module load from the dynamic-workflow facade so the model always
 // sees the current API surface — same construction as CreateWorkflow's description.
 
+import { join } from "node:path";
 import { FACADE_DTS } from "@zcode/dynamic-workflow";
-import { SAVED_WORKFLOW_GLOBAL_DIR, SAVED_WORKFLOW_PROJECT_DIR } from "@zcode/contracts";
+import { SAVED_WORKFLOW_PROJECT_DIR } from "@zcode/contracts";
+import { resolveUserStorageRoot } from "@zcode/shared";
+
+// 全局档目录随用户级存储根（UWork 下为 ~/.uwork/workflows）；描述里给出真实绝对路径，
+// 避免模型按上游 `~/.zcode/workflows` 去猜（见 specs/uwork-data-root-separation.md）。
+const GLOBAL_WORKFLOW_DIR = join(resolveUserStorageRoot(), "workflows");
 
 const INTRO = [
   "Save a dynamic-workflow script so it can be run again later by name. The required `scope` field decides where it lives.",
-  `Project definitions go in \`${SAVED_WORKFLOW_PROJECT_DIR}/<name>.dwf.ts\`, committed with the repository like any other source file and visible only inside it. Global definitions go in \`~/${SAVED_WORKFLOW_GLOBAL_DIR}/<name>.dwf.ts\` and are available from every project on this machine. Run either with CreateWorkflow's \`saved\` source; discover them with ListSavedWorkflows.`,
+  `Project definitions go in \`${SAVED_WORKFLOW_PROJECT_DIR}/<name>.dwf.ts\`, committed with the repository like any other source file and visible only inside it. Global definitions go in \`${GLOBAL_WORKFLOW_DIR}/<name>.dwf.ts\` and are available from every project on this machine. Run either with CreateWorkflow's \`saved\` source; discover them with ListSavedWorkflows.`,
 ].join(" ");
 
 /**

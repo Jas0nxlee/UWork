@@ -11,7 +11,7 @@ import {
   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
 } from "@zcode/provider-node";
 import { UCAS_PROVIDER_ID } from "@zcode/provider";
-import { getAppConfigDir as resolveAppConfigDir } from "./paths.js";
+import { getAppConfigDir as resolveAppConfigDir, getUworkUserCliConfigPath } from "./paths.js";
 import {
   buildLocalMediaPreviewUrl,
   isProviderProvisioningAccountCredentialKey,
@@ -1096,9 +1096,9 @@ export function resolveBundledCuaHelperAppPath(
 
 export { isOfficialCuaPluginEnabledForWorkspace };
 
-export function hasGlobalCliZCodeCuaServer(env: NodeJS.ProcessEnv = process.env): boolean {
-  const home = env.HOME?.trim() || homedir();
-  const configPath = join(home, ".zcode", "cli", "config.json");
+export function hasGlobalCliZCodeCuaServer(_env: NodeJS.ProcessEnv = process.env): boolean {
+  // 读 UWork 自己的用户级 CLI 配置（Host 下发的 storage root 同根）；`env` 保留给既有调用方。
+  const configPath = getUworkUserCliConfigPath();
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(configPath, "utf8"));

@@ -1,17 +1,15 @@
 import { AlertTriangle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import type { ZCodePluginMarketplaceSummary } from "@zcode/shared";
+import { isCuratedStoreMarketplaceId } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { resolveMarketplaceDisplayName } from "@/settings/pluginSourceLabel.js";
-import {
-  isPublicStoreMarketplaceId,
-  sortMarketplaceSources,
-} from "@/settings/pluginStoreListing.js";
+import { sortMarketplaceSources } from "@/settings/pluginStoreListing.js";
 
-// 官方市场不可移除：移除后启动时会被重新补种，只会造成「删了又回来」的困惑。
+// 受控来源（官方市场、公司技能市场）不可移除：移除后启动时会被重新补种，只会造成「删了又回来」的困惑。
 function isRemovableMarketplace(marketplace: ZCodePluginMarketplaceSummary): boolean {
-  return !isPublicStoreMarketplaceId(marketplace.id);
+  return !isCuratedStoreMarketplaceId(marketplace.id);
 }
 
 function PluginStoreSourceRefreshFailure({

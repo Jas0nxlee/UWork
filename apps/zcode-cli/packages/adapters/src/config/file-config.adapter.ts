@@ -11,6 +11,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { RuntimeConfigPatch, UiLocale } from "@zcode/contracts";
+import { resolveUserCliConfigPath } from "@zcode/shared";
 import { z } from "zod";
 import {
   CANONICAL_CUA_PLUGIN_ID,
@@ -59,7 +60,6 @@ export interface PluginRemovePatchResult {
 }
 
 const DEFAULT_CONFIG_FILE = "config.json";
-const DEFAULT_BASE_DIR = "~/.zcode/cli";
 
 /**
  * Resolve path with ~ expansion
@@ -77,10 +77,9 @@ export function resolvePath(path: string): string {
 export function loadFileConfig(filePath?: string, options: FileConfigOptions = {}): LoadedConfig {
   const resolvedPath = filePath
     ? resolvePath(filePath)
-    : join(
-        resolvePath(options.baseDir ?? DEFAULT_BASE_DIR),
-        options.configFileName ?? DEFAULT_CONFIG_FILE,
-      );
+    : options.baseDir
+      ? join(resolvePath(options.baseDir), options.configFileName ?? DEFAULT_CONFIG_FILE)
+      : getDefaultConfigPath();
 
   if (!existsSync(resolvedPath)) {
     return {
@@ -441,7 +440,9 @@ export async function removeSuppressedBuiltinInFileConfig(
  * Get default config file path
  */
 export function getDefaultConfigPath(): string {
-  return join(resolvePath(DEFAULT_BASE_DIR), DEFAULT_CONFIG_FILE);
+  // 用户级配置随 storage root 走（桌面端下发 ZCODE_STORAGE_DIR，UWork 下即 ~/.uwork/cli/config.json）；
+  // 未下发时回落上游 ~/.zcode/cli/config.json。见 specs/uwork-data-root-separation.md。
+  return resolveUserCliConfigPath();
 }
 
 /**

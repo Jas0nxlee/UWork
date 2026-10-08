@@ -72,7 +72,9 @@ export type PluginMarketplaceSourceConfig =
   | { path?: string; ref?: string; source: "git"; sparsePaths?: string[]; url: string }
   | { package: string; source: "npm" }
   | { source: "file"; path: string }
-  | { source: "directory"; path: string };
+  | { source: "directory"; path: string }
+  // 公司 AIHub 技能市场（SkillHub 适配），见 specs/aihub-skill-source.md。
+  | { baseUrl: string; description?: string; name?: string; source: "skillhub" };
 
 export interface PluginMarketplaceConfig {
   source: PluginMarketplaceSourceConfig;

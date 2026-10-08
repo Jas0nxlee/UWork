@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { SkillRoot, SkillSource } from "@zcode/contracts";
+import { resolveUserStorageRoot } from "@zcode/shared";
 
 const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
@@ -43,7 +44,10 @@ export async function resolveDefaultSkillRoots(
   }
 
   if (includeZcode) {
-    roots.push(...skillRootsForBase(home, "user", nextPriority));
+    // 用户级：UWork 的原生根跟随产品存储根（Host 下发 ZCODE_STORAGE_DIR，即 ~/.uwork/skills）；
+    // `.agents/skills` 是跨产品约定，仍在家目录。项目级 `.zcode/skills` 属于仓库内容，保持不变。
+    roots.push(root(join(resolveUserStorageRoot(), SKILLS_DIR), "user", "zcode", nextPriority()));
+    roots.push(root(join(home, AGENTS_DIR, SKILLS_DIR), "user", "agents", nextPriority()));
   }
 
   const projectDirectories = await resolveProjectSkillDirectories(resolvedWorkingDirectory);

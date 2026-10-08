@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -15,12 +14,21 @@ import type {
   SourceLoadResult,
 } from "./types.js";
 
+// 用户级 CLI 根：与产品 storage root 一致（桌面端下发 ZCODE_STORAGE_DIR），未设置时回落上游 ~/.zcode。
+// debug 包不依赖 @zcode/shared，这里就地解析同一规则。
+function userCliRoot(): string {
+  const storageRoot = process.env.ZCODE_STORAGE_DIR?.trim();
+  const home = process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || "";
+  const root = storageRoot && storageRoot.length > 0 ? storageRoot : join(home, ".zcode");
+  return basename(root) === "cli" ? root : join(root, "cli");
+}
+
 export function defaultLogDir(): string {
-  return join(homedir(), ".zcode", "cli", "log");
+  return join(userCliRoot(), "log");
 }
 
 export function defaultDbPath(): string {
-  return join(homedir(), ".zcode", "cli", "db", "db.sqlite");
+  return join(userCliRoot(), "db", "db.sqlite");
 }
 
 export async function loadLogs(options: ObservationOptions): Promise<SourceLoadResult<LogRecord>> {

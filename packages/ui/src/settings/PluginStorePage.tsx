@@ -34,10 +34,10 @@ import {
   resolvePluginDisplayName,
   type StorePluginItem,
 } from "@/settings/pluginStoreListing.js";
-import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID } from "@zcode/shared";
+import { isCuratedStoreMarketplaceId } from "@zcode/shared";
 import { PluginUninstallConfirmDialog } from "@/settings/PluginUninstallConfirmDialog.js";
 import { usePluginUninstall } from "@/settings/usePluginUninstall.js";
-import { claimMarketplaceAutoRefresh } from "@/settings/officialMarketplaceAutoRefresh.js";
+import { claimMarketplaceAutoRefresh } from "@/settings/marketplaceAutoRefresh.js";
 import { consumePluginStoreOpenTarget } from "@/lib/pluginStoreNavigation.js";
 import { SettingsBreadcrumbReporter } from "@/settings/SettingsHeaderBreadcrumb.js";
 import {
@@ -125,16 +125,15 @@ export function PluginStorePage({
     });
   }, [initialize, pluginManagementService, workspaceIdentity, workspacePath]);
 
-  // 目录自动刷新（Catalog Auto-Refresh）：只针对 ZCode 官方市场。每次进入商店页都刷新 CDN 目录，
-  // 否则新上架插件要等用户手动点刷新才可见；以 10 分钟窗口节流，并在发起时占位防抖（失败/在飞不重复），
-  // 判据见 officialMarketplaceAutoRefresh。状态放模块级而非组件 ref，因为每次进入都是重新挂载。
+  // 目录自动刷新（Catalog Auto-Refresh）：覆盖受控来源（ZCode 官方与公司 AIHub 技能市场）。
+  // 每次进入商店页都刷新目录，否则新上架插件要等用户手动点刷新才可见；以 10 分钟窗口节流，
+  // 并在发起时占位防抖（失败/在飞不重复），判据见 marketplaceAutoRefresh。
+  // 状态放模块级而非组件 ref，因为每次进入都是重新挂载。
   useEffect(() => {
-    const official = marketplaces.find((item) => item.id === ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID);
-    if (
-      official &&
-      claimMarketplaceAutoRefresh(ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID, official.lastUpdated)
-    ) {
-      void updateMarketplace(ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID, pluginManagementService);
+    for (const marketplace of marketplaces) {
+      if (!isCuratedStoreMarketplaceId(marketplace.id)) continue;
+      if (!claimMarketplaceAutoRefresh(marketplace.id, marketplace.lastUpdated)) continue;
+      void updateMarketplace(marketplace.id, pluginManagementService);
     }
   }, [marketplaces, pluginManagementService, updateMarketplace]);
 

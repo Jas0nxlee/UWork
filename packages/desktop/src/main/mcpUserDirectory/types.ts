@@ -22,7 +22,9 @@ export interface McpSourceDescriptor {
 export const MCP_SOURCE_DESCRIPTORS: McpSourceDescriptor[] = [
   {
     source: "zcodeagentmcp",
-    configDirSegments: [".zcode", "cli"],
+    // 只描述文件名与格式；实际路径由 index.ts 的 buildDirectoryConfigPath（配合 descriptor.resolveUserBaseDir）
+    // 决定：UWork 下是 `<dataRoot>/cli/config.json`，不再写上游 `~/.zcode`。
+    configDirSegments: [".uwork", "cli"],
     fileName: "config.json",
     format: "json",
     configKeyName: "mcp.servers",
