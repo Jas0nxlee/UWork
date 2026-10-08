@@ -11,6 +11,7 @@
 - `v3.15.0` 未公开发布：干净环境的共享 `node_repl` 主机构建引用未声明的旧 MCP SDK 类型而失败。保留该标签，修正版使用 `v3.15.1`；Computer Use bridge 的 `CallToolResult` 从主机已声明的 `@modelcontextprotocol/server` 公共入口读取，不恢复旧 SDK 或依赖 hoist。桥接协议、能力令牌、工作区身份和代际校验保持原实现。检查阶段新增完整桌面 Agent 构建，覆盖 CLI 依赖顺序、主机类型与 runtime 产物，在进入平台打包前拒绝缺失模块。
 - `v3.15.1` 产物校验发现新 ASN.1 依赖的 `pvtsutils` 未进入 app.asar：打包注入与最终校验维护了不同闭包根清单。保留该标签，发布版本改为 `v3.15.2`；两阶段统一消费 `desktop-asar-runtime-modules.mjs` 的唯一不可变清单，使用现有递归依赖解析，不逐个手工补叶子包。移除无用的 forge 注入根，保留 telemetry、ZIP、SSH 与 updater 的既有边界。CI 使用真实 ASAR 注入/解包及隔离 Node 进程验证 ASN.1 库能解析和加载，禁止靠工作区 hoist 掩盖缺包。
 - 包根解析必须略过仅声明 `type=commonjs` 的内部 package.json，向上找到具名包根，保留真实 exports 和依赖声明；不能把 `build/cjs` 或 `umd` 当成整个包复制。
+- `v3.15.3` 修正 macOS DMG 的遗留品牌背景：普通与 Retina 素材均显示 `UWORK`，保持原安装拖拽布局。发布后核对实际 macOS arm64/x64 DMG 内的 `.background.tiff` 与本次素材一致；不覆盖已经公开的 v3.15.2 文件。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。
