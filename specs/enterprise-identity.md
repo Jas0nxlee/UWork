@@ -281,3 +281,13 @@ sequenceDiagram
 **回调域名必须逐组织核对（2026-10-08 生产实测）**：企微在授权页按「该企业应用后台配置的授权回调域名」校验 `redirect_uri`，**端口参与匹配**。生产 openresty 为三家公司各起一个 server 块（`/www/sites/pivot{,-nj,.ansilic}*`）：`pivot.ucas.com.cn:23090`、`pivot-nj.ucas.com.cn:23091`、`pivot.ansilic.com:23092`（都反代 `127.0.0.1:23080` 的同一份 SPA）。用企微授权页做「3 个应用 × 候选域名」矩阵实测，**只有对角组合出二维码**，交叉组合（含"正确域名 + 错误端口"如 `pivot-nj.ucas.com.cn:23090`）全部报「redirect_uri 与配置的授权完成回调域名不一致」。所以 `callbackUrl` 必须逐组织取、且与企微后台逐字一致（含端口）；不要按"同域名不同端口"或 443 默认端口推断。
 
 **二维码阶段的回头路**：多组织时等待扫码的卡片提供「重新选择公司」——取消当前尝试、保留登录入口并回到选择器（与「跳过登录」的区别是不关闭弹窗）。
+
+## 审查修复契约（2026-10-09）
+
+身份服务是组织选择和视图唯一 owner。组织偏好选择串行执行，持久化成功后提交内存选择和视图；写入失败保留旧选择，UI 显示失败并允许重试。并发选择的失败不得回滚后续成功值。
+
+初始化由共享 Promise 持有，getView/restoreSession/beginLogin 均等待同一次 hydration；初始化发布视图须检查 generation/disposed，不覆盖较新的登录状态。
+
+Renderer 发起 start → 用户返回 → 旧 start 返回/失败 → 仅取消旧 attempt → 新 start admission → 新公司二维码。返回时无 attempt ID 的启动由本窗口 pending Promise 持有；下一次登录等待旧启动结算及取消后才入 Host，不能复用旧 startTask。旧 handler 不打开原生窗口、不覆盖新视图、不取消新 attempt；连续返回/重试遵守同一屏障。该窗口取消不使用缺失 ID，保留设备恢复与其他窗口边界。
+
+验收覆盖延迟启动、失败与过期、偏好写入失败/重试/连续选择、并发 hydration 及 dispose。真实扫码和服务端多租户生产前置独立验收。

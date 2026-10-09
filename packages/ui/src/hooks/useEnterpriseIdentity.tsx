@@ -18,6 +18,7 @@ import {
   enterpriseLoginRequestSchema,
   enterpriseIdentityViewSchema,
   type EnterpriseIdentityView,
+  type EnterpriseIdentityAttempt,
   type EnterpriseLoginSurface,
 } from "@zcode/shared";
 import { useEnterpriseIdentityStore } from "@/store/enterpriseIdentityStore.js";
@@ -68,6 +69,20 @@ export function EnterpriseIdentityProvider({
   const [showUcasApiKeyPrompt, setShowUcasApiKeyPrompt] = useState(false);
   const actionGeneration = useRef(0);
   const nativeAttemptId = useRef<string | null>(null);
+  const pendingStart = useRef<Promise<EnterpriseIdentityAttempt> | null>(null);
+  const startCancellation = useRef<Promise<void>>(Promise.resolve());
+  // 无 ID 的启动也属于本窗口：返回后先结算并取消旧启动，再放行下一次登录。
+  const cancelPendingStart = useCallback(() => {
+    const pending = pendingStart.current;
+    if (!pending || !owner) return;
+    const cancellation = pending.then(
+      (attempt) => owner.cancelLogin(attempt.id),
+      () => {},
+    );
+    startCancellation.current = cancellation;
+    // 只记录失败，不把失败屏障转换为成功，否则下一次仍会复用未取消的启动。
+    void cancellation.catch(() => logger.warn("Enterprise login cancellation failed"));
+  }, [owner]);
   const activeAttemptId = useRef<string | null>(null);
   const gatewaySyncRef = useRef<string | null>(null);
   const [surfaceGate] = useState(createEnterpriseLoginSurfaceGate);
@@ -178,6 +193,7 @@ export function EnterpriseIdentityProvider({
   }, [owner, allowLogin, view?.status, view?.pending?.id]);
 
   const skip = useCallback(() => {
+    cancelPendingStart();
     actionGeneration.current++;
     setShowUcasApiKeyPrompt(false);
     surfaceController.current?.abort();
@@ -193,9 +209,10 @@ export function EnterpriseIdentityProvider({
       void owner
         .cancelLogin(attemptId)
         .catch(() => logger.warn("Enterprise login cancellation failed"));
-  }, [owner, allowLogin, platform]);
+  }, [owner, allowLogin, platform, cancelPendingStart]);
   /** 二维码阶段返回公司选择：取消本次尝试但保留登录入口（与「跳过」的区别是不关弹窗）。 */
   const backToOrganizations = useCallback(() => {
+    cancelPendingStart();
     actionGeneration.current++;
     setShowUcasApiKeyPrompt(false);
     surfaceController.current?.abort();
@@ -210,7 +227,7 @@ export function EnterpriseIdentityProvider({
       void owner
         .cancelLogin(attemptId)
         .catch(() => logger.warn("Enterprise login cancellation failed"));
-  }, [owner, allowLogin, platform]);
+  }, [owner, allowLogin, platform, cancelPendingStart]);
   const login = useCallback(async () => {
     if (!owner || !allowLogin || busy) return;
     const generation = ++actionGeneration.current;
@@ -224,7 +241,11 @@ export function EnterpriseIdentityProvider({
     setError(false);
     let startedAttemptId: string | null = null;
     try {
-      const attempt = enterpriseIdentityAttemptSchema.parse(await owner.beginLogin());
+      await startCancellation.current;
+      if (generation !== actionGeneration.current) return;
+      const starting = owner.beginLogin();
+      pendingStart.current = starting;
+      const attempt = enterpriseIdentityAttemptSchema.parse(await starting);
       startedAttemptId = attempt.id;
       if (generation !== actionGeneration.current) {
         // beginLogin 可能在跳过后才返回；只取消刚取得的这次尝试。
@@ -233,6 +254,7 @@ export function EnterpriseIdentityProvider({
           .catch(() => logger.warn("Enterprise login cancellation failed"));
         return;
       }
+      if (pendingStart.current === starting) pendingStart.current = null;
       activeAttemptId.current = attempt.id;
       if (attempt.callbackUrl) {
         if (!platform.openEnterpriseLogin)
@@ -346,10 +368,12 @@ export function EnterpriseIdentityProvider({
     async (orgId: string) => {
       if (!owner) return;
       try {
-        // 选择只是设备偏好；授权判断仍由服务端与回包校验决定，这里失败不弹错误页。
+        // 偏好失败保留旧公司，并向用户显示错误；不能让界面与实际扫码组织分裂。
         const candidate = enterpriseIdentityViewSchema.parse(await owner.selectOrganization(orgId));
         useEnterpriseIdentityStore.getState().project(owner, candidate);
+        setError(false);
       } catch {
+        setError(true);
         logger.warn("Enterprise identity organization selection failed");
       }
     },

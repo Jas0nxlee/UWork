@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { EnterpriseIdentityAdapter } from "../src/enterprise-identity/contract.js";
-import { createEnterpriseIdentityService } from "../src/enterprise-identity/enterpriseIdentityService.js";
+import {
+  disposeEnterpriseIdentityService,
+  createEnterpriseIdentityService,
+} from "../src/enterprise-identity/enterpriseIdentityService.js";
 
 // 多组织的服务级边界：选择只是设备偏好，必须命中配置清单、可持久化，
 // 且 beginLogin 用选中的组织去拼授权 URL（用户与资源边界仍由服务端判定）。
@@ -109,4 +112,110 @@ test("a remembered organization in the list is restored on the next start", asyn
     now: () => 1000,
   });
   assert.equal((await service.getView()).selectedOrgId, "nj");
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+test("failed preference writes preserve the displayed and next-login organization", async () => {
+  const starts: Array<string | undefined> = [];
+  let failWrite = true;
+  const service = createEnterpriseIdentityService({
+    credentials,
+    adapter: createAdapter(starts),
+    organizationStore: {
+      read: async () => "bj",
+      write: async () => {
+        if (failWrite) throw new Error("disk unavailable");
+      },
+    },
+    now: () => 1000,
+  });
+  await service.getView();
+  await assert.rejects(service.selectOrganization("nj"), /disk unavailable/);
+  assert.equal((await service.getView()).selectedOrgId, "bj");
+  await service.beginLogin();
+  assert.deepEqual(starts, ["bj"]);
+  await service.cancelLogin("attempt-1");
+  failWrite = false;
+  assert.equal((await service.selectOrganization("nj")).selectedOrgId, "nj");
+});
+
+test("concurrent hydration waits for one preference read before starting", async () => {
+  const read = deferred<string | null>();
+  let reads = 0;
+  const starts: Array<string | undefined> = [];
+  const service = createEnterpriseIdentityService({
+    credentials,
+    adapter: createAdapter(starts),
+    organizationStore: {
+      read: () => {
+        reads++;
+        return read.promise;
+      },
+      write: async () => {},
+    },
+    now: () => 1000,
+  });
+  const first = service.getView();
+  const restore = service.restoreSession();
+  const second = service.getView();
+  const login = service.beginLogin();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(starts, []);
+  assert.equal(reads, 1);
+  read.resolve("nj");
+  await Promise.all([first, restore, second, login]);
+  assert.deepEqual(starts, ["nj"]);
+  assert.equal((await service.getView()).status, "waiting");
+});
+
+test("an earlier rejected selection cannot roll back the next successful selection", async () => {
+  const write = deferred<void>();
+  let calls = 0;
+  const service = createEnterpriseIdentityService({
+    credentials,
+    adapter: createAdapter([]),
+    organizationStore: {
+      read: async () => "bj",
+      write: async () => {
+        if (++calls === 1) await write.promise;
+      },
+    },
+    now: () => 1000,
+  });
+  await service.getView();
+  const first = service.selectOrganization("nj");
+  const failure = assert.rejects(first, /write failed/);
+  const second = service.selectOrganization("bj");
+  write.reject(new Error("write failed"));
+  await failure;
+  assert.equal((await second).selectedOrgId, "bj");
+  assert.equal((await service.getView()).selectedOrgId, "bj");
+});
+
+test("disposing during hydration does not publish a late restored selection", async () => {
+  const read = deferred<string | null>();
+  const service = createEnterpriseIdentityService({
+    credentials,
+    adapter: createAdapter([]),
+    organizationStore: { read: () => read.promise, write: async () => {} },
+    now: () => 1000,
+  });
+  const events: unknown[] = [];
+  service.onDidChange((view) => events.push(view));
+  const pending = service.getView();
+  await disposeEnterpriseIdentityService(service);
+  const afterDispose = events.length;
+  read.resolve("nj");
+  await pending;
+  assert.equal(events.length, afterDispose);
+  assert.equal((await service.getView()).status, "signed-out");
 });

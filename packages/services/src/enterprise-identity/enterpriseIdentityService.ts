@@ -78,7 +78,7 @@ export function createEnterpriseIdentityService(options: {
   let resultTask: Promise<EnterpriseIdentityCompletion> | null = null;
   let restoreTask: Promise<EnterpriseIdentityView> | null = null;
   let adapterTask: Promise<void> | null = null;
-  let selectionHydrated = false;
+  let selectionTask: Promise<void> | null = null;
   let writes: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -108,12 +108,14 @@ export function createEnterpriseIdentityService(options: {
       });
       await adapterTask;
     }
-    // 适配器就绪（注入或懒加载）后水合一次组织清单与记忆选择，再发布未登录视图。
-    if (!selectionHydrated) {
-      selectionHydrated = true;
+    if (disposed) return;
+    // 所有并发调用等待同一次水合；迟到初始化不能覆盖新 generation 或已关闭服务。
+    selectionTask ??= (async () => {
+      const current = generation;
       await organizations.hydrate();
-      signedOut(adapter ? null : "unconfigured");
-    }
+      if (!disposed && current === generation) signedOut(adapter ? null : "unconfigured");
+    })();
+    await selectionTask;
   };
   const broadcast = async () => {
     try {

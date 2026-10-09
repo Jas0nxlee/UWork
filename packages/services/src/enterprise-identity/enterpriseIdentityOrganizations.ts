@@ -23,6 +23,7 @@ export function createEnterpriseIdentityOrganizationSelection(options: {
   store?: IdentityOrganizationStore;
 }): EnterpriseIdentityOrganizationSelection {
   let selectedOrgId: string | null = null;
+  let selections: Promise<unknown> = Promise.resolve();
   const resolveStored = async (): Promise<string | null> => {
     let stored: string | null = null;
     try {
@@ -46,12 +47,18 @@ export function createEnterpriseIdentityOrganizationSelection(options: {
       selectedOrgId = await resolveStored();
       return selectedOrgId;
     },
-    select: async (orgId) => {
+    select: (orgId) => {
       const resolved = options.resolveOrganization(orgId);
-      if (!resolved || resolved.id !== orgId.trim()) throw new Error("企业身份组织不可用");
-      selectedOrgId = resolved.id;
-      await options.persist(resolved.id);
-      return selectedOrgId;
+      if (!resolved || resolved.id !== orgId.trim())
+        return Promise.reject(new Error("企业身份组织不可用"));
+      // 写入成功才提交内存选择；串行化防止旧失败回滚新选择，确保视图与扫码组织一致。
+      const task = selections.then(async () => {
+        await options.persist(resolved.id);
+        selectedOrgId = resolved.id;
+        return resolved.id;
+      });
+      selections = task.catch(() => {});
+      return task;
     },
   };
 }
