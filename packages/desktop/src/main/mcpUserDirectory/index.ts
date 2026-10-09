@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { resolveDesktopDataRootDir } from "../desktopHomePath.js";
+import { getUworkUserCliRootDir } from "@zcode/services/node";
 import type {
   CliMcpSource,
   LoadCliMcpFromUserDirectoryRequest,
@@ -42,8 +42,8 @@ const ZCODE_MCP_DESCRIPTOR: DirectoryMcpDescriptor = {
   directorySource: "zcode",
   // UWork 的 MCP 用户配置跟随产品数据根（`<dataRoot>/cli/config.json`），与 Agent 的
   // ZCODE_STORAGE_DIR 同根；不再写上游 `~/.zcode/cli/config.json`。
-  resolveUserBaseDir: resolveDesktopDataRootDir,
-  userConfigDirSegments: ["cli"],
+  resolveUserBaseDir: getUworkUserCliRootDir,
+  userConfigDirSegments: [],
   workspaceConfigDirSegments: [".zcode"],
   fileName: "config.json",
   format: "json",

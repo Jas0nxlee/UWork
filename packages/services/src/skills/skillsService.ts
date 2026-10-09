@@ -31,7 +31,7 @@ import { SKILL_FILE_NAME, walkSkillMarkdownPaths } from "./skillDiscoveryWalk.js
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
 import {
   getAppConfigDir,
-  getUWorkDataRootDir,
+  getUworkUserStorageRoot,
   getUworkUserCliConfigPath,
   getUworkUserCliRootDir,
 } from "#src/paths.js";
@@ -87,7 +87,7 @@ function getWorkspaceAgentsSkillRoot(workspacePath: string): string {
 
 /** ZCode Agent 用户级技能目录。 */
 function getUserZcodeSkillRoot(): string {
-  return join(getUWorkDataRootDir(), "skills");
+  return join(getUworkUserStorageRoot(), "skills");
 }
 
 /** 兼容目录: 用户级 `~/.agents/skills`。 */

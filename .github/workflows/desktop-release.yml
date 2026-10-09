@@ -63,6 +63,9 @@ jobs:
           packages/ui/test/enterpriseLoginSurfaceGate.test.ts
           apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts
           apps/zcode-cli/packages/adapters/test/userStorageRoot.test.ts
+          apps/zcode-cli/packages/adapters/test/marketplaceTrust.test.ts
+          packages/services/test/uworkDataMigration.test.ts
+          packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
           packages/services/test/appCaCert.test.ts

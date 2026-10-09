@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { getUWorkDataRootDir, getUworkUserCliConfigPath } from "#src/paths.js";
+import { getUworkUserStorageRoot, getUworkUserCliConfigPath } from "#src/paths.js";
 
 const HOME_PREFIX = "~/";
 
@@ -35,7 +35,7 @@ export async function resolveZCodeStorageRoot(options?: SubagentStorageOptions):
   const storageDir =
     typeof storage.dir === "string" && storage.dir.trim().length > 0
       ? storage.dir.trim()
-      : getUWorkDataRootDir();
+      : getUworkUserStorageRoot();
   return resolveConfigPath(storageDir, options);
 }
 

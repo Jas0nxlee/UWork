@@ -434,13 +434,13 @@ function getWorkspaceZcodeCommandRoot(workspacePath: string): string {
 }
 
 import {
-  getUWorkDataRootDir,
+  getUworkUserStorageRoot,
   getUworkUserCliConfigPath,
   getUworkUserPluginsRoot,
 } from "#src/paths.js";
 
 function getUserZcodeCommandRoot(): string {
-  return join(getUWorkDataRootDir(), "commands");
+  return join(getUworkUserStorageRoot(), "commands");
 }
 
 function getWorkspaceZcodePluginRoot(workspacePath: string): string {

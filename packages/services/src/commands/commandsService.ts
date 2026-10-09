@@ -80,12 +80,12 @@ function getCommandSourceDescriptor(
   return COMMAND_AGENT_SOURCE_DESCRIPTORS[agentSource];
 }
 
-import { getUWorkDataRootDir, getUworkUserCliConfigPath } from "#src/paths.js";
+import { getUworkUserStorageRoot, getUworkUserCliConfigPath } from "#src/paths.js";
 
 function getUserCommandsRoot(agentSource?: CommandAgentSource): string {
   const descriptor = getCommandSourceDescriptor(agentSource);
   // UWork 自己的用户级命令目录跟随产品数据根；其它 agent（claude/codex 等）维持各自约定。
-  if (descriptor.directorySource === "zcode") return join(getUWorkDataRootDir(), "commands");
+  if (descriptor.directorySource === "zcode") return join(getUworkUserStorageRoot(), "commands");
   return join(resolveUserHomeDir(), ...descriptor.userDirectorySegments);
 }
 

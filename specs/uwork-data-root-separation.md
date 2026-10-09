@@ -39,3 +39,11 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
   - 真实侧 `~/.uwork`、`~/.zcode` 的 mtime 与 sha256 全程不变。
   - **这一轮抓到了第一版迁移的漏项**：桌面主进程的 MCP 用户目录仍按 `homedir()/.zcode` 解析，导致在「HOME 未变、仅数据根被重定向」的环境里，MCP 被写进真实 `~/.zcode/cli/config.json`（按名字审计 `packages/desktop/src/main/*.ts` 时漏了子目录）。补上 `desktopHomePath.ts` 后复测：MCP 写入落 `<临时数据根>/cli/config.json`，真实两份配置的 hash/mtime 不变。
 - 仍保留的 dev 专属例外：`desktopRuntimeEnv.ts` 里「未签名 CUA helper」的默认查找路径仍指 legacy home（仅当开发者显式打開 `ZCODE_CUA_HELPER_ALLOW_UNSIGNED_LOCAL` 时生效，且可用 `ZCODE_CUA_BUNDLED_HELPER_APP_PATH` 覆盖；不落盘任何状态）。
+
+## 审查修复契约（2026-10-09）
+
+运行时数据根由 services 的 bootstrap 初始化持有；Desktop MCP 在初始化后通过公开路径 API 读取该根。启动 setting.json 仍固定在 bootstrap home，不使用运行时根反推。CLI storage root 独立于 v2：显式 ZCODE_STORAGE_DIR 优先，否则为有效 dataBaseDir/.uwork；cli 兼容形式保留。服务技能、命令、子代理、插件同步、MCP 与 Agent 使用相同 storage root。
+
+更换 dataBaseDir 复制整个 UWork 自有根（v2、cli 配置/启停状态/缓存、skills、commands、agents、plugins、workflows、workspace 等），不读取 .zcode 或共享 .agents。仅排除 v2/setting.json 及其原子写入临时文件、符号链接；迁移 JSON 中指向旧 UWork 根的绝对路径重定位到新根。显式外部 CLI storage root 不移动。
+
+旧根 → 临时目标 → 校验文件内容 → 重定位元数据 → 原子激活目标 → 保存 bootstrap 设置 → 重启读者。旧根始终保留；复制/校验失败不切换设置。非空目标拒绝并提示选空目录，不默默丢弃目标或旧数据。源/目标嵌套拒绝。验收覆盖目标冲突、复制失败、MCP 增改删与重启、所有路径优先级。
