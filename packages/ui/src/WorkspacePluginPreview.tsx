@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import {
   compareDocumentPluginPriority,
-  isPublicStoreMarketplaceId,
+  isCuratedStoreMarketplaceId,
   resolvePluginDisplayName,
   sortPluginStoreEntries,
 } from "@zcode/shared";
@@ -90,7 +90,7 @@ export function WorkspacePluginPreview({
     const modeOrder = isOfficeMode ? order?.work : order?.code;
     const referenceableEntries = previewEntries.filter(isWorkspacePluginReferenceable);
     const publicEntries = sortPluginStoreEntries(
-      referenceableEntries.filter((entry) => isPublicStoreMarketplaceId(entry.marketplace)),
+      referenceableEntries.filter((entry) => isCuratedStoreMarketplaceId(entry.marketplace)),
       (entry) => ({
         id: entry.pluginId,
         category: entry.category,
@@ -112,7 +112,7 @@ export function WorkspacePluginPreview({
       ...publicEntries.toSorted((left, right) =>
         compareDocumentPluginPriority(left.pluginId, right.pluginId),
       ),
-      ...referenceableEntries.filter((entry) => !isPublicStoreMarketplaceId(entry.marketplace)),
+      ...referenceableEntries.filter((entry) => !isCuratedStoreMarketplaceId(entry.marketplace)),
     ];
   }, [previewEntries, isOfficeMode, locale, order]);
   const browse = (pluginId?: string) => {

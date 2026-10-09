@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import {
   sortPluginStoreEntries,
-  isPublicStoreMarketplaceId,
+  isCuratedStoreMarketplaceId,
   type PluginStoreModeOrder,
   resolvePluginDisplayName,
   resolveLocalizedText,
@@ -37,7 +37,7 @@ function mapPluginCatalogToMentionItemsForTest(
     order && entries.some((entry) => entry.category !== undefined)
       ? [
           ...sortPluginStoreEntries(
-            entries.filter((entry) => isPublicStoreMarketplaceId(entry.marketplace)),
+            entries.filter((entry) => isCuratedStoreMarketplaceId(entry.marketplace)),
             (entry) => ({
               id: entry.pluginId,
               category: entry.category,
@@ -55,7 +55,7 @@ function mapPluginCatalogToMentionItemsForTest(
             locale,
             order,
           ),
-          ...entries.filter((entry) => !isPublicStoreMarketplaceId(entry.marketplace)),
+          ...entries.filter((entry) => !isCuratedStoreMarketplaceId(entry.marketplace)),
         ]
       : entries;
   return sorted

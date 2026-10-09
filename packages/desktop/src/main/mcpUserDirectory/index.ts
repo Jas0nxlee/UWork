@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { getUworkUserCliRootDir } from "@zcode/services/node";
 import type {
   CliMcpSource,
   LoadCliMcpFromUserDirectoryRequest,
@@ -29,6 +30,8 @@ interface DirectoryMcpDescriptor {
   directorySource: SettingsDirectorySource;
   userConfigDirSegments: string[];
   workspaceConfigDirSegments: string[];
+  /** 用户级配置的基准目录；缺省为 `home`。产品自己的源（zcode）指向产品数据根。 */
+  resolveUserBaseDir?: () => string;
   fileName: string;
   format: "json";
   configKeyName: McpConfigKeyName;
@@ -37,7 +40,10 @@ interface DirectoryMcpDescriptor {
 const ZCODE_MCP_DESCRIPTOR: DirectoryMcpDescriptor = {
   source: "zcodeagentmcp",
   directorySource: "zcode",
-  userConfigDirSegments: [".zcode", "cli"],
+  // UWork 的 MCP 用户配置跟随产品数据根（`<dataRoot>/cli/config.json`），与 Agent 的
+  // ZCODE_STORAGE_DIR 同根；不再写上游 `~/.zcode/cli/config.json`。
+  resolveUserBaseDir: getUworkUserCliRootDir,
+  userConfigDirSegments: [],
   workspaceConfigDirSegments: [".zcode"],
   fileName: "config.json",
   format: "json",
@@ -74,7 +80,8 @@ function buildDirectoryConfigPath(
   scope: Exclude<McpScope, "common">,
   workspacePath?: string,
 ): string {
-  const baseDir = scope === "user" ? resolveUserHomeDir() : workspacePath;
+  const baseDir =
+    scope === "user" ? (descriptor.resolveUserBaseDir?.() ?? resolveUserHomeDir()) : workspacePath;
   if (!baseDir) {
     throw new Error(
       `Missing workspace path for ${descriptor.directorySource} workspace MCP config`,

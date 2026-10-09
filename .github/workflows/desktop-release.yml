@@ -47,7 +47,7 @@ jobs:
         run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
         run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs
-      - name: Validate provider and enterprise login behavior
+      - name: Validate provider, enterprise login, and AIHub skill source behavior
         run: >-
           pnpm exec tsx --test
           packages/services/test/providerModelDiscovery.test.ts
@@ -61,6 +61,11 @@ jobs:
           packages/desktop/test/enterpriseLoginNavigation.test.ts
           packages/desktop/test/desktopEnterpriseIdentityConfig.test.ts
           packages/ui/test/enterpriseLoginSurfaceGate.test.ts
+          apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts
+          apps/zcode-cli/packages/adapters/test/userStorageRoot.test.ts
+          apps/zcode-cli/packages/adapters/test/marketplaceTrust.test.ts
+          packages/services/test/uworkDataMigration.test.ts
+          packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
           packages/services/test/appCaCert.test.ts

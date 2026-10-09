@@ -158,6 +158,14 @@ const pluginMarketplaceSourceSchema = z.discriminatedUnion("source", [
       path: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      source: z.literal("skillhub"),
+      baseUrl: z.string().min(1),
+      name: z.string().min(1).optional(),
+      description: z.string().min(1).optional(),
+    })
+    .strict(),
 ]);
 
 const pluginsSchema = z.object({

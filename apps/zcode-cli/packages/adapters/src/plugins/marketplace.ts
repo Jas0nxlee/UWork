@@ -5,8 +5,12 @@ import { basename, dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { PluginDiagnostic, PluginManifest, PluginStoreListing } from "@zcode/contracts";
-import { isOfficialMarketplaceId, ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
-import { DEFAULT_PLUGIN_MARKETPLACES, sanitizeZCodeRuntimeEnv } from "@zcode/shared";
+import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
+import {
+  DEFAULT_PLUGIN_MARKETPLACES,
+  isCuratedStoreMarketplaceId,
+  sanitizeZCodeRuntimeEnv,
+} from "@zcode/shared";
 import { loadPluginMcpServerDefinitions, resolvePluginMcpServers } from "./mcp.js";
 import {
   appendPluginSourceCleanupError,
@@ -21,6 +25,13 @@ import { enumeratePluginComponents, type PluginComponentGroup } from "./plugin-c
 import { applyNetworkEgressEnv } from "../network/subprocess-env.js";
 import { createNodeWebFetchHttpClientAdapter } from "../http/index.js";
 import { writeCdnOfficialMarketplacePartitionSync } from "./official-marketplace.js";
+import { createSkillhubHttpClient, normalizeSkillhubBaseUrl } from "./skillhub-common.js";
+import {
+  buildSkillhubMarketplaceManifestRaw,
+  discoverSkillhubApiBase,
+  fetchSkillhubCatalog,
+} from "./skillhub-source.js";
+import { readSkillhubPluginSource, resolveSkillhubPluginSource } from "./skillhub-package.js";
 import {
   isZipPluginUrlSource,
   readZipPluginSourceSha256,
@@ -70,6 +81,7 @@ export type MarketplaceSource =
   | { package: string; source: "npm" }
   | { source: "file"; path: string }
   | { source: "directory"; path: string }
+  | { baseUrl: string; description?: string; name?: string; source: "skillhub" }
   | { hostPattern: string; source: "hostPattern" }
   | { pathPattern: string; source: "pathPattern" }
   | { source: "settings"; marketplace: PluginMarketplaceManifest };
@@ -224,6 +236,12 @@ export async function parseMarketplaceSourceInput(input: string): Promise<Market
     throw new Error("Marketplace source is empty");
   }
 
+  if (trimmed.startsWith("skillhub:")) {
+    const target = trimmed.slice("skillhub:".length).trim();
+    if (target.length === 0) throw new Error("Skillhub marketplace source requires a base URL");
+    return { baseUrl: normalizeSkillhubBaseUrl(target), source: "skillhub" };
+  }
+
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     const { url, ref } = splitRef(trimmed);
     if (url.endsWith(".git") || url.includes("/_git/")) {
@@ -276,23 +294,45 @@ export function loadKnownMarketplacesSync(storageRoot: string): KnownMarketplace
   return [];
 }
 
+function assertCuratedMarketplaceSource(id: string, source: MarketplaceSource): void {
+  const definition = DEFAULT_PLUGIN_MARKETPLACES.find((entry) => entry.id === id);
+  if (!definition) return;
+  const expected =
+    definition.sourceConfig ?? defaultMarketplaceSourceFromString(definition.source!);
+  const matches =
+    expected.source === "skillhub"
+      ? source.source === "skillhub" &&
+        normalizeSkillhubBaseUrl(source.baseUrl) === normalizeSkillhubBaseUrl(expected.baseUrl)
+      : JSON.stringify(source) === JSON.stringify(expected);
+  if (!matches) throw new Error(`Reserved marketplace ${id} has an untrusted source`);
+}
+
 export function ensureDefaultPluginMarketplaces(storageRoot: string): KnownMarketplaceRecord[] {
   const known = loadKnownMarketplacesSync(storageRoot);
+  for (const record of known) assertCuratedMarketplaceSource(record.id, record.source);
   const existingIds = new Set(known.map((record) => record.id));
   const now = new Date().toISOString();
   const missing = DEFAULT_PLUGIN_MARKETPLACES.filter(
     (marketplace) => !existingIds.has(marketplace.id),
-  ).map(
-    (marketplace): KnownMarketplaceRecord => ({
+  ).map((marketplace): KnownMarketplaceRecord => {
+    // 结构化来源（如 skillhub）优先；字符串来源继续走原有的 github/url 解析。
+    const source: MarketplaceSource = marketplace.sourceConfig
+      ? { ...marketplace.sourceConfig }
+      : marketplace.source
+        ? defaultMarketplaceSourceFromString(marketplace.source)
+        : (() => {
+            throw new Error(`Default marketplace ${marketplace.id} declares no source`);
+          })();
+    return {
       id: marketplace.id,
-      source: defaultMarketplaceSourceFromString(marketplace.source),
+      source,
       name: marketplace.name,
       description: marketplace.description,
       addedAt: now,
       ...(marketplace.lastUpdated ? { lastUpdated: marketplace.lastUpdated } : {}),
       pluginCount: marketplace.pluginCount,
-    }),
-  );
+    };
+  });
   if (missing.length === 0) return known;
   const next = [...known, ...missing];
   writeKnownMarketplacesSync(storageRoot, next);
@@ -343,21 +383,40 @@ export async function addMarketplace(input: {
   // 不可信 manifest.name 作为 target，先 rm 掉本地官方目录再 cp，等守卫抛错时
   // 官方 manifest 已被污染；守卫通过后才持久化。
   throwIfPluginOperationAborted(input.signal);
+  if (input.trustedId) assertCuratedMarketplaceSource(input.trustedId, input.source);
+  if (input.source.source === "skillhub" && input.source.name)
+    assertCuratedMarketplaceSource(input.source.name, input.source);
+  const source: MarketplaceSource =
+    input.trustedId &&
+    isCuratedStoreMarketplaceId(input.trustedId) &&
+    input.source.source === "skillhub"
+      ? { ...input.source, name: input.trustedId }
+      : input.source;
   const operationSignal = input.signal;
   let loaded: LoadMarketplaceResult | undefined;
   let knownMarketplaceActivation: KnownMarketplaceActivation | undefined;
   let marketplaceActivation: AtomicDirectoryActivation | undefined;
   try {
-    loaded = await loadMarketplaceFromSource(input.source, input.storageRoot, {
+    loaded = await loadMarketplaceFromSource(source, input.storageRoot, {
       persist: false,
       signal: operationSignal,
     });
     throwIfPluginOperationAborted(operationSignal);
-    if (isOfficialMarketplaceId(loaded.manifest.name) && loaded.manifest.name !== input.trustedId) {
+    // 受控身份必须同时匹配本次刷新 ID 和固定来源，不能只信 known record 的名称。
+    assertCuratedMarketplaceSource(loaded.manifest.name, input.source);
+    if (
+      isCuratedStoreMarketplaceId(loaded.manifest.name) &&
+      loaded.manifest.name !== input.trustedId
+    )
       throw new Error(
-        `Cannot add a marketplace named "${loaded.manifest.name}": that id is reserved for the official marketplace.`,
+        `Cannot add a marketplace named "${loaded.manifest.name}": that id is reserved.`,
       );
-    }
+    if (
+      input.trustedId &&
+      isCuratedStoreMarketplaceId(input.trustedId) &&
+      loaded.manifest.name !== input.trustedId
+    )
+      throw new Error(`Curated marketplace source must provide ${input.trustedId}`);
     if (input.expectedId && loaded.manifest.name !== input.expectedId) {
       throw new Error(
         `Marketplace declaration id mismatch: expected ${input.expectedId}, received ${loaded.manifest.name}`,
@@ -402,7 +461,7 @@ export async function addMarketplace(input: {
     const now = new Date().toISOString();
     const record: KnownMarketplaceRecord = {
       id: loaded.manifest.name,
-      source: input.source,
+      source,
       name: loaded.manifest.name,
       ...(loaded.manifest.description ? { description: loaded.manifest.description } : {}),
       addedAt: now,
@@ -491,6 +550,29 @@ async function requestMarketplaceJson(
 
 function isMarketplaceJsonRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+/**
+ * SkillHub 市场：只落 manifest（与 url 源一致，由 addMarketplace 走 stageMarketplaceManifest），
+ * 技能包在安装单个插件时才下载并校验指纹。
+ */
+async function loadSkillhubMarketplaceManifest(
+  source: { baseUrl: string; description?: string; name?: string },
+  signal?: AbortSignal,
+): Promise<PluginMarketplaceManifest> {
+  const client = createSkillhubHttpClient();
+  const baseUrl = normalizeSkillhubBaseUrl(source.baseUrl);
+  const apiBase = await discoverSkillhubApiBase({ baseUrl, client, signal });
+  const items = await fetchSkillhubCatalog({ apiBase, client, signal });
+  return normalizeMarketplaceManifest(
+    buildSkillhubMarketplaceManifestRaw({
+      apiBase,
+      baseUrl,
+      items,
+      ...(source.description !== undefined ? { description: source.description } : {}),
+      ...(source.name !== undefined ? { name: source.name } : {}),
+    }),
+  );
 }
 
 export async function updateMarketplace(input: {
@@ -1290,6 +1372,12 @@ async function resolvePluginSourceRoot(input: {
     if (sourceKind === "npm" || sourceKind === "pip") {
       throw new UnsupportedPluginSourceError(sourceKind);
     }
+    if (sourceKind === "skillhub") {
+      return resolveSkillhubPluginSource({
+        plugin: readSkillhubPluginSource(source),
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    }
     // 显式 object source 配置错误时不能降级到 marketplace 内同名目录，否则会安装错误来源。
     throw new Error(
       `Plugin source is invalid or unsupported for ${input.entry.name}@${input.marketplace}: ${sourceKind || "missing kind"}`,
@@ -1600,6 +1688,8 @@ async function loadMarketplaceFromSource(
         throw appendPluginSourceCleanupError(error, cleanupError);
       }
     }
+    case "skillhub":
+      return { manifest: await loadSkillhubMarketplaceManifest(source, options.signal) };
     case "npm":
       throw new UnsupportedMarketplaceSourceError("npm");
     case "hostPattern":
@@ -2398,6 +2488,19 @@ function validateMarketplaceEntryShape(
         });
       }
     }
+    if (sourceKind === "skillhub") {
+      // 条目必须自带 slug/version/baseUrl，否则安装时才失败；这里提前给出可读诊断。
+      try {
+        readSkillhubPluginSource(entry.source);
+      } catch (error) {
+        diagnostics.push({
+          code: "plugin_marketplace_invalid",
+          message: error instanceof Error ? error.message : String(error),
+          pluginId,
+          severity: "error",
+        });
+      }
+    }
   }
   if (options.includeEntryCompatibility !== false) {
     pushEntryCompatibilityDiagnostics({ diagnostics, entry, marketplace });
@@ -2430,7 +2533,7 @@ function getMarketplaceSourceValidationDeferral(
     const sourceType = typeof entry.source.type === "string" ? entry.source.type : "";
     if (sourceType && sourceType !== "git" && sourceType !== "zip") return null;
   }
-  if (!["github", "git", "url", "git-subdir"].includes(sourceKind)) return null;
+  if (!["github", "git", "url", "git-subdir", "skillhub"].includes(sourceKind)) return null;
   const pluginId = `${entry.name}@${marketplace}`;
   const sourceLabel =
     typeof entry.source.repo === "string"

@@ -433,8 +433,14 @@ function getWorkspaceZcodeCommandRoot(workspacePath: string): string {
   return join(workspacePath, ".zcode", "commands");
 }
 
+import {
+  getUworkUserStorageRoot,
+  getUworkUserCliConfigPath,
+  getUworkUserPluginsRoot,
+} from "#src/paths.js";
+
 function getUserZcodeCommandRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "commands");
+  return join(getUworkUserStorageRoot(), "commands");
 }
 
 function getWorkspaceZcodePluginRoot(workspacePath: string): string {
@@ -442,11 +448,11 @@ function getWorkspaceZcodePluginRoot(workspacePath: string): string {
 }
 
 function getUserZcodePluginRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "plugins");
+  return getUworkUserPluginsRoot();
 }
 
 function getUserZcodeCliConfigPath(): string {
-  return join(resolveUserHomeDir(), ".zcode", "cli", "config.json");
+  return getUworkUserCliConfigPath();
 }
 
 function getWorkspaceZcodeConfigPath(workspacePath: string): string {

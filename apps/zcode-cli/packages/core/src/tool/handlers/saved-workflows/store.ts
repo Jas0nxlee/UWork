@@ -17,11 +17,10 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveUserStorageRoot } from "@zcode/shared";
 import {
   SAVED_WORKFLOW_FILE_EXTENSION,
-  SAVED_WORKFLOW_GLOBAL_DIR,
   SAVED_WORKFLOW_MAX_NAME_CHARS,
   SAVED_WORKFLOW_PROJECT_DIR,
   isValidSavedWorkflowName,
@@ -40,17 +39,22 @@ export interface SavedWorkflowRoot {
 }
 
 /**
- * `savedWorkflowRoots` / 派生函数的可选参数。`homeDir` 只为测试注入：生产恒取
- * `os.homedir()`（agent 进程所在机器的家目录），**不**跟任何 `storage.dir` 配置走。
+ * `savedWorkflowRoots` / 派生函数的可选参数。`homeDir` 只为测试注入根覆盖：生产取
+ * 用户级存储根（`ZCODE_STORAGE_DIR`，UWork 下为 `~/.uwork`），随 agent 所在机器解析，
+ * **不**跟任何 `storage.dir` 配置走。
  */
 export interface SavedWorkflowRootsOptions {
   homeDir?: string;
 }
 
+// 全局档目录名（相对用户级存储根）。项目档名来自 contracts，全局档不再带上游 `.zcode` 前缀。
+const GLOBAL_WORKFLOW_DIR_NAME = "workflows";
+
 /**
  * 本次会话的查找根，**按优先级排列**：`[project, global]`。
  *
- * 项目档落在会话工作目录的 `.zcode/workflows/`，全局档落在家目录的 `~/.zcode/workflows/`。
+ * 项目档落在会话工作目录的 `.zcode/workflows/`，全局档落在用户级存储根的 `workflows/`
+ * （UWork 下是 `~/.uwork/workflows/`，上游 CLI 未下发 storage root 时仍是 `~/.zcode/workflows/`）。
  * 所有查找按顺序 first-wins：项目里的那份永远赢过全局那份（同名遮蔽）。
  */
 export function savedWorkflowRoots(
@@ -59,7 +63,8 @@ export function savedWorkflowRoots(
 ): SavedWorkflowRoot[] {
   return [
     { scope: "project", dir: join(cwd, SAVED_WORKFLOW_PROJECT_DIR) },
-    { scope: "global", dir: join(options?.homeDir ?? homedir(), SAVED_WORKFLOW_GLOBAL_DIR) },
+    // 全局档跟随用户级存储根（UWork 下为 ~/.uwork/workflows）；options.homeDir 是测试注入的根覆盖。
+    { scope: "global", dir: join(options?.homeDir ?? resolveUserStorageRoot(), GLOBAL_WORKFLOW_DIR_NAME) },
   ];
 }
 

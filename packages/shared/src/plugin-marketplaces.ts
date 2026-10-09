@@ -1,6 +1,18 @@
+/**
+ * 默认市场的来源声明：字符串形式给官方 CDN 用（`defaultMarketplaceSourceFromString` 解析），
+ * 结构化形式给需要专属源类型的市场用；两者同时存在时结构化优先。
+ */
+export type DefaultPluginMarketplaceSourceConfig = {
+  baseUrl: string;
+  description?: string;
+  name?: string;
+  source: "skillhub";
+};
+
 export interface DefaultPluginMarketplace {
   id: string;
-  source: string;
+  source?: string;
+  sourceConfig?: DefaultPluginMarketplaceSourceConfig;
   name: string;
   description: string;
   pluginCount: number;
@@ -8,6 +20,9 @@ export interface DefaultPluginMarketplace {
 }
 
 export const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID = "zcode-plugins-official";
+/** 公司 AIHub（SkillHub）技能市场：UCAS 内部技能来源，契约见 specs/aihub-skill-source.md。 */
+export const UWORK_AIHUB_PLUGIN_MARKETPLACE_ID = "ucas-aihub";
+export const UWORK_AIHUB_SKILLHUB_BASE_URL = "https://aihub.ucas.com.cn/skillhub";
 
 /** Settings 三类资源发现共用；Bootstrap 单测与官方 definition 的 defaultEnabled 机械对照。 */
 export const DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS: ReadonlySet<string> = new Set([
@@ -39,11 +54,37 @@ export const DEFAULT_PLUGIN_MARKETPLACES: DefaultPluginMarketplace[] = [
     description: "Official UWork plugins marketplace: built-in and community plugins for UWork.",
     pluginCount: 0,
   },
+  {
+    // 公司 AIHub 技能市场：客户端直接适配 SkillHub（发现 → 目录 → 按内容指纹校验 → 包装成插件）。
+    // manifest.name 必须等于该 id —— 市场身份就是 manifest name，改名会让已有安装记录失联。
+    id: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
+    sourceConfig: {
+      baseUrl: UWORK_AIHUB_SKILLHUB_BASE_URL,
+      name: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
+      source: "skillhub",
+    },
+    name: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
+    description: "Company AIHub skills from SkillHub: internal skills and toolkits for UCAS.",
+    pluginCount: 0,
+  },
 ];
 
-// 商店「公开」分段只有一个 ZCode 官方市场 id，内置与 CDN 不再拆分身份。
+// 商店分三段：公开 / 公司 / 个人。
+// - 公开：ZCode 官方市场，保留 Featured 策展语义；
+// - 公司：内部 AIHub 技能市场（SkillHub），来源受控、独立成段，不混进公开列表；
+// - 个人：用户自己添加的市场源。
 export const PUBLIC_STORE_MARKETPLACE_IDS = [ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID] as const;
+export const COMPANY_STORE_MARKETPLACE_IDS = [UWORK_AIHUB_PLUGIN_MARKETPLACE_ID] as const;
 
 export function isPublicStoreMarketplaceId(id: string): boolean {
   return (PUBLIC_STORE_MARKETPLACE_IDS as readonly string[]).includes(id);
+}
+
+export function isCompanyStoreMarketplaceId(id: string): boolean {
+  return (COMPANY_STORE_MARKETPLACE_IDS as readonly string[]).includes(id);
+}
+
+/** 受控来源（公开 ∪ 公司）：随包内置、不可删除，并参与商店目录自动刷新。 */
+export function isCuratedStoreMarketplaceId(id: string): boolean {
+  return isPublicStoreMarketplaceId(id) || isCompanyStoreMarketplaceId(id);
 }
