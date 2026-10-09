@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { copyDataDirectory } from "../src/paths.js";
+import { copyDataDirectory, setDataBaseDir } from "../src/paths.js";
 
 async function fixture(run: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), "uwork-migration-test-"));
@@ -64,3 +64,70 @@ test("target conflicts and copy failures preserve old state without migration re
     assert.deepEqual(await readdir(next), []);
     assert.equal(await readFile(join(old, ".uwork", "state"), "utf8"), "old");
   }));
+
+test("migration preserves disabled user skill and command path keys without rewriting arbitrary keys", async () =>
+  fixture(async (root) => {
+    const old = join(root, "old"),
+      next = join(root, "new");
+    const skill = join(old, ".uwork", "skills", "demo", "SKILL.md");
+    const command = join(old, ".uwork", "commands", "demo.md");
+    const unrelated = join(root, "workspace", "SKILL.md");
+    await mkdir(join(old, ".uwork", "cli"), { recursive: true });
+    await mkdir(join(skill, ".."), { recursive: true });
+    await writeFile(skill, "---\nname: demo\ndescription: fixture\n---\nfixture");
+    await mkdir(join(command, ".."), { recursive: true });
+    await writeFile(command, "fixture command");
+    await writeFile(
+      join(old, ".uwork", "cli", "config.json"),
+      JSON.stringify({
+        skills: {
+          [skill.replaceAll("\\", "/")]: { enable: false },
+          [unrelated]: { enable: false },
+        },
+        command: { [command]: { enable: false } },
+        custom: { [skill]: "ordinary key" },
+      }),
+    );
+    await copyDataDirectory(old, next);
+    const migrated = JSON.parse(await readFile(join(next, ".uwork", "cli", "config.json"), "utf8"));
+    const canonicalSkill = await realpath(join(next, ".uwork", "skills", "demo", "SKILL.md"));
+    assert.equal(migrated.skills[canonicalSkill.replaceAll("\\", "/")].enable, false);
+    assert.equal(migrated.command[join(next, ".uwork", "commands", "demo.md")].enable, false);
+    assert.equal(migrated.skills[unrelated].enable, false);
+    assert.equal(migrated.custom[skill], "ordinary key");
+    assert.equal(migrated.skills[skill], undefined);
+    const savedHome = process.env.HOME;
+    process.env.HOME = root;
+    setDataBaseDir(next);
+    try {
+      const { createSkillsService } = await import("../src/skills/skillsService.js");
+      const workspacePath = join(root, "workspace");
+      await mkdir(workspacePath, { recursive: true });
+      const listing = await createSkillsService({ isDesktopRuntime: true }).list({ workspacePath });
+      const restored = listing.skills.find((item) => item.path === canonicalSkill);
+      assert.ok(restored, "relocated user skill must be visible after reader restart");
+      assert.equal(restored.enabled, false, "disabled state must remain disabled");
+    } finally {
+      setDataBaseDir(null);
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+    }
+  }));
+
+test("Windows normalized skill keys and native command keys retain disabled overrides", async () => {
+  const { relocateCliPathOverrides } = await import("../src/dataDirectoryMigrationMetadata.js");
+  const config = {
+    skills: { "C:/old/.uwork/skills/demo/SKILL.md": { enable: false } },
+    command: { "C:\\old\\.uwork\\commands\\demo.md": { enable: false } },
+    custom: { "C:/old/.uwork/skills/demo/SKILL.md": "ordinary" },
+  };
+  relocateCliPathOverrides(config, {
+    source: "C:\\old\\.uwork",
+    target: "D:\\new\\.uwork",
+    canonicalSource: "C:\\old\\.uwork",
+    canonicalTarget: "D:\\new\\.uwork",
+  });
+  assert.deepEqual(config.skills, { "D:/new/.uwork/skills/demo/SKILL.md": { enable: false } });
+  assert.deepEqual(config.command, { "D:\\new\\.uwork\\commands\\demo.md": { enable: false } });
+  assert.equal(config.custom["C:/old/.uwork/skills/demo/SKILL.md"], "ordinary");
+});

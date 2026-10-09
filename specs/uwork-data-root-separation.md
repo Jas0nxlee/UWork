@@ -47,3 +47,5 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
 更换 dataBaseDir 复制整个 UWork 自有根（v2、cli 配置/启停状态/缓存、skills、commands、agents、plugins、workflows、workspace 等），不读取 .zcode 或共享 .agents。仅排除 v2/setting.json 及其原子写入临时文件、符号链接；迁移 JSON 中指向旧 UWork 根的绝对路径重定位到新根。显式外部 CLI storage root 不移动。
 
 旧根 → 临时目标 → 校验文件内容 → 重定位元数据 → 原子激活目标 → 保存 bootstrap 设置 → 重启读者。旧根始终保留；复制/校验失败不切换设置。非空目标拒绝并提示选空目录，不默默丢弃目标或旧数据。源/目标嵌套拒绝。验收覆盖目标冲突、复制失败、MCP 增改删与重启、所有路径优先级。
+
+路径键迁移仅适用于 cli/config.json 的 skills（规范化 SKILL.md 绝对路径 → enable）和 command（命令文件绝对路径 → enable）两个受控映射。普通对象键、工作区路径和共享 .agents 路径保持原样；UWork 根内键重定位后原禁用状态必须保持。技能配置读写在调用时解析有效 CLI 根，避免 bootstrap 前导入缓存旧路径。

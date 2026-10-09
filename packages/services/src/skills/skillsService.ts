@@ -53,9 +53,6 @@ interface ParsedFrontmatter {
 }
 
 const SKILL_META_FILE_NAME = "_meta.json";
-const SKILL_SETTINGS_DIR = getAppConfigDir();
-const SKILL_CLI_SETTINGS_DIR = getUworkUserCliRootDir();
-const SKILL_CLI_CONFIG_FILE = getUworkUserCliConfigPath();
 const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
 const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE = "zcode-plugins-official";
@@ -286,9 +283,9 @@ async function appendSkillsAuditLog(params: {
   workspaceIdentity?: string;
   activatedSkillNames: string[];
 }): Promise<void> {
-  await mkdir(SKILL_SETTINGS_DIR, { recursive: true });
+  await mkdir(getAppConfigDir(), { recursive: true });
   await appendFile(
-    join(SKILL_SETTINGS_DIR, "skills-audit.log"),
+    join(getAppConfigDir(), "skills-audit.log"),
     `${JSON.stringify({
       createdAt: Date.now(),
       workspacePath: params.workspacePath,
@@ -537,7 +534,7 @@ function normalizeSkillConfigPath(path: string): string {
 
 async function readCliConfigFile(): Promise<Record<string, unknown>> {
   try {
-    const raw = await readFile(SKILL_CLI_CONFIG_FILE, "utf-8");
+    const raw = await readFile(getUworkUserCliConfigPath(), "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     return isObjectRecord(parsed) ? parsed : {};
   } catch {
@@ -585,8 +582,8 @@ async function writeSkillEnabledMap(next: Record<string, boolean>): Promise<void
   } else {
     delete config.skills;
   }
-  await mkdir(SKILL_CLI_SETTINGS_DIR, { recursive: true });
-  await writeFile(SKILL_CLI_CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+  await mkdir(getUworkUserCliRootDir(), { recursive: true });
+  await writeFile(getUworkUserCliConfigPath(), `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 }
 
 interface SkillRootDescriptor {

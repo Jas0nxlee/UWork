@@ -6,12 +6,14 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   rmdir,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { relocateCliPathOverrides } from "./dataDirectoryMigrationMetadata.js";
 import { UWORK_DATA_ROOT_DIR_NAME } from "@zcode/shared";
 
 /** UWork 自有状态整体迁移；旧根保留，任何冲突/复制失败都不能静默切换到残缺状态。 */
@@ -41,9 +43,18 @@ export async function copyDataDirectory(oldBaseDir: string, newBaseDir: string):
   };
   try {
     await cp(source, stagedRoot, { recursive: true, filter: include });
+    const canonicalSource = await realpath(source);
+    const canonicalTarget = join(await realpath(dirname(target)), basename(target));
     const relocate = (value: unknown): unknown => {
-      if (typeof value === "string" && (value === source || value.startsWith(`${source}${sep}`)))
-        return target + value.slice(source.length);
+      if (typeof value === "string") {
+        for (const [oldRoot, newRoot] of [
+          [source, target],
+          [canonicalSource, canonicalTarget],
+        ]) {
+          if (value === oldRoot || value.startsWith(`${oldRoot}${sep}`))
+            return newRoot! + value.slice(oldRoot!.length);
+        }
+      }
       if (Array.isArray(value)) return value.map(relocate);
       if (value && typeof value === "object")
         return Object.fromEntries(
@@ -70,8 +81,23 @@ export async function copyDataDirectory(oldBaseDir: string, newBaseDir: string):
           } catch {
             continue;
           }
-          const updated = JSON.stringify(relocate(parsed), null, 2) + "\n";
-          if (JSON.stringify(parsed) !== JSON.stringify(relocate(parsed)))
+          const migrated = relocate(parsed);
+          // skills/command 开关按绝对文件路径作键；仅这两个契约字段允许迁移键。
+          if (
+            relative(stagedRoot, destination).split(sep).join("/") === "cli/config.json" &&
+            migrated &&
+            typeof migrated === "object" &&
+            !Array.isArray(migrated)
+          ) {
+            relocateCliPathOverrides(migrated as Record<string, unknown>, {
+              source,
+              target,
+              canonicalSource,
+              canonicalTarget,
+            });
+          }
+          const updated = JSON.stringify(migrated, null, 2) + "\n";
+          if (JSON.stringify(parsed) !== JSON.stringify(migrated))
             await writeFile(destination, updated, "utf8");
         }
       }
