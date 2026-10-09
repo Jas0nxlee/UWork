@@ -291,3 +291,5 @@ sequenceDiagram
 Renderer 发起 start → 用户返回 → 旧 start 返回/失败 → 仅取消旧 attempt → 新 start admission → 新公司二维码。返回时无 attempt ID 的启动由本窗口 pending Promise 持有；下一次登录等待旧启动结算及取消后才入 Host，不能复用旧 startTask。旧 handler 不打开原生窗口、不覆盖新视图、不取消新 attempt；连续返回/重试遵守同一屏障。该窗口取消不使用缺失 ID，保留设备恢复与其他窗口边界。
 
 验收覆盖延迟启动、失败与过期、偏好写入失败/重试/连续选择、并发 hydration 及 dispose。真实扫码和服务端多租户生产前置独立验收。
+
+组织选择与登录的 admission 顺序：已接收的连续选择全部完成持久化/失败结算后，beginLogin 才读取当前组织并启动。服务通过 selection 完成屏障等待完整队列，不只等待已经进入全局 writes 的第一笔写入；后续选择不得把已启动 attempt 的组织归属漂移。

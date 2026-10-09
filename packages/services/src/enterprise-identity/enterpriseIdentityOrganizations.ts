@@ -14,6 +14,8 @@ export interface EnterpriseIdentityOrganizationSelection {
   hydrate(): Promise<string | null>;
   /** 校验并记住选择；未列出/空白值抛错，不静默回落。 */
   select(orgId: string): Promise<string>;
+  /** 等待此前已接收的全部选择（包含尚未进入持久化队列的选择）。 */
+  settled(): Promise<void>;
 }
 
 export function createEnterpriseIdentityOrganizationSelection(options: {
@@ -43,6 +45,9 @@ export function createEnterpriseIdentityOrganizationSelection(options: {
         label: organization.label ?? null,
       })),
     current: () => selectedOrgId,
+    settled: async () => {
+      await selections;
+    },
     hydrate: async () => {
       selectedOrgId = await resolveStored();
       return selectedOrgId;

@@ -304,20 +304,20 @@ export function createEnterpriseIdentityService(options: {
         await ensureAdapter();
         if (!adapter) throw new Error("企业微信登录暂未配置");
         try {
+          // 连续选择的后续 persist 可能尚未进入 writes；先等待选择 owner 的完整队列。
+          await organizations.settled();
           await writes;
           const record = await store.read();
           if (current !== generation) throw new Error("企业登录已取消");
           attemptRevision = record.revision;
           knownRevision = record.revision;
-          const response = await adapter.start(
-            controller.signal,
-            organizations.current() ?? undefined,
-          );
+          const startOrgId = organizations.current();
+          const response = await adapter.start(controller.signal, startOrgId ?? undefined);
           const started = enterpriseIdentityAttemptSchema.parse(response);
           if (current !== generation || started.expiresAt <= now())
             throw new Error("企业登录已取消或过期");
           attempt = started;
-          attemptOrgId = started.expectedState ?? organizations.current();
+          attemptOrgId = started.expectedState ?? startOrgId;
           publish({
             status: "waiting",
             profile: null,

@@ -43,7 +43,7 @@ def enter_test_value(testid,value):
     cdp('Input.insertText',text=value)
 until("!!document.querySelector('[data-testid=enterprise-login-page]')")
 assert read("document.querySelector('[data-testid=enterprise-wecom-login]').disabled")
-assert '暂未配置' in read('document.body.innerText')
+assert '暂未配置' in read('document.body.innerText'), read('document.body.innerText')
 assert not read("!!document.querySelector('[data-testid=enterprise-login-card] [aria-label=UWork]')")
 assert '使用企业身份登录，也可以跳过并继续使用本地功能' not in read('document.body.innerText')
 assert '跳过登录不影响本地工作区和模型配置' not in read('document.body.innerText')

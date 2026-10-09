@@ -32,6 +32,8 @@ let restoreCancelled = false;
 let view: EnterpriseIdentityView = {
   revision: 0,
   configured,
+  organizations: [],
+  selectedOrgId: null,
   status: "signed-out",
   profile: null,
   pending: null,
@@ -185,6 +187,22 @@ const providerSettingsService: Pick<
     return providerView;
   },
 };
+const authenticateFixture = () => {
+  emit({
+    revision: view.revision + 1,
+    configured,
+    status: "authenticated",
+    profile: {
+      id: "fixture-user",
+      tenantId: "fixture-corp",
+      provider: "wecom",
+      displayName: params.has("longname") ? "测试长姓名用于验证侧栏截断及窄屏布局" : "测试用户",
+    },
+    pending: null,
+    error: null,
+  });
+  return view;
+};
 const service: IEnterpriseIdentityService = {
   onDidChange: changed.event,
   getView: async () => view,
@@ -236,24 +254,10 @@ const service: IEnterpriseIdentityService = {
     document.documentElement.dataset.beginLoginReturned = "true";
     return attempt;
   },
-  pollLogin: async () => {
-    emit({
-      revision: view.revision + 1,
-      configured,
-      status: "authenticated",
-      profile: {
-        id: "fixture-user",
-        tenantId: "fixture-corp",
-        provider: "wecom",
-        displayName: params.has("longname") ? "测试长姓名用于验证侧栏截断及窄屏布局" : "测试用户",
-      },
-      pending: null,
-      error: null,
-    });
-    return view;
-  },
+  // 原生扫码由回调认领；轮询保持 waiting，避免夹具在扫码视图就绪前抢先认证。
+  pollLogin: async () => (native ? view : authenticateFixture()),
   completeLogin: async (attemptId) => ({
-    view: await service.pollLogin(attemptId),
+    view: authenticateFixture(),
     committedAttemptId: params.has("stale_native") ? null : attemptId,
   }),
   cancelLogin: async (attemptId) => {

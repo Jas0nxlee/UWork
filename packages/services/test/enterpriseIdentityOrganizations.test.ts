@@ -219,3 +219,35 @@ test("disposing during hydration does not publish a late restored selection", as
   assert.equal(events.length, afterDispose);
   assert.equal((await service.getView()).status, "signed-out");
 });
+
+test("login waits for all accepted organization selections, including a queued later write", async () => {
+  const firstWrite = deferred<void>();
+  const secondWrite = deferred<void>();
+  const starts: Array<string | undefined> = [];
+  let calls = 0;
+  const service = createEnterpriseIdentityService({
+    credentials,
+    adapter: createAdapter(starts),
+    organizationStore: {
+      read: async () => "bj",
+      write: async () => {
+        calls++;
+        await (calls === 1 ? firstWrite.promise : secondWrite.promise);
+      },
+    },
+    now: () => 1000,
+  });
+  await service.getView();
+  const first = service.selectOrganization("nj");
+  const latest = service.selectOrganization("bj");
+  const login = service.beginLogin();
+  await new Promise((resolve) => setImmediate(resolve));
+  firstWrite.resolve();
+  await first;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(starts, [], "start must wait for the queued second preference write");
+  secondWrite.resolve();
+  await Promise.all([latest, login]);
+  assert.deepEqual(starts, ["bj"]);
+  assert.equal((await service.getView()).selectedOrgId, "bj");
+});
