@@ -3,6 +3,7 @@
 //
 // 安装侧（取指纹、下载、校验、包装成插件）见 skillhub-package.ts。
 
+import { createHash } from "node:crypto";
 import type { HttpClientPort } from "@zcode/contracts";
 import {
   isRecord,
@@ -136,7 +137,9 @@ export function buildSkillhubMarketplaceManifestRaw(input: {
     ];
   });
   return {
-    name: input.name?.trim() || SKILLHUB_MARKETPLACE_ID,
+    name:
+      input.name?.trim() ||
+      `skillhub-${createHash("sha256").update(normalizeSkillhubBaseUrl(input.baseUrl)).digest("hex").slice(0, 16)}`,
     ...(input.description ? { description: input.description } : {}),
     plugins,
   };

@@ -58,7 +58,11 @@ export const DEFAULT_PLUGIN_MARKETPLACES: DefaultPluginMarketplace[] = [
     // 公司 AIHub 技能市场：客户端直接适配 SkillHub（发现 → 目录 → 按内容指纹校验 → 包装成插件）。
     // manifest.name 必须等于该 id —— 市场身份就是 manifest name，改名会让已有安装记录失联。
     id: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
-    sourceConfig: { baseUrl: UWORK_AIHUB_SKILLHUB_BASE_URL, source: "skillhub" },
+    sourceConfig: {
+      baseUrl: UWORK_AIHUB_SKILLHUB_BASE_URL,
+      name: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
+      source: "skillhub",
+    },
     name: UWORK_AIHUB_PLUGIN_MARKETPLACE_ID,
     description: "Company AIHub skills from SkillHub: internal skills and toolkits for UCAS.",
     pluginCount: 0,

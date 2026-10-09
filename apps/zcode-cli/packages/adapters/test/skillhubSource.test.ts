@@ -34,9 +34,10 @@ interface FakeResponse {
   status?: number;
 }
 
-function createFakeClient(
-  handler: (url: string) => FakeResponse,
-): { client: HttpClientPort; requested: string[] } {
+function createFakeClient(handler: (url: string) => FakeResponse): {
+  client: HttpClientPort;
+  requested: string[];
+} {
   const requested: string[] = [];
   const client: HttpClientPort = {
     request: async (request, options) => {
@@ -131,7 +132,9 @@ test("发现 API 基址：well-known 优先，缺失时回退固定路径", asyn
 });
 
 test("well-known 声明跨 origin 的 apiBase 被拒绝", async () => {
-  const { client } = createFakeClient(() => ({ body: { apiBase: "https://evil.example.com/api" } }));
+  const { client } = createFakeClient(() => ({
+    body: { apiBase: "https://evil.example.com/api" },
+  }));
   await assert.rejects(
     () => discoverSkillhubApiBase({ baseUrl: BASE_URL, client }),
     /must stay on the marketplace origin/u,
@@ -169,8 +172,14 @@ test("目录归一化：条目自带 baseUrl/apiBase/namespace，隐藏与官方
   const manifest = buildSkillhubMarketplaceManifestRaw({
     apiBase: API_BASE,
     baseUrl: BASE_URL,
+    name: "ucas-aihub",
     items: [
-      { displayName: "知识库检索", latestVersion: { version: "20260920.142519" }, slug: "kb-search", summary: "查内部资料" },
+      {
+        displayName: "知识库检索",
+        latestVersion: { version: "20260920.142519" },
+        slug: "kb-search",
+        summary: "查内部资料",
+      },
       { latestVersion: { version: "20260831.061404" }, slug: "docx", summary: "Word" },
       { latestVersion: { version: "1" }, slug: "hr--onboarding", summary: "入职" },
       { latestVersion: {}, slug: "no-version", summary: "无版本" },
@@ -262,9 +271,7 @@ test("安装：取指纹 → 下载 → 复算校验 → 包装成插件（含�
     );
 
     assert.match(requested[0] ?? "", /\/skills\/global\/kb-search\/resolve\?version=1$/u);
-    assert.deepEqual(downloadUrls, [
-      `${API_BASE}/skills/global/kb-search/versions/1/download`,
-    ]);
+    assert.deepEqual(downloadUrls, [`${API_BASE}/skills/global/kb-search/versions/1/download`]);
     const manifest = JSON.parse(
       await readFile(join(resolved.path, ".zcode-plugin", "plugin.json"), "utf8"),
     ) as Record<string, unknown>;
@@ -361,7 +368,8 @@ test("下载地址拼接：服务端返回的应用根相对路径要补回部�
   );
 });
 
-test("安装：resolve 返回的版本与条目版本不一致即失败", async () => {  const { client } = createFakeClient(() => ({
+test("安装：resolve 返回的版本与条目版本不一致即失败", async () => {
+  const { client } = createFakeClient(() => ({
     body: { data: { fingerprint: "a".repeat(64), version: "2" } },
   }));
   await assert.rejects(
@@ -398,4 +406,54 @@ test("目录为空时不会新建任何东西（空目录仍是合法目录）",
     const { client } = createFakeClient(() => ({ body: { items: [], nextCursor: null } }));
     assert.deepEqual(await fetchSkillhubCatalog({ apiBase: API_BASE, client }), []);
   });
+});
+
+test("unsafe cross-platform slugs are rejected before preview or install IO", async () => {
+  for (const slug of [
+    "../outside",
+    "..\\outside",
+    "/absolute",
+    "C:\\outside",
+    "x/y",
+    "x%2fy",
+    ".",
+    "..",
+    "x:y",
+    "x\u0000y",
+  ]) {
+    assert.throws(
+      () => readSkillhubPluginSource({ source: "skillhub", baseUrl: BASE_URL, slug, version: "1" }),
+      /slug/i,
+    );
+    let requested = false;
+    await assert.rejects(
+      resolveSkillhubPluginSource(
+        {
+          plugin: {
+            source: "skillhub",
+            baseUrl: BASE_URL,
+            namespace: "global",
+            slug,
+            version: "1",
+          },
+        },
+        {
+          client: createFakeClient(() => {
+            requested = true;
+            return {};
+          }).client,
+        },
+      ),
+      /slug/i,
+    );
+    assert.equal(requested, false);
+  }
+});
+
+test("custom SkillHub sources get distinct stable personal IDs", () => {
+  const manifest = (baseUrl: string) =>
+    buildSkillhubMarketplaceManifestRaw({ apiBase: `${baseUrl}/api/v1`, baseUrl, items: [] });
+  assert.notEqual(manifest("https://one.example").name, "ucas-aihub");
+  assert.notEqual(manifest("https://one.example").name, manifest("https://two.example").name);
+  assert.equal(manifest("https://one.example/").name, manifest("https://one.example").name);
 });

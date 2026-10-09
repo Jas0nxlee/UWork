@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, posix, relative, sep } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import type { HttpClientPort } from "@zcode/contracts";
 import {
   createSkillhubHttpClient,
@@ -61,6 +61,7 @@ export function readSkillhubPluginSource(value: unknown): SkillhubPluginSource {
     throw new Error("Skillhub plugin source requires a skillhub source object");
   }
   const slug = readRequiredString(value, "slug");
+  validateSkillhubSlug(slug);
   const version = readRequiredString(value, "version");
   const namespace =
     typeof value.namespace === "string" && value.namespace.trim().length > 0
@@ -122,6 +123,8 @@ export async function resolveSkillhubPluginSource(
   input: { plugin: SkillhubPluginSource; signal?: AbortSignal },
   dependencies: SkillhubSourceDependencies = {},
 ): Promise<ResolvedZipPluginSourceRoot> {
+  validateSkillhubSlug(input.plugin.slug);
+  input.signal?.throwIfAborted();
   const client = dependencies.client ?? createSkillhubHttpClient();
   const resolveZipSource = dependencies.resolveZipSource ?? resolveHttpZipSource;
   const resolved = await resolveSkillhubVersion({
@@ -144,6 +147,7 @@ export async function resolveSkillhubPluginSource(
     pluginRoot = await materializeSkillhubPlugin({
       plugin: input.plugin,
       skillContentRoot: extracted.path,
+      signal: input.signal,
     });
   } catch (error) {
     const cleanupError = await cleanupPluginSourceBestEffort(extracted.cleanup);
@@ -153,7 +157,7 @@ export async function resolveSkillhubPluginSource(
   const cleanup = async (): Promise<void> => {
     let firstError: unknown;
     try {
-      await rm(pluginRootPath, { force: true, recursive: true });
+      await rm(dirnameOfWrapper(pluginRootPath), { force: true, recursive: true });
     } catch (error) {
       firstError = error;
     }
@@ -240,29 +244,48 @@ function resolveSkillhubDownloadUrl(input: {
   return `${origin.origin}${path}`;
 }
 
+/** 只允许单个目录名；指纹与包同源，不能代替路径边界验证。 */
+function validateSkillhubSlug(slug: string): void {
+  const segment = "[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*";
+  if (!new RegExp(`^${segment}(?:--${segment})?$`, "u").test(slug))
+    throw new Error("Invalid Skillhub slug");
+}
+
+function dirnameOfWrapper(pluginRoot: string): string {
+  return resolve(pluginRoot, "..");
+}
+
 async function materializeSkillhubPlugin(input: {
   plugin: SkillhubPluginSource;
   skillContentRoot: string;
+  signal?: AbortSignal;
 }): Promise<string> {
+  validateSkillhubSlug(input.plugin.slug);
   const root = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
   const pluginRoot = join(root, "plugin");
-  await mkdir(pluginRoot, { recursive: true });
-  await cp(input.skillContentRoot, join(pluginRoot, PLUGIN_SKILLS_DIR, input.plugin.slug), {
-    recursive: true,
-  });
-  await mkdir(join(pluginRoot, PLUGIN_MANIFEST_DIR), { recursive: true });
-  await writeFile(
-    join(pluginRoot, PLUGIN_MANIFEST_DIR, "plugin.json"),
-    `${JSON.stringify(
-      {
-        name: input.plugin.slug,
-        version: input.plugin.version,
-        skills: [`./${PLUGIN_SKILLS_DIR}`],
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-  return pluginRoot;
+  try {
+    const skillsRoot = resolve(pluginRoot, PLUGIN_SKILLS_DIR);
+    const target = resolve(skillsRoot, input.plugin.slug);
+    const child = relative(skillsRoot, target);
+    // 复制前独立检查严格后代；不依赖目录条目的校验或平台路径分隔符。
+    if (!child || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
+      throw new Error("Invalid Skillhub slug target");
+    input.signal?.throwIfAborted();
+    await mkdir(pluginRoot, { recursive: true });
+    await cp(input.skillContentRoot, target, { recursive: true });
+    input.signal?.throwIfAborted();
+    await mkdir(join(pluginRoot, PLUGIN_MANIFEST_DIR), { recursive: true });
+    await writeFile(
+      join(pluginRoot, PLUGIN_MANIFEST_DIR, "plugin.json"),
+      `${JSON.stringify({ name: input.plugin.slug, version: input.plugin.version, skills: [`./${PLUGIN_SKILLS_DIR}`] }, null, 2)}\n`,
+      "utf8",
+    );
+    input.signal?.throwIfAborted();
+    return pluginRoot;
+  } catch (error) {
+    const cleanupError = await cleanupPluginSourceBestEffort(() =>
+      rm(root, { force: true, recursive: true }),
+    );
+    throw appendPluginSourceCleanupError(error, cleanupError);
+  }
 }

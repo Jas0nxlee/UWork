@@ -5,8 +5,12 @@ import { basename, dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { PluginDiagnostic, PluginManifest, PluginStoreListing } from "@zcode/contracts";
-import { isOfficialMarketplaceId, ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
-import { DEFAULT_PLUGIN_MARKETPLACES, sanitizeZCodeRuntimeEnv } from "@zcode/shared";
+import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
+import {
+  DEFAULT_PLUGIN_MARKETPLACES,
+  isCuratedStoreMarketplaceId,
+  sanitizeZCodeRuntimeEnv,
+} from "@zcode/shared";
 import { loadPluginMcpServerDefinitions, resolvePluginMcpServers } from "./mcp.js";
 import {
   appendPluginSourceCleanupError,
@@ -290,8 +294,22 @@ export function loadKnownMarketplacesSync(storageRoot: string): KnownMarketplace
   return [];
 }
 
+function assertCuratedMarketplaceSource(id: string, source: MarketplaceSource): void {
+  const definition = DEFAULT_PLUGIN_MARKETPLACES.find((entry) => entry.id === id);
+  if (!definition) return;
+  const expected =
+    definition.sourceConfig ?? defaultMarketplaceSourceFromString(definition.source!);
+  const matches =
+    expected.source === "skillhub"
+      ? source.source === "skillhub" &&
+        normalizeSkillhubBaseUrl(source.baseUrl) === normalizeSkillhubBaseUrl(expected.baseUrl)
+      : JSON.stringify(source) === JSON.stringify(expected);
+  if (!matches) throw new Error(`Reserved marketplace ${id} has an untrusted source`);
+}
+
 export function ensureDefaultPluginMarketplaces(storageRoot: string): KnownMarketplaceRecord[] {
   const known = loadKnownMarketplacesSync(storageRoot);
+  for (const record of known) assertCuratedMarketplaceSource(record.id, record.source);
   const existingIds = new Set(known.map((record) => record.id));
   const now = new Date().toISOString();
   const missing = DEFAULT_PLUGIN_MARKETPLACES.filter(
@@ -365,21 +383,40 @@ export async function addMarketplace(input: {
   // 不可信 manifest.name 作为 target，先 rm 掉本地官方目录再 cp，等守卫抛错时
   // 官方 manifest 已被污染；守卫通过后才持久化。
   throwIfPluginOperationAborted(input.signal);
+  if (input.trustedId) assertCuratedMarketplaceSource(input.trustedId, input.source);
+  if (input.source.source === "skillhub" && input.source.name)
+    assertCuratedMarketplaceSource(input.source.name, input.source);
+  const source: MarketplaceSource =
+    input.trustedId &&
+    isCuratedStoreMarketplaceId(input.trustedId) &&
+    input.source.source === "skillhub"
+      ? { ...input.source, name: input.trustedId }
+      : input.source;
   const operationSignal = input.signal;
   let loaded: LoadMarketplaceResult | undefined;
   let knownMarketplaceActivation: KnownMarketplaceActivation | undefined;
   let marketplaceActivation: AtomicDirectoryActivation | undefined;
   try {
-    loaded = await loadMarketplaceFromSource(input.source, input.storageRoot, {
+    loaded = await loadMarketplaceFromSource(source, input.storageRoot, {
       persist: false,
       signal: operationSignal,
     });
     throwIfPluginOperationAborted(operationSignal);
-    if (isOfficialMarketplaceId(loaded.manifest.name) && loaded.manifest.name !== input.trustedId) {
+    // 受控身份必须同时匹配本次刷新 ID 和固定来源，不能只信 known record 的名称。
+    assertCuratedMarketplaceSource(loaded.manifest.name, input.source);
+    if (
+      isCuratedStoreMarketplaceId(loaded.manifest.name) &&
+      loaded.manifest.name !== input.trustedId
+    )
       throw new Error(
-        `Cannot add a marketplace named "${loaded.manifest.name}": that id is reserved for the official marketplace.`,
+        `Cannot add a marketplace named "${loaded.manifest.name}": that id is reserved.`,
       );
-    }
+    if (
+      input.trustedId &&
+      isCuratedStoreMarketplaceId(input.trustedId) &&
+      loaded.manifest.name !== input.trustedId
+    )
+      throw new Error(`Curated marketplace source must provide ${input.trustedId}`);
     if (input.expectedId && loaded.manifest.name !== input.expectedId) {
       throw new Error(
         `Marketplace declaration id mismatch: expected ${input.expectedId}, received ${loaded.manifest.name}`,
@@ -424,7 +461,7 @@ export async function addMarketplace(input: {
     const now = new Date().toISOString();
     const record: KnownMarketplaceRecord = {
       id: loaded.manifest.name,
-      source: input.source,
+      source,
       name: loaded.manifest.name,
       ...(loaded.manifest.description ? { description: loaded.manifest.description } : {}),
       addedAt: now,

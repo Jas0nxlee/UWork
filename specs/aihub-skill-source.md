@@ -189,3 +189,12 @@ sequenceDiagram
 - 单测 14 项通过：`pnpm exec tsx --test apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts`；其中指纹算法用线上真实 fixture（`SKILL.md` 的 per-file sha256 → 复合指纹）锁定，另有「指纹不符即失败且清理临时目录」「resolve 版本与条目版本不符即失败」等负例。
 - 验证命令全部通过：`pnpm typecheck`、`pnpm exec tsc --noEmit -p apps/zcode-cli/packages/adapters/tsconfig.json`（CLI 侧 turbo 未安装依赖，故直接跑 tsc）、`pnpm lint`（0 error）、`pnpm fmt:check`、`pnpm architecture:check --changed`（0 violations）。
 - 已知：CLI 侧 `oxlint src` 仍有 25 个 `max-lines` 错误，全部来自既有大文件（`marketplace.ts`、`skills/index.ts` 等）；本次新增的三个文件均在 400 行以内（127 / 155 / 268）。
+
+## 审查修复契约（2026-10-09）
+
+- SkillHub slug 仅接受 ASCII 字母、数字、单横线及一个命名空间 `--` 分隔符；源解析和包装复制各自验证。解析失败不下载，包装失败/取消清理完整临时父目录。详情预览和安装共享此边界。
+- 受控市场 ID 与默认来源绑定。公司 ID 仅允许内置 SkillHub baseUrl，个人 URL/file/settings/SkillHub 及刷新改名均不得冒用。存在来源不匹配记录时明确报错，不继续把记录当公司源。
+- 自定义 SkillHub 无 name 时按规范 baseUrl 的 SHA-256 生成稳定个人 ID；内置公司源显式声明公司 name。
+- 验收：非法跨平台 slug 无目录外修改及残留；默认公司刷新可用；个人来源不能覆盖公司 manifest/known record；两个个人来源共存。
+
+CLI 独立 Lint 配置不继承根配置对整个 apps/zcode-cli 的排除；必需的 CLI Lint 入口须实际检查源文件，不能以零文件作为验证。
