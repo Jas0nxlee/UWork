@@ -25,6 +25,7 @@ export async function stageEnterpriseIdentityConfig(raw: unknown, destination: s
   await writeFile(destination, JSON.stringify(config, null, 2) + "\n", { mode: 0o644 });
   // Linux 安装文件由 root 拥有；公开参数必须可供普通桌面用户读取。
   await chmod(destination, 0o644);
+  return { organizationCount: config.organizations.length };
 }
 export async function verifyPackagedEnterpriseIdentityConfig(resources: string, expected: string) {
   const packagedFile = join(resources, "config", "enterprise-identity.json");
@@ -57,8 +58,10 @@ async function main() {
         throw new Error("Invalid or missing release enterprise identity configuration");
       }
     }
-    await stageEnterpriseIdentityConfig(config, stagedFile);
-    console.log("Bundled enterprise identity configuration staged");
+    const summary = await stageEnterpriseIdentityConfig(config, stagedFile);
+    console.log(
+      `Bundled enterprise identity configuration staged: ${summary.organizationCount} organization(s)`,
+    );
   } else if (process.argv[2] === "verify") {
     await verifyPackagedEnterpriseIdentityConfig(
       resourcesPath(process.argv[3], process.argv[4]),

@@ -12,6 +12,9 @@
 - `v3.15.1` 产物校验发现新 ASN.1 依赖的 `pvtsutils` 未进入 app.asar：打包注入与最终校验维护了不同闭包根清单。保留该标签，发布版本改为 `v3.15.2`；两阶段统一消费 `desktop-asar-runtime-modules.mjs` 的唯一不可变清单，使用现有递归依赖解析，不逐个手工补叶子包。移除无用的 forge 注入根，保留 telemetry、ZIP、SSH 与 updater 的既有边界。CI 使用真实 ASAR 注入/解包及隔离 Node 进程验证 ASN.1 库能解析和加载，禁止靠工作区 hoist 掩盖缺包。
 - 包根解析必须略过仅声明 `type=commonjs` 的内部 package.json，向上找到具名包根，保留真实 exports 和依赖声明；不能把 `build/cjs` 或 `umd` 当成整个包复制。
 - `v3.15.3` 修正 macOS DMG 的遗留品牌背景：普通与 Retina 素材均显示 `UWORK`，保持原安装拖拽布局。发布后核对实际 macOS arm64/x64 DMG 内的 `.background.tiff` 与本次素材一致；不覆盖已经公开的 v3.15.2 文件。
+- `v3.16.0` 发布原 PR #2/#3 与审查修复：公开 SkillHub 技能源、受信市场绑定、统一 UWork CLI/MCP/Agent 数据根、完整目录迁移以及多组织登录的并发与持久化修复。只有最新 PR head 经检查、复核并合入 `uwork`，且最终合并结果通过检查后才创建新版本标签。
+- 打包身份配置兼容现有单组织公开配置，不凭客户端支持多组织宣称三个组织已经启用。stage 成功后仅记录规范化配置的组织数量，不输出组织标识、地址、配置内容或凭据。数量证据来自当前构建的日志。
+- 发布说明须明确公开 SkillHub 使用匿名下载，不能代表组织私有技能授权；多租户生产启用仍依赖服务端组织绑定唯一约束、空 Host 拒绝和 review 组织归属校验等前置项。客户端发布不是生产企业验收，本次不实施独立后端仓库的改造。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。

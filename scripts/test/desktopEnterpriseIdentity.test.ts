@@ -20,7 +20,9 @@ test("release configuration is allowlisted and verified in packaged resources", 
   try {
     const expected = join(dir, "stage.json");
     const resources = join(dir, "resources");
-    await stageEnterpriseIdentityConfig(config, expected);
+    assert.deepEqual(await stageEnterpriseIdentityConfig(config, expected), {
+      organizationCount: 1,
+    });
     await mkdir(join(resources, "config"), { recursive: true });
     const packaged = join(resources, "config", "enterprise-identity.json");
     await writeFile(packaged, await readFile(expected));
