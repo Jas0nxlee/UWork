@@ -1,3 +1,4 @@
+import { installOrganizationStartFixture } from "./organizationStartFixture.js";
 // 仅测试页面：不进入应用入口，不提供生产环境的虚假登录能力。
 import { createRoot } from "react-dom/client";
 import { Emitter } from "@zcode/rpc";
@@ -31,13 +32,15 @@ let restoreCancelled = false;
 let view: EnterpriseIdentityView = {
   revision: 0,
   configured,
+  organizations: [],
+  selectedOrgId: null,
   status: "signed-out",
   profile: null,
   pending: null,
   error: configured ? null : "unconfigured",
 };
 const emit = (next: EnterpriseIdentityView) => {
-  view = next;
+  view = { ...view, ...next };
   changed.fire(view);
 };
 // 仅供隔离浏览器场景使用：模拟本机 UCAS 配置，持久化标记不包含输入的密钥。
@@ -184,6 +187,22 @@ const providerSettingsService: Pick<
     return providerView;
   },
 };
+const authenticateFixture = () => {
+  emit({
+    revision: view.revision + 1,
+    configured,
+    status: "authenticated",
+    profile: {
+      id: "fixture-user",
+      tenantId: "fixture-corp",
+      provider: "wecom",
+      displayName: params.has("longname") ? "测试长姓名用于验证侧栏截断及窄屏布局" : "测试用户",
+    },
+    pending: null,
+    error: null,
+  });
+  return view;
+};
 const service: IEnterpriseIdentityService = {
   onDidChange: changed.event,
   getView: async () => view,
@@ -235,24 +254,10 @@ const service: IEnterpriseIdentityService = {
     document.documentElement.dataset.beginLoginReturned = "true";
     return attempt;
   },
-  pollLogin: async () => {
-    emit({
-      revision: view.revision + 1,
-      configured,
-      status: "authenticated",
-      profile: {
-        id: "fixture-user",
-        tenantId: "fixture-corp",
-        provider: "wecom",
-        displayName: params.has("longname") ? "测试长姓名用于验证侧栏截断及窄屏布局" : "测试用户",
-      },
-      pending: null,
-      error: null,
-    });
-    return view;
-  },
+  // 原生扫码由回调认领；轮询保持 waiting，避免夹具在扫码视图就绪前抢先认证。
+  pollLogin: async () => (native ? view : authenticateFixture()),
   completeLogin: async (attemptId) => ({
-    view: await service.pollLogin(attemptId),
+    view: authenticateFixture(),
     committedAttemptId: params.has("stale_native") ? null : attemptId,
   }),
   cancelLogin: async (attemptId) => {
@@ -280,6 +285,15 @@ const service: IEnterpriseIdentityService = {
     });
   },
 };
+if (params.has("multi_org")) {
+  view = installOrganizationStartFixture({
+    service,
+    readView: () => view,
+    emit,
+    params,
+    nativeCallback,
+  });
+}
 const broadcast = {
   send: async () => {},
   onMessage: () => ({ dispose() {} }),
@@ -292,7 +306,16 @@ const platform = {
     );
   },
   openEnterpriseLogin: async (request: unknown) => {
-    enterpriseLoginRequestSchema.parse(request);
+    const parsedRequest = enterpriseLoginRequestSchema.parse(request);
+    if (params.has("multi_org")) {
+      document.documentElement.dataset.nativeRequests = JSON.stringify([
+        ...JSON.parse(document.documentElement.dataset.nativeRequests ?? "[]"),
+        parsedRequest,
+      ]);
+      return new Promise<string | null>((resolve) => {
+        cancelNative = () => resolve(null);
+      });
+    }
     document.documentElement.dataset.nativeOpened = "true";
     if (params.has("native_fail")) throw new Error("Fixture native view unavailable");
     return params.has("cancel") || params.has("scan")

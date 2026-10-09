@@ -43,7 +43,7 @@ def enter_test_value(testid,value):
     cdp('Input.insertText',text=value)
 until("!!document.querySelector('[data-testid=enterprise-login-page]')")
 assert read("document.querySelector('[data-testid=enterprise-wecom-login]').disabled")
-assert '暂未配置' in read('document.body.innerText')
+assert '暂未配置' in read('document.body.innerText'), read('document.body.innerText')
 assert not read("!!document.querySelector('[data-testid=enterprise-login-card] [aria-label=UWork]')")
 assert '使用企业身份登录，也可以跳过并继续使用本地功能' not in read('document.body.innerText')
 assert '跳过登录不影响本地工作区和模型配置' not in read('document.body.innerText')
@@ -244,6 +244,36 @@ rectangles=json.loads(rectangles)
 assert rectangles[0]['y']+rectangles[0]['height'] <= rectangles[1]['y']
 click_test('enterprise-login-skip')
 until("!document.querySelector('[data-testid=enterprise-login-page]')")
+for oldfail in ['', '&old_fail=1']:
+    target=new_tab('http://127.0.0.1:15490/?configured=1&multi_org=1'+oldfail)
+    activate_tab(target)
+    wait_for_load()
+    until("!!document.querySelector('[data-org-id=bj][aria-checked=true]')")
+    click_test('enterprise-wecom-login')
+    until("document.documentElement.dataset.startOrganizations==='[\"bj\"]'")
+    click_test('enterprise-login-organization-back')
+    read("document.querySelector('[data-org-id=nj]').click()")
+    until("!!document.querySelector('[data-org-id=nj][aria-checked=true]')")
+    click_test('enterprise-wecom-login')
+    assert read("document.documentElement.dataset.startOrganizations")=='["bj"]'
+    read('window.releaseOldStart()')
+    until("!!document.documentElement.dataset.nativeRequests")
+    requests=json.loads(read('document.documentElement.dataset.nativeRequests'))
+    assert len(requests)==1, requests
+    assert requests[0]['expectedState']=='nj', requests
+    assert 'appid=wx-nj' in requests[0]['authorizationUrl'], requests
+    assert requests[0]['callbackUrl'].endswith('uwork_nonce=nj-2'), requests
+    assert read('document.documentElement.dataset.startOrganizations')=='["bj","nj"]'
+    cancelled=json.loads(read("document.documentElement.dataset.cancelledAttempts || '[]'"))
+    assert 'nj-2' not in cancelled, cancelled
+    click_test('enterprise-login-organization-back')
+    until("!!document.querySelector('[data-org-id=nj][aria-checked=true]')")
+    click_test('enterprise-wecom-login')
+    until("JSON.parse(document.documentElement.dataset.nativeRequests).length===2")
+    requests=json.loads(read('document.documentElement.dataset.nativeRequests'))
+    assert requests[1]['id']=='nj-3'
+    click_test('enterprise-login-skip')
+print('PASS: delayed organization restart, old start failure and repeated return/retry')
 print('PASS: identity lifecycle, native callback, UCAS key prompt/save/retry, responsive layout and cancellation')
 target=new_tab('http://127.0.0.1:15490/?configured=1&native=1&native_fail=1')
 activate_tab(target)

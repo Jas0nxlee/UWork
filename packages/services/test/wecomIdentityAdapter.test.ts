@@ -96,14 +96,59 @@ test("unsigned-shaped and missing-name responses never authenticate", async () =
   );
 });
 
-test("HTTP, embedded credentials and callback outside issuer origin are rejected", () => {
+test("HTTP, embedded credentials and malformed callbacks are rejected", () => {
   for (const patch of [
     { apiBaseUrl: "http://auth.example.com" },
-    { callbackUrl: "https://attacker.example/callback" },
+    { callbackUrl: "http://auth.example.com/callback" },
+    { callbackUrl: "https://auth.example.com/callback?tenant=1" },
     { apiBaseUrl: "https://user:pass@auth.example.com" },
   ]) {
     assert.throws(() => createWeComIdentityAdapter({ ...config, ...patch }));
   }
+});
+
+test("per-organization callback domains drive redirect_uri for multi-company setups", async () => {
+  // 企微按「该企业应用后台配置的授权回调域」校验 redirect_uri：各子公司域名不同，
+  // 所以回调地址必须逐组织取，不能用一套域名混用（否则授权页直接报回调域名不一致）。
+  const adapter = createWeComIdentityAdapter(
+    {
+      apiBaseUrl: "https://auth.example.com",
+      callbackUrl: "https://bj.example.com/callback",
+      organizations: [
+        { orgId: "fixture-bj", corpId: "wx-bj", agentId: "1000001" },
+        {
+          orgId: "fixture-nj",
+          corpId: "ww-nj",
+          agentId: "1000002",
+          callbackUrl: "https://nj.example.com:23090/callback",
+        },
+      ],
+    },
+    {
+      now: () => 1000,
+      fetchImpl: async () => {
+        throw new Error("unexpected network");
+      },
+    },
+  );
+  const beijing = await adapter.start(new AbortController().signal, "fixture-bj");
+  assert.equal(new URL(beijing.callbackUrl!).origin, "https://bj.example.com");
+  const nanjing = await adapter.start(new AbortController().signal, "fixture-nj");
+  assert.equal(new URL(nanjing.callbackUrl!).origin, "https://nj.example.com:23090");
+  assert.equal(
+    new URL(nanjing.authorizationUrl).searchParams.get("redirect_uri"),
+    nanjing.callbackUrl,
+  );
+  assert.equal(new URL(nanjing.authorizationUrl).searchParams.get("appid"), "ww-nj");
+});
+
+test("an organization without any callback URL is rejected at config load", () => {
+  assert.throws(() =>
+    createWeComIdentityAdapter({
+      apiBaseUrl: "https://auth.example.com",
+      organizations: [{ orgId: "fixture-bj", corpId: "wx-bj", agentId: "1000001" }],
+    }),
+  );
 });
 
 test("missing issuer organization is rejected before displaying a QR code", () => {

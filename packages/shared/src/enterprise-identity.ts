@@ -169,10 +169,22 @@ export function readEnterpriseIdentityCallback(
   return code;
 }
 
+/** 登录页/身份菜单展示用的组织条目；`label` 缺失时由 UI 回落 `id`。 */
+const enterpriseIdentityOrganizationViewSchema = z
+  .object({
+    id: z.string().trim().min(1).max(256),
+    label: z.string().trim().min(1).max(64).nullable(),
+  })
+  .strict();
+
 const base = {
   revision: z.number().int().nonnegative(),
   configured: z.boolean(),
   error: z.enum(["unconfigured", "failed", "expired"]).nullable(),
+  /** 配置里可选的组织清单（长度 1 时不展示选择器）。 */
+  organizations: z.array(enterpriseIdentityOrganizationViewSchema),
+  /** 本机记住/默认的组织；未定或不在清单内时为 null。 */
+  selectedOrgId: z.string().trim().min(1).max(256).nullable(),
 };
 export const enterpriseIdentityViewSchema = z.discriminatedUnion("status", [
   z.object({ ...base, status: z.literal("signed-out"), profile: z.null(), pending: z.null() }),

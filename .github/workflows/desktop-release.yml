@@ -55,6 +55,7 @@ jobs:
           packages/services/test/enterpriseIdentity.test.ts
           packages/services/test/enterpriseIdentityNative.test.ts
           packages/services/test/enterpriseIdentitySharedStore.test.ts
+          packages/services/test/enterpriseIdentityOrganizations.test.ts
           packages/services/test/wecomIdentityAdapter.test.ts
           packages/services/test/wecomIdentityConfig.test.ts
           packages/desktop/test/enterpriseLoginSurface.test.ts
