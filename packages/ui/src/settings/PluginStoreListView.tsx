@@ -109,6 +109,11 @@ export function PluginStoreListView({
     [locale, publicItems, modeOrder],
   );
 
+  // 个人分段：按市场分组，最近刷新的市场排最前（见 sortPersonalMarketplaceGroups）。
+  const claudeCodePlugins = intl.formatMessage({
+    id: "settings.plugins.marketplace.claudeCodePlugins",
+  });
+
   // 公司/个人分段都按市场分组，最近刷新的市场排最前（见 sortPersonalMarketplaceGroups）。
   const groupByMarketplace = useCallback(
     (source: StorePluginItem[]): PersonalMarketplaceGroup[] => {
@@ -121,7 +126,7 @@ export function PluginStoreListView({
       const titled: PersonalMarketplaceGroup[] = [...groups.entries()].map(
         ([marketplace, groupItems]) => ({
           marketplace,
-          title: resolveMarketplaceDisplayName(marketplace, marketplaces),
+          title: resolveMarketplaceDisplayName(marketplace, marketplaces, claudeCodePlugins),
           items: groupItems.toSorted((left, right) =>
             resolveItemDisplayName(left, locale).localeCompare(
               resolveItemDisplayName(right, locale),
@@ -132,7 +137,7 @@ export function PluginStoreListView({
       );
       return sortPersonalMarketplaceGroups(titled, marketplaces, locale);
     },
-    [locale, marketplaces],
+    [claudeCodePlugins, locale, marketplaces],
   );
 
   const companyGroups = useMemo(

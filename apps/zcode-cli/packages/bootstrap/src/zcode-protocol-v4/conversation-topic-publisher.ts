@@ -10,7 +10,6 @@
 //   因此「snapshot(W)+续流 ≡ 全量重放」黄金测试可直接覆盖恢复路径。
 // - 重订阅 = 替换：同 connectionId 重复 subscribe 即作废旧订阅并清其
 //   flush buffer，旧 subscriptionId 不再产帧，客户端按 subId 丢弃旧代际帧。
-import { Buffer } from "node:buffer";
 import { SessionEventType, type SessionEvent } from "@zcode/contracts";
 import type {
   CommandEnvelope,
@@ -22,27 +21,33 @@ import type {
   DeliveryProfileName,
   QueueItem,
   SubscribeAck,
-  TopicFrameDeliveryKind,
   ToolCallRow,
+  TopicFrameDeliveryKind,
   V4ConversationPlansResult,
   V4ConversationRowsRangeResult,
 } from "@zcode/shared/zcode-protocol-v4";
 import {
   DELIVERY_PROFILES,
   PROTOCOL_V4_LIMITS,
+  clampWorkflowRunsForLegacy,
   coalesceConversationDeltas,
   filterConversationDeltasForProfile,
   filterConversationRowsForProfile,
   utf8JsonByteLength,
 } from "@zcode/shared/zcode-protocol-v4";
+import { Buffer } from "node:buffer";
+import {
+  encodeConversationDeltasForLegacy,
+  workflowRunDeltaGrowthUpperBound,
+} from "./conversation-workflow-run-deltas.js";
 import {
   ProductProjection,
-  type StableForkCandidateResolution,
   type ConversationRowTargetAction,
   type ConversationRowTargetResolution,
   type SessionConfigSeed,
   type SessionSubagentsSeed,
   type SessionUsageSeed,
+  type StableForkCandidateResolution,
 } from "./product-projection.js";
 import type { TopicFrameReservation } from "./topic-frame-reservation.js";
 
@@ -61,7 +66,7 @@ const TERMINAL_PLAN_STATUSES: ReadonlySet<ToolCallRow["status"]> = new Set([
  * cold replay 会高频测量临时 delta；TextEncoder 会为每次测量再分配完整 Uint8Array。
  * CLI 已固定运行在 Node，这里对同一 JSON 文本直接计算精确 UTF-8 字节数，不做近似估算。
  */
-function coldHydrationJsonByteLength(value: unknown): number {
+export function coldHydrationJsonByteLength(value: unknown): number {
   const json = JSON.stringify(value);
   return json === undefined ? 0 : Buffer.byteLength(json, "utf8");
 }
@@ -88,7 +93,12 @@ interface Subscription {
   subscriptionId: string;
   connectionId: string;
   profile: DeliveryProfile;
-  /** flush buffer：push 时已过 profile 过滤，flush 时 coalesce 打帧。 */
+  /**
+   * 这条订阅认不认得 `workflowRun.*` 键级增量（握手能力位，由可信 host 注入）。
+   * false = 旧消费者：增量折成整键 patch、快照裁到旧界（conversation-workflow-run-deltas.ts）。
+   */
+  workflowRunDeltas: boolean;
+  /** flush buffer：push 时已过 profile 过滤与该订阅的编码，flush 时 coalesce 打帧。 */
   buffer: ConversationDelta[];
   bufferBytes: number;
   /** buffer 超限后只保留恢复意图，不继续为慢订阅者积压 delta。 */
@@ -100,14 +110,19 @@ interface Subscription {
   nextLogicalFrameOrdinal: number;
 }
 
-interface ConversationSubscribeParams {
+export interface ConversationSubscribeParams {
   connectionId: string;
   base?: { logEpoch: string; seq: number };
   /** 缺省 replayable（ws 默认；MessagePort 宿主显式传 continuous）。 */
   deliveryProfile?: DeliveryProfileName;
+  /**
+   * 该连接的 clientHello 声明过认得 `workflowRun.*` 增量。与 deliveryProfile 同族：可信 host
+   * 注入，面向 UI 的 subscribe 选不了。缺省 false——能力位缺席一律按旧消费者办。
+   */
+  workflowRunDeltas?: boolean;
 }
 
-interface ConversationSubscribeResult {
+export interface ConversationSubscribeResult {
   ack: SubscribeAck;
   reservation: TopicFrameReservation<ConversationTopicFrame> | null;
   /** initial encode 失败且 ACK 未 admission 时，原子恢复被替换的旧 subscription。 */
@@ -116,12 +131,12 @@ interface ConversationSubscribeResult {
   readonly frame: ConversationTopicFrame | null;
 }
 
-interface ConversationResyncRequest {
+export interface ConversationResyncRequest {
   base: { logEpoch: string; seq: number } | null;
   forceSnapshot?: boolean;
 }
 
-interface ConversationTopicPublisherOptions {
+export interface ConversationTopicPublisherOptions {
   /** CLI 时钟（frame.sentAt / clockOffset 估计源）。 */
   now?: () => number;
   /** 事件保留窗（条），默认 PROTOCOL_V4_LIMITS.eventRetentionPerSession。 */
@@ -132,9 +147,12 @@ interface ConversationTopicPublisherOptions {
   subscriberBufferMaxBytes?: number;
 }
 
-interface ConversationSubscriberBufferLimits {
+export interface ConversationSubscriberBufferLimits {
   maxOps?: number;
+  /** 字节下限（默认 1MiB）；实际上限见 conversationSubscriberBufferByteLimit。 */
   maxBytes?: number;
+  /** 当前 wire snapshot logical frame 的保守上界；缺省 0 = 只按下限裁决。 */
+  snapshotBytesUpperBound?: number;
 }
 
 export class ProjectionPayloadTooLargeError extends Error {
@@ -150,7 +168,7 @@ export class ProjectionPayloadTooLargeError extends Error {
 
 // 运行中正文必须给 TurnError/TurnComplete 的 bounded terminal patch 留出空间；否则正文
 // 恰好占满 16MiB 后，停止 turn 的终态本身也无法进入可传输 snapshot。
-const PROJECTION_TERMINAL_RESERVE_BYTES = 64 * 1024;
+export const PROJECTION_TERMINAL_RESERVE_BYTES = 64 * 1024;
 
 // row.actions 的 schema 只有 4 个 true 布尔值和一个短枚举；含 JSON key/父级包装不足
 // 128 bytes。批量 checkpoint 之间按 wire tail 的每行完整预留，保证延迟 materialize
@@ -164,7 +182,7 @@ function hydrationSequenceNumberBytes(sequenceNumber: number): number {
   return String(sequenceNumber).length * HYDRATION_SEQUENCE_NUMBER_OCCURRENCES;
 }
 
-type ConversationSubscriberBufferResult =
+export type ConversationSubscriberBufferResult =
   | {
       kind: "buffered";
       deltas: ConversationDelta[];
@@ -181,11 +199,28 @@ function nonNegativeHardBound(value: number | undefined, maximum: number, name: 
 }
 
 /**
+ * subscriber buffer 的实际字节上限 = min(max(下限, snapshot 上界), 16MiB - 64KiB)（05 §3）。
+ * 修复原因：overflow 的意义是用更小的 snapshot 换掉积压 delta；旧实现固定 1MiB，单条大
+ * delta（如 3MiB bash 输出的 tool row upsert）就会降级为 snapshot，而 snapshot 因同一行仍在
+ * 尾部窗口只会更大，还让客户端整份替换、丢掉已分页的历史行，turn navigator 随即全量重新
+ * 分页——长 session 中每轮循环一次。外层钳位给帧外壳留出 assembly 余量，deltas 帧仍 <=16MiB。
+ */
+export function conversationSubscriberBufferByteLimit(
+  floorBytes: number,
+  snapshotBytesUpperBound: number,
+): number {
+  return Math.min(
+    Math.max(floorBytes, snapshotBytesUpperBound),
+    PROTOCOL_V4_LIMITS.logicalFrameAssemblyMaxBytes - PROJECTION_TERMINAL_RESERVE_BYTES,
+  );
+}
+
+/**
  * profile filter 后的 delta 进入此纯函数；先与现有 buffer 合并并 coalesce，
  * 再按 op/UTF-8 bytes 双限额裁决——限额必须真正执行，只存裸 delta[] 不裁决的话，
  * 慢订阅者会持续堆积并最终生成不可控的大帧。
  */
-function appendConversationSubscriberBuffer(
+export function appendConversationSubscriberBuffer(
   current: readonly ConversationDelta[],
   incoming: readonly ConversationDelta[],
   limits: ConversationSubscriberBufferLimits = {},
@@ -200,10 +235,14 @@ function appendConversationSubscriberBuffer(
     PROTOCOL_V4_LIMITS.subscriberBufferMaxBytes,
     "maxBytes",
   );
+  const byteLimit = conversationSubscriberBufferByteLimit(
+    maxBytes,
+    limits.snapshotBytesUpperBound ?? 0,
+  );
   const deltas = coalesceConversationDeltas([...current, ...incoming]);
   if (deltas.length > maxOps) return { kind: "overflow" };
   const encodedBytes = utf8JsonByteLength({ kind: "deltas", deltas });
-  if (encodedBytes > maxBytes) return { kind: "overflow" };
+  if (encodedBytes > byteLimit) return { kind: "overflow" };
   return { kind: "buffered", deltas, encodedBytes };
 }
 
@@ -316,6 +355,34 @@ export class ConversationTopicPublisher {
       ...visibleSnapshot,
       rows: { ...visibleSnapshot.rows, window: visibleRows.slice(-limit) },
     };
+  }
+
+  /**
+   * 一个订阅者的快照帧：profile 决定行可见性，能力位决定 `workflowRuns` 发全量还是旧界。
+   *
+   * 快照与增量必须同一档：一个收着旧界整键 patch 的客户端，如果快照里突然来了 512 个节点，
+   * 它的 `.max(256)` 会让**整帧**解析失败（已知键上的解析错误不会只剥掉一个键）。
+   */
+  private getWireSnapshotForSubscription(subscription: Subscription): ConversationSnapshot {
+    const snapshot = this.getWireSnapshotForProfile(subscription.profile);
+    if (subscription.workflowRunDeltas || snapshot.workflowRuns === undefined) return snapshot;
+    const workflowRuns = clampWorkflowRunsForLegacy(snapshot.workflowRuns);
+    return workflowRuns === snapshot.workflowRuns ? snapshot : { ...snapshot, workflowRuns };
+  }
+
+  /**
+   * 一批 delta 的**每订阅者**编码：profile 过滤 + 旧消费者的整键折叠。
+   *
+   * 折叠取的是**当前**投影状态，所以恢复回放上历史增量会折成终态——中间态被跳过，终态一致，
+   * 与 coalesce 的既有行为同规（conversation-workflow-run-deltas.ts 的文件头）。
+   */
+  private encodeDeltasForSubscription(
+    deltas: readonly ConversationDelta[],
+    subscription: Subscription,
+  ): readonly ConversationDelta[] {
+    const filtered = filterConversationDeltasForProfile(deltas, subscription.profile);
+    if (subscription.workflowRunDeltas) return filtered;
+    return encodeConversationDeltasForLegacy(filtered, this.projection.getSnapshot().workflowRuns);
   }
 
   /**
@@ -512,12 +579,23 @@ export class ConversationTopicPublisher {
       this.wireSnapshotBytesUpperBound += streamingUpperBound;
     } else {
       let candidateBytes = 0;
-      deltas = this.projection.applyEventAtomically(event, (snapshot) => {
+      let nextUpperBound = 0;
+      deltas = this.projection.applyEventAtomically(event, (snapshot, produced) => {
+        // dwf 快路径：这条事件只产键级增量时，它们的字节数就是快照增长的上界（一条 upsert
+        // 最多把自己那点内容加进去，removed 只会让快照变小），不必把整份快照再序列化一遍
+        // ——那一次 JSON.stringify 是每条引擎事件都要付的 MB 级开销，也是这次改造的另一半。
+        // 判据用的是**实际产出**而不是预演，所以 diff 退化出的整键 patch 自然落回精确路径。
+        const growth = workflowRunDeltaGrowthUpperBound(produced);
+        if (growth !== null && this.wireSnapshotBytesUpperBound + growth <= projectionLimit) {
+          nextUpperBound = this.wireSnapshotBytesUpperBound + growth;
+          return true;
+        }
         candidateBytes = this.measureWireSnapshotBytes(this.getWireSnapshot(snapshot));
+        nextUpperBound = candidateBytes;
         return candidateBytes <= projectionLimit;
       });
       if (deltas === null) throw new ProjectionPayloadTooLargeError(candidateBytes);
-      this.wireSnapshotBytesUpperBound = candidateBytes;
+      this.wireSnapshotBytesUpperBound = nextUpperBound;
     }
     this.log.push({ seq: event.sequenceNumber, deltas });
     while (this.log.length > this.retention) {
@@ -527,11 +605,12 @@ export class ConversationTopicPublisher {
     if (deltas.length === 0) return;
     for (const subscription of this.subscriptions.values()) {
       if (subscription.resyncRequired) continue;
-      const filtered = filterConversationDeltasForProfile(deltas, subscription.profile);
-      const next = appendConversationSubscriberBuffer(subscription.buffer, filtered, {
-        maxOps: this.subscriberBufferMaxOps,
-        maxBytes: this.subscriberBufferMaxBytes,
-      });
+      const filtered = this.encodeDeltasForSubscription(deltas, subscription);
+      const next = appendConversationSubscriberBuffer(
+        subscription.buffer,
+        filtered,
+        this.subscriberBufferLimits(),
+      );
       if (next.kind === "overflow") {
         subscription.buffer = [];
         subscription.bufferBytes = 0;
@@ -636,6 +715,17 @@ export class ConversationTopicPublisher {
         const wireDeltas = deltas.filter((delta) => {
           if (delta.op === "state.updated" || delta.op === "row.appended") return true;
           if (delta.op === "row.removed") return false;
+          // 4b-2：插件资源通知只走实时增量，不进冷启动测量。
+          if (
+            delta.op === "pluginUi.resourceUpdated" ||
+            delta.op === "pluginUi.resourceListChanged" ||
+            delta.op === "pluginUi.appToolCall" ||
+            delta.op === "pluginUi.instanceClosed"
+          )
+            return false;
+          // 键级增量作用在状态键上，不在 60 行 wire tail 里——没有「已滑出窗口所以不计」这一说，
+          // 与 state.updated 同规一律计入。
+          if (delta.op === "workflowRun.updated" || delta.op === "workflowRun.removed") return true;
           wireRowIds ??= new Set(
             snapshot.rows.window
               .slice(-PROTOCOL_V4_LIMITS.snapshotTailWindowRows)
@@ -712,6 +802,7 @@ export class ConversationTopicPublisher {
       subscriptionId: `sub-${this.logEpoch}-${this.nextSubscriptionSerial++}`,
       connectionId: params.connectionId,
       profile,
+      workflowRunDeltas: params.workflowRunDeltas === true,
       buffer: [],
       bufferBytes: 0,
       resyncRequired: false,
@@ -754,7 +845,10 @@ export class ConversationTopicPublisher {
           ...this.frameShell(subscription),
           fromSeq: 0,
           toSeq: this.currentSeq,
-          payload: { kind: "snapshot", snapshot: this.getWireSnapshotForProfile(profile) },
+          payload: {
+            kind: "snapshot",
+            snapshot: this.getWireSnapshotForSubscription(subscription),
+          },
         },
         false,
         "initial",
@@ -762,11 +856,11 @@ export class ConversationTopicPublisher {
       return this.subscribeResult(this.ackFor(subscription, "snapshot"), reservation, rollback);
     }
 
-    // resume：保留窗内 (base.seq, current] 重放，与在线续流同一条 filter→coalesce 管线。
+    // resume：保留窗内 (base.seq, current] 重放，与在线续流同一条 filter→编码→coalesce 管线。
     const replay = coalesceConversationDeltas(
-      filterConversationDeltasForProfile(
+      this.encodeDeltasForSubscription(
         this.log.flatMap((entry) => (entry.seq > base.seq ? entry.deltas : [])),
-        profile,
+        subscription,
       ),
     );
     if (base.seq === this.currentSeq) {
@@ -836,7 +930,7 @@ export class ConversationTopicPublisher {
           toSeq: this.currentSeq,
           payload: {
             kind: "snapshot",
-            snapshot: this.getWireSnapshotForProfile(subscription.profile),
+            snapshot: this.getWireSnapshotForSubscription(subscription),
           },
         },
         true,
@@ -910,7 +1004,7 @@ export class ConversationTopicPublisher {
           toSeq: this.currentSeq,
           payload: {
             kind: "snapshot",
-            snapshot: this.getWireSnapshotForProfile(subscription.profile),
+            snapshot: this.getWireSnapshotForSubscription(subscription),
           },
         },
         false,
@@ -925,9 +1019,9 @@ export class ConversationTopicPublisher {
 
     subscription.sentSeq = base.seq;
     const replay = coalesceConversationDeltas(
-      filterConversationDeltasForProfile(
+      this.encodeDeltasForSubscription(
         this.log.flatMap((entry) => (entry.seq > base.seq ? entry.deltas : [])),
-        subscription.profile,
+        subscription,
       ),
     );
     const reservation = this.reserveFrame(
@@ -967,10 +1061,11 @@ export class ConversationTopicPublisher {
       }
       const recoveryBuffer = subscription.buffer;
       const recoveryResyncRequired = subscription.resyncRequired;
-      const merged = appendConversationSubscriberBuffer(previous.buffer, recoveryBuffer, {
-        maxOps: this.subscriberBufferMaxOps,
-        maxBytes: this.subscriberBufferMaxBytes,
-      });
+      const merged = appendConversationSubscriberBuffer(
+        previous.buffer,
+        recoveryBuffer,
+        this.subscriberBufferLimits(),
+      );
       if (merged.kind === "overflow" || previous.resyncRequired || recoveryResyncRequired) {
         subscription.buffer = [];
         subscription.bufferBytes = 0;
@@ -987,7 +1082,15 @@ export class ConversationTopicPublisher {
     };
   }
 
-  /** 溢出降级：清缓冲、回发 snapshot 帧重对齐。 */
+  private subscriberBufferLimits(): ConversationSubscriberBufferLimits {
+    return {
+      maxOps: this.subscriberBufferMaxOps,
+      maxBytes: this.subscriberBufferMaxBytes,
+      snapshotBytesUpperBound: this.wireSnapshotBytesUpperBound,
+    };
+  }
+
+  /** 溢出降级（05 §两级背压）：清缓冲、回发 snapshot 帧重对齐。 */
   resync(subscriptionId: string): ConversationTopicFrame | null {
     const reservation = this.resyncReserved(subscriptionId, {
       base: null,

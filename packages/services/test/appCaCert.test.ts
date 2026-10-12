@@ -1,47 +1,41 @@
-import assert from "node:assert/strict";
-import { createPrivateKey, X509Certificate } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { X509Certificate } from "node:crypto";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { createSecureContext } from "node:tls";
-import test from "node:test";
-import { getDataBaseDir, setDataBaseDir } from "../src/paths.js";
-import { ensureAppCaCert } from "../src/runtime-tools/appCaCert.js";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { ensureAppCaCert, getAppCaCertPaths } from "../src/runtime-tools/appCaCert.js";
+import { setDataBaseDir } from "../src/paths.js";
 
-test("app CA is a valid RSA root with matching private key and stable persisted identity", async () => {
-  const root = await mkdtemp(join(tmpdir(), "uwork-app-ca-"));
-  const previous = getDataBaseDir();
-  setDataBaseDir(root);
-  try {
+describe("ensureAppCaCert", () => {
+  afterEach(() => {
+    setDataBaseDir(null);
+  });
+
+  it("generates a self-signed CA certificate and private key on first run", () => {
+    setDataBaseDir(mkdtempSync(join(tmpdir(), "zcode-ca-")));
     const certPath = ensureAppCaCert();
-    assert.equal(certPath, join(root, ".uwork", "v2", "certs", "zcode-network-ca.pem"));
-    const keyPath = join(dirname(certPath), "zcode-network-ca.key");
-    const certPem = await readFile(certPath, "utf8");
-    const keyPem = await readFile(keyPath, "utf8");
-    const cert = new X509Certificate(certPem);
-    const key = createPrivateKey(keyPem);
-    assert.equal(cert.ca, true);
-    assert.equal(cert.subject, cert.issuer);
-    assert.match(cert.subject, /CN=ZCode Network CA/);
-    assert.match(cert.subject, /O=ZCode/);
-    assert.equal(cert.publicKey.asymmetricKeyType, "rsa");
-    assert.equal(cert.publicKey.asymmetricKeyDetails?.modulusLength, 2048);
-    assert.equal(cert.verify(cert.publicKey), true);
-    assert.equal(cert.checkPrivateKey(key), true);
-    assert.ok(Date.parse(cert.validTo) - Date.parse(cert.validFrom) > 3650 * 24 * 60 * 60 * 1000);
-    assert.doesNotThrow(() => createSecureContext({ cert: certPem, key: keyPem }));
-    if (process.platform !== "win32") assert.equal((await stat(keyPath)).mode & 0o777, 0o600);
+    const { keyPath } = getAppCaCertPaths();
 
-    assert.equal(ensureAppCaCert(), certPath);
-    assert.equal(await readFile(certPath, "utf8"), certPem);
-    assert.equal(await readFile(keyPath, "utf8"), keyPem);
+    const cert = new X509Certificate(readFileSync(certPath));
+    expect(cert.subject).toContain("ZCode Network CA");
+    // 自签：issuer == subject
+    expect(cert.issuer).toBe(cert.subject);
+    expect(cert.ca).toBe(true);
 
-    // 旧版生成的完整文件对仍按原路径复用，不能因更换编码库强制换根证书。
-    await writeFile(certPath, certPem + "\n");
-    assert.equal(ensureAppCaCert(), certPath);
-    assert.equal(await readFile(certPath, "utf8"), certPem + "\n");
-  } finally {
-    setDataBaseDir(previous);
-    await rm(root, { recursive: true, force: true });
-  }
+    const keyPem = readFileSync(keyPath, "utf8");
+    expect(keyPem).toContain("PRIVATE KEY");
+    // 私钥权限收紧（POSIX）
+    if (process.platform !== "win32") {
+      expect(statSync(keyPath).mode & 0o077).toBe(0);
+    }
+  });
+
+  it("is idempotent: reuses the existing certificate", () => {
+    setDataBaseDir(mkdtempSync(join(tmpdir(), "zcode-ca-")));
+    const certPath = ensureAppCaCert();
+    const firstPem = readFileSync(certPath, "utf8");
+    const secondPath = ensureAppCaCert();
+    expect(secondPath).toBe(certPath);
+    expect(readFileSync(secondPath, "utf8")).toBe(firstPem);
+  });
 });

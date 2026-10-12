@@ -29,6 +29,12 @@ export const hostCapabilitiesSchema = z.object({
   // Wire-compatible：旧 Host 缺失等价于 false；调用方必须用 === true 判断。
   workspaceHookReview: z.boolean().optional(),
   independentPlanState: z.boolean().optional(),
+  /**
+   * 本 Host 会发 `workflowRun.*` 键级增量（delta.ts 的两条 op），因而 `workflowRuns` 的
+   * actors / nodes 可以到 1024 而不是旧界的 256。没有这个位的消费者收到的仍是整键
+   * `state.updated`，并且先经 `clampWorkflowRunsForLegacy` 裁到旧界。
+   */
+  workflowRunDeltas: z.boolean().optional(),
 });
 export type HostCapabilities = z.infer<typeof hostCapabilitiesSchema>;
 
@@ -67,7 +73,18 @@ export const clientHelloSchema = z
     clientKind: z.enum(["desktop", "web", "mobileRemote", "mobileApp"]).optional(),
     appVersion: z.string(),
     // 缺失代表旧客户端，不具备 Settings-centered review UI。
-    capabilities: z.object({ workspaceHookReviewUi: z.boolean().optional() }).strict().optional(),
+    capabilities: z
+      .object({
+        workspaceHookReviewUi: z.boolean().optional(),
+        /**
+         * 本客户端认得 `workflowRun.*` 增量。⚠ 声明规则是**单向**的：客户端只有在 Host 的
+         * hello 里见到 `workflowRunDeltas === true` 时才能带上这个键——这个 capabilities 对象
+         * 是 `.strict()` 的，老 Host 见到不认识的键会整条 clientHello 解析失败、连接握不上手。
+         */
+        workflowRunDeltas: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type ClientHello = z.infer<typeof clientHelloSchema>;
@@ -80,7 +97,15 @@ export function clientSupportsWorkspaceHookReview(clientHello: ClientHello): boo
   return clientHello.capabilities?.workspaceHookReviewUi === true;
 }
 
-// ── 订阅 ──
+export function hostSupportsWorkflowRunDeltas(capabilities: HostCapabilities): boolean {
+  return capabilities.workflowRunDeltas === true;
+}
+
+export function clientSupportsWorkflowRunDeltas(clientHello: ClientHello): boolean {
+  return clientHello.capabilities?.workflowRunDeltas === true;
+}
+
+// ── §3.1 订阅 ──
 export const subscribeParamsSchema = z
   .object({
     // "conversation/<sessionId>" | "sessions-index/<workspaceId>" | ...
@@ -403,6 +428,12 @@ export const v4ConversationSubscribeParamsSchema = subscribeParamsSchema.extend(
   legacyTaskIds: z.array(z.string().min(1)).max(MAX_LEGACY_TASK_IDS_PER_SUBSCRIBE).optional(),
   // 仅供 host→CLI cold resume 使用；live conversation 不消费该 hint。
   resumeThoughtLevel: z.string().trim().min(1).optional(),
+  /**
+   * 这条订阅收不收 `workflowRun.*` 键级增量。与 `clientMode` 同族：由**可信 host** 从该连接的
+   * clientHello 注入，面向 UI 的 subscribe 选不了它——一个客户端能不能认得增量是连接的事实，
+   * 不是某一次订阅可以自选的口味。缺席 = 按旧消费者处理（整键 patch + 旧界裁剪）。
+   */
+  workflowRunDeltas: z.boolean().optional(),
 });
 export type V4ConversationSubscribeParams = z.infer<typeof v4ConversationSubscribeParamsSchema>;
 
@@ -565,13 +596,24 @@ export type V4ConversationFileChangesResult = z.infer<typeof v4ConversationFileC
 // （`appendEvent` 单调分配），在 workflowRuns[].lastEventSequence 抬升时重取。
 // 刻意**不是** v4 command：command 的 ACK 结果是 commandResultSchema 那个封闭的「变更结果」
 // 判别联合，把一页只读事件塞进去等于把读放进写的词汇表，还要白背 baseRevision/幂等那套机制。
+
+/**
+ * 事件日志一页的两道界，网关按它们取数（apps/zcode-cli/packages/dynamic-workflow/docs/execution-engine.md
+ * 「Reading the journal」）。字节按存储里的序列化字节计、取协议单帧上限的四分之一：条数单独
+ * 管不住字节，500 条带着大 report item 的事件足以顶到单帧上限。
+ */
+export const WORKFLOW_RUN_EVENTS_PAGE_LIMITS = {
+  maxEvents: 500,
+  maxBytes: PROTOCOL_V4_LIMITS.logicalFrameAssemblyMaxBytes / 4,
+} as const;
+
 export const v4ConversationWorkflowRunEventsParamsSchema = z
   .object({
     sessionId: z.string().min(1),
     runId: z.string().min(1),
     /** 只取 sequence 严格大于该值的事件；缺省从头取。 */
     afterSequence: z.number().int().nonnegative().optional(),
-    limit: z.number().int().positive().max(500).optional(),
+    limit: z.number().int().positive().max(WORKFLOW_RUN_EVENTS_PAGE_LIMITS.maxEvents).optional(),
   })
   .strict();
 export type V4ConversationWorkflowRunEventsParams = z.infer<
@@ -592,7 +634,7 @@ export const v4ConversationWorkflowRunEventsResultSchema = z
         })
         .strict(),
     ),
-    /** 本页取满 limit 且后面仍有事件。 */
+    /** 本页之后仍有事件（页可能因条数或字节上界提前收尾）。 */
     hasMore: z.boolean(),
   })
   .strict();
@@ -985,8 +1027,9 @@ export const v4AttachmentReadResultSchema = z
         (value) =>
           value.startsWith("image/") ||
           value.startsWith("video/") ||
-          value.split(";", 1)[0]?.trim().toLowerCase() === "application/pdf",
-        "attachment preview only supports image/video/pdf media types",
+          value.split(";", 1)[0]?.trim().toLowerCase() === "application/pdf" ||
+          value.split(";", 1)[0]?.trim().toLowerCase() === "text/plain",
+        "attachment preview only supports image/video/pdf/plain text types",
       ),
     totalBytes: z.number().int().nonnegative().max(PROTOCOL_V4_LIMITS.attachmentPreviewMaxBytes),
     nextOffset: z.number().int().positive().nullable(),
@@ -994,7 +1037,9 @@ export const v4AttachmentReadResultSchema = z
   .strict()
   .superRefine((value, context) => {
     if (
-      value.mediaType.startsWith("image/") &&
+      // 根因：运行时已支持材料文本，响应 schema 仍只接受媒体，导致跨进程预览失败。
+      (value.mediaType.startsWith("image/") ||
+        value.mediaType.split(";", 1)[0]?.trim().toLowerCase() === "text/plain") &&
       value.totalBytes > PROTOCOL_V4_LIMITS.attachmentMaxBytes
     ) {
       context.addIssue({
@@ -1002,7 +1047,7 @@ export const v4AttachmentReadResultSchema = z
         maximum: PROTOCOL_V4_LIMITS.attachmentMaxBytes,
         origin: "number",
         inclusive: true,
-        message: "image preview exceeds total byte limit",
+        message: "image/text preview exceeds total byte limit",
         path: ["totalBytes"],
       });
     }

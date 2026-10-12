@@ -1,12 +1,17 @@
 import { resolve } from "node:path";
-import { createConfig } from "@zcode/adapters/config";
+import { createConfig, resolvePath } from "@zcode/adapters/config";
 import { createNodeSkillAdapter } from "@zcode/adapters/skills";
 import type { Logger, SkillContent, SkillDiagnostic, SkillLoadOutcome } from "@zcode/contracts";
+import { resolveBundledSkillRoots } from "./app/bundled-skills.js";
+import { getCliStorageRoot } from "./app/paths.js";
+import { filterVisualizeSkillRoots } from "./app/visualize-skill-gate.js";
 import { resolveZCodePlugins } from "./plugins.js";
 import { collectDisabledPaths } from "./skill-command-overrides.js";
 
 export interface ListZCodeSkillsOptions {
   env?: NodeJS.ProcessEnv;
+  /** 协议宿主草稿目录使用；CLI 命令缺省关闭。 */
+  includeVisualize?: boolean;
   logger?: Logger;
   projectConfigPath?: string;
   skipUserConfig?: boolean;
@@ -105,11 +110,20 @@ function createSkillDiscovery(options: ListZCodeSkillsOptions):
     workingDirectory,
   });
 
+  // 内置技能包与插件技能根并列注入：`zcode skills list`、引用目录与 runtime 看到同一份发现结果。
+  const bundledSkillRoots = resolveBundledSkillRoots({
+    cliStorageRoot: getCliStorageRoot(resolvePath(configResult.config.storage.dir)),
+    logger: options.logger,
+  });
+
   return {
     enabled: true,
     skillPort: createNodeSkillAdapter({
       extraRoots: configResult.config.skills.roots,
-      extraResolvedRoots: pluginOutcome.skillRoots,
+      extraResolvedRoots: [
+        ...filterVisualizeSkillRoots(pluginOutcome.skillRoots, options.includeVisualize),
+        ...bundledSkillRoots,
+      ],
       disabledPaths: collectDisabledPaths(configResult.config.skillOverrides),
     }),
     workingDirectory,

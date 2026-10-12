@@ -29,6 +29,7 @@ export async function getSkillReferenceCatalog(
   // 每次新打开引用面板都读取当前 workspace catalog。
   const outcome = await listZCodeSkills({
     env: context.deps.env,
+    includeVisualize: true,
     logger: context.logger,
     workingDirectory: params.workspace.workspacePath,
   });
@@ -41,7 +42,11 @@ function toResult(
 ): ZCodeSkillsReferenceCatalogResult {
   return {
     authority,
-    skills: outcome.skills.map(toReferenceCatalogEntry),
+    // 内置技能包（bundled-skills.ts）不进引用面板：它由内置命令（`/workflow`）加载，不是用户
+    // 管理或引用的对象；协议的 scope 是封闭枚举，旧客户端严格校验，这里不为它扩枚举。
+    skills: outcome.skills
+      .filter((skill) => skill.source !== "bundled")
+      .map(toReferenceCatalogEntry),
   };
 }
 
