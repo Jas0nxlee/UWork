@@ -1,7 +1,7 @@
 # 上游 v3.15.1 合并状态（2026-10-12，WIP）
 
 上游 `zai-org/ZCode` 于 2026-10-10 发布整树快照 `aac4755`（v3.15.1），本分支把它并进 `uwork`。
-**本分支尚未完成，不能直接发布**：所有冲突已解决、依赖可安装，但 `pnpm typecheck` 仍有 76 处错误（都是"接缝"），需要按产品意图逐处接回我们的定制。
+**状态：`pnpm typecheck` 已全绿（0 错误）**，依赖可安装。但仍有未完成项：上游新增的远控 UI 未移植、生成物未重生成、单测未跑完（见下）。
 
 ## 一、已完成的机械性合并
 
@@ -20,17 +20,24 @@
 4. **我们故意分叉的产品文件**：保留我方实现 —— `ModelProviderSection.tsx`、AIHub 插件市场三态（`PluginStoreListView/SourcesDialog`）、`README(.en).md`、`.agents/.../zcode-feature-graph.yaml`。
 5. **删除取舍**：上游删除且我方源码/测试不再引用的文件接受删除（4 个上游测试 + `endpointHostname.ts` + `sessionCreateSource.ts`）；被引用的取回（`deviceMid.ts`、`webThemeSeed.ts`、`armsRumShared.*`、`prompt-trajectory/src/prompt.ts`、我们自有的 `workflow-concurrency-ceiling.ts`、`profile-model-selection.ts`）。
 
-## 三、未完成：typecheck 76 处（集中在 UI 接缝）
+## 三、typecheck 收敛过程（已完成，0 错误）
 
-| 文件 | 错误数 | 症结 |
-| --- | --- | --- |
-| `packages/ui/src/WorkspaceSidebarFooter.tsx` | 46 | 我方版本与上游重构后的 props/接口不匹配 |
-| `packages/ui/src/WorkspaceHelpMenuButton.tsx` | 11 | 同上（helpMenuActions 已取上游实现） |
-| `packages/ui/src/root/useRootOAuthEffects.ts` | 6 | 上游实现与我们保留的调用方签名不一致 |
-| `packages/ui/src/settings/model-provider-section/*` | 4 | 上游新增组件与我们保留的 ModelProviderSection 混用 |
-| `packages/ui/src/WorkspacePluginPreview.tsx` / `WindowsCaptionMenuButton.tsx` / `Root.tsx` | 2+2+2 | 接缝 import / 类型 |
+从 88 → 76 → 48 → 20 → 16 → 11 → 6 → 2 → 0，做法：
+- 我方**有意裁剪**的文件（侧栏页脚、帮助菜单、侧栏、Root、WorkspaceSidebar）取回我方版本（我们的产品去掉了账号/套餐/coding-plan 入口）；
+- 被上游新代码引用的、我们裁掉的**上游模块**逐个从上游恢复（oauth 系列、codingPlanStatusPanel 系列、`LoginApiKeyForm`、`desktopUpdateMenu`、`AccountConnectionLoss*` 等 19 个文件）；
+- 上游 shell 传入我们侧栏的新 props（`webRemoteControlWorkspaceSwitcher` / `isWebRemoteControl` / `onWebRemoteTaskOpen` / `onWebRemoteTaskSwitchingChange`）暂时"接受但不渲染"——**远控工作区切换 UI 尚未移植**（已知功能缺口，待产品确认是否需要）。
 
-## 四、需要产品决定的三处（建议由分发仓维护者处理）
+## 四、其它校验
+
+- `pnpm typecheck`：**0 错误** ✅
+- `pnpm lint`：1 处 error —— 上游新增的编码夹具 `apps/zcode-cli/tests/gb2312.js` 不是 UTF-8，本机 oxlint 读不了（上游同款配置与文件，非本合并引入）。
+- `pnpm fmt:check`：1 个上游 vendored 文档示例 `docs/electron/docs/fiddles/system/clipboard/copy/index.html` 不通过（内容与上游逐字节相同，非本合并引入）。
+- `pnpm test:unit`：**528 个用例失败**。两类：
+  1. 上游为「我们已裁掉的功能」写的测试（`workspaceSidebar*`、`webRemoteControl*`、`codingPlan*`、`workflowRun*` 等）——这些用例在我们产品里已不适用，需要在后续按"产品裁剪"口径删除或跳过；
+  2. 真需要适配的少数：如 `packages/services/test/providerConfigRuntime.test.ts`（5 例，与数据根/旧配置迁移相关）。
+- 打包与桌面 E2E：未运行。
+
+## 五、需要产品决定的三处（建议由分发仓维护者处理）
 
 1. **企业身份 + 企业网关接线**：`services/node.ts` 里我们的 `enterpriseIdentityAdapter` / ucas-gateway 服务构造与注册，在冲突处被上游结构覆盖（部分仍在）。桌面端企业登录窗口（`desktop/src/main/index.ts`）、`Root.tsx` 的登录入口同理。这些功能必须在上游新结构上重新接回。
 2. **`codingPlanSubscriptionService`**：我方曾把它改成 provider 无关（替换 Zhipu coding-plan），上游版本实现了新的 `ICodingPlanSubscriptionService` 接口（含 `claimManualPlan`、`getBillingDiscount` 等）。本次取上游版本以先满足接口，我方设计是否重做需产品确认。

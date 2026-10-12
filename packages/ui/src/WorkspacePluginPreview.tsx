@@ -21,6 +21,7 @@ import {
 import { PluginIcon } from "@/components/PluginIcon.js";
 import { usePluginReferenceCatalog } from "@/hooks/usePluginReferenceCatalog.js";
 import { requestPluginStoreOpen } from "@/lib/pluginStoreNavigation.js";
+import { isPublicStoreMarketplaceId } from "@/settings/pluginStoreListing.js";
 import { buildPluginMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { Button } from "@/components/ui/button.js";
 import { usePluginStoreOrder } from "@/hooks/usePluginStoreOrder.js";

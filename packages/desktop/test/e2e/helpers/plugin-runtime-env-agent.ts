@@ -101,9 +101,9 @@ async function primeDefaultPluginMarketplacesForE2E(homeDir: string): Promise<vo
         addedAt: now,
         id: marketplace.id,
         name: marketplace.name,
-        source: marketplace.source.includes(":")
-          ? { source: "url", url: marketplace.source }
-          : { repo: marketplace.source, source: "github" },
+        source: (marketplace.source ?? "").includes(":")
+          ? { source: "url", url: marketplace.source ?? "" }
+          : { repo: marketplace.source ?? "", source: "github" },
       }),
       // 修复原因：该 case 只验证本地插件，若默认市场未标记为已加载，设置页会并发 clone
       // GitHub 官方市场并占住插件协议请求，导致本地市场已落盘但添加弹窗无法收尾。
