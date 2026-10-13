@@ -108,9 +108,23 @@ def main() -> int:
         tools = server.rpc("tools/list")["tools"]
         names = {tool["name"] for tool in tools}
         check(
-            "tools/list 暴露四个工具",
-            names == {"docx_revisions_list", "docx_revisions_resolve", "docx_open_editor", "docx_export_pdf"},
+            "tools/list 暴露五个工具",
+            names == {
+                "docx_revisions_list",
+                "docx_revisions_resolve",
+                "docx_open_editor",
+                "docx_current_target",
+                "docx_export_pdf",
+            },
             str(names),
+        )
+        # 宿主只从 tools/list 的 _meta 读页面描述（adapters/src/mcp/descriptor.ts），
+        # 放在调用结果上不会被识别——这条断言就是那次真机踩坑的回归。
+        open_tool = next(tool for tool in tools if tool["name"] == "docx_open_editor")
+        check(
+            "docx_open_editor 的工具描述带 _meta.ui.resourceUri",
+            open_tool.get("_meta", {}).get("ui", {}).get("resourceUri") == "ui://office-editor/editor.html",
+            json.dumps(open_tool.get("_meta")),
         )
 
         print("修订读取")
@@ -148,6 +162,13 @@ def main() -> int:
         print("未实现工具必须明确失败")
         exported = server.rpc("tools/call", {"name": "docx_export_pdf", "arguments": {"path": path}})
         check("export_pdf 返回 isError", exported.get("isError") is True, str(exported))
+
+        print("页面自举兜底")
+        before = server.rpc("tools/call", {"name": "docx_current_target", "arguments": {}})
+        # 已打开过目标（上面的 open_editor），所以这里应当是同一个文件。
+        current = payload(before)
+        check("docx_current_target 返回最近目标", current.get("path") == path, json.dumps(current)[:160])
+        check("docx_current_target 带修订计数", current.get("counts", {}).get("insert") is not None, json.dumps(current)[:160])
 
         print("页面资源")
         resources = server.rpc("resources/list")["resources"]

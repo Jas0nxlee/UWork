@@ -63,11 +63,20 @@ TOOLS = [
         "name": "docx_open_editor",
         "title": "在应用内打开 Word 修订审阅",
         "description": "在应用内承载插件页面，用于逐条接受/拒绝修订。",
+        # 宿主只从 tools/list 的 _meta 读取页面描述（apps/zcode-cli/packages/adapters/src/mcp/descriptor.ts），
+        # 放在调用结果上不会被识别——真机启动实测踩过这个坑。
+        "_meta": {"ui": {"resourceUri": PAGE_URI}},
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
             "required": ["path"],
         },
+    },
+    {
+        "name": "docx_current_target",
+        "title": "当前审阅目标",
+        "description": "返回本会话最近一次打开/列出的 Word 文件（页面挂载晚于工具结果时用它兜底）。",
+        "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "docx_export_pdf",
@@ -80,6 +89,22 @@ TOOLS = [
         },
     },
 ]
+
+
+# 最近一次被打开/列出的目标文件。同一 MCP server 进程只服务一个会话，所以页面可以用它兜底：
+# 宿主是在工具完成后才挂载页面，`ontoolresult` 通知可能早于页面注册。
+_last_target: dict | None = None
+
+
+def remember_target(path: str) -> dict:
+    global _last_target
+    summary = list_revisions(path)
+    _last_target = {
+        "path": path,
+        "fileName": os.path.basename(path),
+        "counts": summary["counts"],
+    }
+    return _last_target
 
 
 def log(message: str) -> None:
@@ -121,6 +146,7 @@ def _text(payload) -> list[dict]:
 
 def call_tool(name: str, arguments: dict) -> dict:
     if name == "docx_revisions_list":
+        remember_target(arguments["path"])
         return {"content": _text(list_revisions(arguments["path"]))}
     if name == "docx_revisions_resolve":
         result = resolve_revisions(
@@ -128,18 +154,24 @@ def call_tool(name: str, arguments: dict) -> dict:
         )
         return {"content": _text(result), "structuredContent": result}
     if name == "docx_open_editor":
-        path = arguments["path"]
-        summary = list_revisions(path)
-        payload = {
-            "path": path,
-            "fileName": os.path.basename(path),
-            "counts": summary["counts"],
-        }
+        payload = remember_target(arguments["path"])
         return {
             "content": _text(payload),
             "structuredContent": payload,
             "_meta": {"ui": {"resourceUri": PAGE_URI}},
         }
+    if name == "docx_current_target":
+        if _last_target is None:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "本会话还没有打开过 Word 文件：请先从对话里的工具卡片打开审阅视图。",
+                    }
+                ],
+                "isError": True,
+            }
+        return {"content": _text(_last_target), "structuredContent": _last_target}
     if name == "docx_export_pdf":
         return {
             "content": [

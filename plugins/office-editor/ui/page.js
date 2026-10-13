@@ -20,6 +20,15 @@ function setBusy(busy) {
   }
 }
 
+function applyTarget(payload) {
+  if (!payload || typeof payload.path !== "string" || payload.path.length === 0) return false;
+  state.path = payload.path;
+  dom.file.textContent = payload.path;
+  setBusy(false);
+  void refresh();
+  return true;
+}
+
 function parseToolPayload(result) {
   const structured = result?.structuredContent;
   if (structured && typeof structured === "object") return structured;
@@ -114,14 +123,15 @@ if (typeof App === "undefined") {
   dom.file.textContent = "（宿主桥不可用）";
 } else {
   const app = new App({ name: "office-editor", version: "0.1.0" });
-  // 宿主把“打开本页面的那次工具结果”交给页面：从中拿文件路径，然后列修订。
+  // 宿主在工具完成后才挂载页面：先是工具输入（参数里就带 path），再是工具结果；
+  // 两者都可能在本页面注册之前发生，所以连上之后还有一次"向插件要当前目标"的兜底。
+  app.ontoolinput = (params) => {
+    const path = params?.arguments?.path;
+    if (typeof path === "string") applyTarget({ path });
+  };
   app.ontoolresult = (params) => {
     const payload = params?.structuredContent ?? params?.toolOutput ?? null;
-    if (payload?.path) {
-      state.path = payload.path;
-      setBusy(false);
-      void refresh();
-    }
+    applyTarget(payload);
   };
   try {
     // 宿主不在或握手不响应时（例如把页面当普通网页打开）必须给回退提示，而不是永远停在灰按钮。
@@ -132,6 +142,14 @@ if (typeof App === "undefined") {
       ),
     ]);
     setBusy(false);
+    if (!state.path) {
+      // 兜底：宿主可能已把"打开哪个文件"发完（通知早于本页面注册），直接问插件当前目标。
+      const result = await app.callServerTool({ name: "docx_current_target", arguments: {} });
+      if (!applyTarget(parseToolPayload(result))) {
+        dom.file.textContent = "（未收到目标文件）";
+        showNotice("请从对话里的工具卡片打开本页面的审阅视图：页面需要知道要审阅哪份文档。");
+      }
+    }
   } catch (error) {
     showNotice(`连接宿主失败：${error instanceof Error ? error.message : String(error)}`);
     dom.file.textContent = "（未连接宿主）";

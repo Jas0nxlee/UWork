@@ -112,7 +112,22 @@ test(
       const tools = await client.listTools();
       assert.deepEqual(
         tools.tools.map((tool) => tool.name).sort(),
-        ["docx_export_pdf", "docx_open_editor", "docx_revisions_list", "docx_revisions_resolve"],
+        [
+          "docx_current_target",
+          "docx_export_pdf",
+          "docx_open_editor",
+          "docx_revisions_list",
+          "docx_revisions_resolve",
+        ],
+      );
+      // 页面描述必须挂在 tools/list 的工具描述上（宿主只读这里；放在调用结果上不会被识别）。
+      const openTool = tools.tools.find((tool) => tool.name === "docx_open_editor") as
+        | { _meta?: { ui?: { resourceUri?: string } } }
+        | undefined;
+      assert.equal(
+        openTool?._meta?.ui?.resourceUri,
+        "ui://office-editor/editor.html",
+        JSON.stringify(openTool?._meta),
       );
 
       const sample = sampleDocument();

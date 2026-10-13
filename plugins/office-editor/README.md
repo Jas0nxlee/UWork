@@ -19,6 +19,7 @@
 - `docx_revisions_list({ path })` → 修订与批注清单
 - `docx_revisions_resolve({ path, action: "accept"|"reject", ids? })` → 处理修订（原地写：先备份 `<stem>_backup.docx`，再「临时文件 + 原子替换」）
 - `docx_open_editor({ path })` → 返回 `ui://office-editor/editor.html` 页面引用（宿主据此承载页面）
+- `docx_current_target()` → 本会话最近一次打开/列出的文件（页面挂载晚于工具结果时的兜底）
 - `docx_export_pdf({ path })` → **未实现**（需 LibreOffice/soffice，明确返回错误，不假装成功）
 
 ## 开发期使用
