@@ -21,6 +21,10 @@ DOCUMENT = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p>
+      <w:pPr><w:pStyle w:val="Heading1"/><w:outlineLvl w:val="0"/></w:pPr>
+      <w:r><w:t>一、概述</w:t></w:r>
+    </w:p>
+    <w:p>
       <w:r><w:t>第一段：</w:t></w:r>
       <w:ins w:id="101" w:author="审查员" w:date="2026-10-12T09:00:00Z">
         <w:r><w:t>插入的新句子。</w:t></w:r>

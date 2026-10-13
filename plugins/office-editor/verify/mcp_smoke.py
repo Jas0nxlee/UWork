@@ -131,6 +131,20 @@ def main() -> int:
         listed = payload(server.rpc("tools/call", {"name": "docx_revisions_list", "arguments": {"path": path}}))
         check("样本有 1 插入 + 1 删除", listed["counts"] == {"insert": 1, "delete": 1, "comments": 0}, str(listed["counts"]))
         check("修订带作者与文本", listed["revisions"][0]["author"] == "审查员", str(listed["revisions"][0]))
+        # 审阅者要能判断"该不该接受"：位置（段/表）、最近标题、前后文缺一不可。
+        first, second = listed["revisions"]
+        check("修订带段落序号", first["paragraph"] == 2, str(first.get("paragraph")))
+        check("修订带最近标题", first["nearestHeading"] == {"text": "一、概述", "level": 1}, str(first.get("nearestHeading")))
+        check(
+            "插入的前后文正确",
+            first["context"]["before"] == "第一段：" and first["context"]["after"].startswith("被删掉的旧句子。"),
+            str(first.get("context")),
+        )
+        check(
+            "删除的前后文包含插入文本",
+            second["context"]["before"].endswith("插入的新句子。") and second["context"]["after"] == "尾段。",
+            str(second.get("context")),
+        )
 
         print("接受单条插入")
         accepted = payload(

@@ -111,6 +111,23 @@
       .kind.delete {
         color: var(--delete);
       }
+      .loc {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 4px 0 2px;
+      }
+      .text mark {
+        background: transparent;
+        color: inherit;
+        font-weight: 600;
+        padding: 0 1px;
+      }
+      .insert .text mark {
+        border-bottom: 1.5px solid var(--insert);
+      }
+      .delete .text mark {
+        text-decoration: line-through;
+      }
       .text {
         margin: 6px 0 8px;
         padding: 4px 6px;

@@ -64,15 +64,35 @@ function render(summary) {
     actions.append(accept, " ", reject);
     row.append(kind, actions);
 
+    // 位置：只给"改了什么"不够——审阅者得知道在文档哪儿、周围是什么，才能判断该不该接受。
+    const location = document.createElement("div");
+    location.className = "loc";
+    const parts = [`第 ${revision.paragraph ?? "?"} 段`];
+    if (revision.table)
+      parts.push(
+        `表格 ${revision.table.index} 第 ${revision.table.row} 行第 ${revision.table.cell} 列`,
+      );
+    if (revision.nearestHeading?.text) parts.push(`「${revision.nearestHeading.text}」`);
+    location.textContent = parts.join(" · ");
+
     const text = document.createElement("div");
     text.className = "text";
-    text.textContent = revision.text || "（无文本）";
+    const context = revision.context ?? { before: "", after: "" };
+    if (context.before || context.after) {
+      text.append(document.createTextNode(context.before ? `…${context.before}` : "…"));
+      const mark = document.createElement("mark");
+      mark.textContent = revision.text || "（无文本）";
+      text.append(mark);
+      text.append(document.createTextNode(context.after ? `${context.after}…` : "…"));
+    } else {
+      text.textContent = revision.text || "（无文本）";
+    }
 
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = `${revision.author || "未知作者"} · ${revision.date || ""} · id=${revision.id}`;
 
-    item.append(row, text, meta);
+    item.append(row, location, text, meta);
     dom.list.append(item);
   }
   const comments = summary?.comments?.length ?? 0;
