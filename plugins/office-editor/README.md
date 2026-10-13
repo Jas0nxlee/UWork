@@ -6,7 +6,7 @@
 
 | 路径                            | 作用                                                                                                        |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `.zcode-plugin/plugin.json`     | 插件清单：声明 `skills` 与 stdio MCP server（`python3 server/server.py`，宿主注入 `${ZCODE_PLUGIN_ROOT}`）  |
+| `.uwork-plugin/plugin.json`     | 插件清单：声明 `skills` 与 stdio MCP server（`python3 server/server.py`，宿主注入 `${UWORK_PLUGIN_ROOT}`）  |
 | `server/server.py`              | 极简 MCP stdio 服务器（纯标准库）：`initialize`/`tools/list`/`tools/call`/`resources/list`/`resources/read` |
 | `server/docx_revisions.py`      | OOXML 修订引擎（纯标准库 `zipfile` + `ElementTree`）：列出/接受/拒绝 `w:ins`、`w:del`                       |
 | `ui/editor.html` + `ui/page.js` | 沙箱页面：列出修订、逐条接受/拒绝；经宿主官方 `App` 桥调用本插件工具                                        |

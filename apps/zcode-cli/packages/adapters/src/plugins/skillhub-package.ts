@@ -30,7 +30,9 @@ import {
 import { appendPluginSourceCleanupError, cleanupPluginSourceBestEffort } from "./helpers.js";
 import { resolveHttpZipSource, type ResolvedZipPluginSourceRoot } from "./zip-source.js";
 
-const PLUGIN_MANIFEST_DIR = ".zcode-plugin";
+// 新建的插件一律落在 UWork 命名的清单目录（读取侧同时接受 `.zcode-plugin` 等既有约定，
+// 所以历史安装不受影响）。`UWORK_PLUGIN_MANIFEST_DIR` 与这里的字面量保持同源。
+const PLUGIN_MANIFEST_DIR = ".uwork-plugin";
 const PLUGIN_SKILLS_DIR = "skills";
 const TEMP_PREFIX = "zcode-skillhub-";
 

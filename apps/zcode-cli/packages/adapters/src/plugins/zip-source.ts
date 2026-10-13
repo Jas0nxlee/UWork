@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
@@ -327,6 +328,7 @@ function resolveZipRoot(input: {
 
 function hasPluginManifest(rootPath: string): boolean {
   return (
+    fileExists(join(rootPath, UWORK_PLUGIN_MANIFEST_DIR, "plugin.json")) ||
     fileExists(join(rootPath, ".zcode-plugin", "plugin.json")) ||
     fileExists(join(rootPath, ".claude-plugin", "plugin.json")) ||
     fileExists(join(rootPath, ".codex-plugin", "plugin.json"))

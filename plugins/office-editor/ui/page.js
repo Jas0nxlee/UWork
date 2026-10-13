@@ -102,8 +102,15 @@ dom.refresh.addEventListener("click", () => void refresh());
 dom.acceptAll.addEventListener("click", () => resolve("accept", null));
 dom.rejectAll.addEventListener("click", () => resolve("reject", null));
 
-if (typeof App === "undefined") {
+function showNotice(message) {
   dom.notice.hidden = false;
+  dom.notice.textContent = message;
+}
+
+const HOST_HANDSHAKE_TIMEOUT_MS = 5000;
+
+if (typeof App === "undefined") {
+  showNotice("宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。");
   dom.file.textContent = "（宿主桥不可用）";
 } else {
   const app = new App({ name: "office-editor", version: "0.1.0" });
@@ -116,6 +123,17 @@ if (typeof App === "undefined") {
       void refresh();
     }
   };
-  await app.connect();
-  setBusy(false);
+  try {
+    // 宿主不在或握手不响应时（例如把页面当普通网页打开）必须给回退提示，而不是永远停在灰按钮。
+    await Promise.race([
+      app.connect(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("宿主未在 5 秒内完成握手")), HOST_HANDSHAKE_TIMEOUT_MS),
+      ),
+    ]);
+    setBusy(false);
+  } catch (error) {
+    showNotice(`连接宿主失败：${error instanceof Error ? error.message : String(error)}`);
+    dom.file.textContent = "（未连接宿主）";
+  }
 }

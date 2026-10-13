@@ -3,6 +3,7 @@
 // ============================================================
 
 import { realpathSync } from "node:fs";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import { open, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type {
@@ -28,6 +29,7 @@ const SAFE_FRONTMATTER_KEYS = new Set([
 const DEFAULT_MAX_SKILL_BYTES = 100_000;
 const MAX_PLUGIN_MANIFEST_SEARCH_DEPTH = 5;
 const PLUGIN_MANIFEST_RELATIVE_PATHS = [
+  `${UWORK_PLUGIN_MANIFEST_DIR}/plugin.json`,
   ".zcode-plugin/plugin.json",
   ".claude-plugin/plugin.json",
   ".codex-plugin/plugin.json",

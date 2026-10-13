@@ -15,6 +15,15 @@ export const ZCODE_CUA_OFFICIAL_MCP_NAMESPACE_NAME = "plugin:computer-use:comput
 // bootstrap + cli/plugin-host-command.ts 复用此常量识别 official zcode-cua plugin server，避免字面量漂移。
 export const ZCODE_PLUGIN_ID_ENV_KEY = "ZCODE_PLUGIN_ID";
 
+// UWork 命名的插件契约面。宿主同时注入新名与旧名（UWORK_* 与我们自己的产物使用），
+// 读取侧则同时接受 `.uwork-plugin` 与 `.zcode-plugin` 等既有清单目录——这样"我们新建的东西是
+// UWork 命名"，而 ZCode/Claude/Codex 生态的既有插件继续可用，上游合并也不需要跟着改名。
+export const UWORK_PLUGIN_MANIFEST_DIR = ".uwork-plugin";
+export const UWORK_PLUGIN_ROOT_ENV_KEY = "UWORK_PLUGIN_ROOT";
+export const UWORK_PLUGIN_DATA_ENV_KEY = "UWORK_PLUGIN_DATA";
+export const UWORK_PROJECT_DIR_ENV_KEY = "UWORK_PROJECT_DIR";
+export const UWORK_PLUGIN_ID_ENV_KEY = "UWORK_PLUGIN_ID";
+
 export type McpSource = "mcp" | "zcodeagentmcp";
 export type CliMcpSource = Exclude<McpSource, "mcp">;
 export type McpScope = "common" | "user" | "workspace";

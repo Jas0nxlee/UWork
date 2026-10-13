@@ -19,7 +19,7 @@
 
 ## 产品规则
 
-- **插件的形态**：插件清单声明 `mcpServers.office`（`type: "stdio"`，`command` 由宿主注入 `${ZCODE_PLUGIN_ROOT}`）；服务器名由宿主命名空间化为 `plugin:office-editor:office`。
+- **插件的形态**：插件清单声明 `mcpServers.office`（`type: "stdio"`，`command` 由宿主注入 `${UWORK_PLUGIN_ROOT}`）；服务器名由宿主命名空间化为 `plugin:office-editor:office`。
 - **工具即权限边界**：所有读写都通过工具调用发生（复用 Agent 的审批与审计路径）；插件页面本身没有任何文件系统原语，页面只能经宿主桥调用这些工具。首期不做自动保存，只有显式的「接受/拒绝/另存」动作。
 - **文档=不可信内容**：本插件不解包渲染第三方 HTML 进主渲染进程；页面在沙箱 webview 内运行，且不把文档内容当指令执行（沿用 `docs/ui/office-file-preview.md` 的既有边界）。
 - **写入必须可回滚**：任何原地修改前先写 `<stem>_backup.docx`（已存在则 `_backup-2`…），并用「临时文件 + `os.replace`」原子替换。
@@ -34,6 +34,29 @@
 2. **打开方式（open-with）注册点**：文件树/预览面板出现「用 <插件> 打开」入口，把 workspace 文件路径作为工具参数交给插件。
 3. （可选，最后评估）**受控文件句柄原语**：capability-gated 的 workspace 二进制读写句柄（含授权范围与审计），用于消除「每次保存一次 agent 往返」的开销。首期不做。
 
+## 插件命名契约（UWork 命名 + 既有生态兼容）
+
+结论先说：插件交互面里 **`.zcode-plugin`、`ZCODE_PLUGIN_ROOT`、`@zcode/*` 都不是"忘了改品牌"**，而是宿主契约与上游内部命名——
+`.zcode-plugin` 是加载器唯一认识的清单目录（`marketplace.ts` 的候选表），`ZCODE_*` 由宿主注入，`@zcode/*` 是包作用域
+（全仓 2179 个文件）。**用户可见的部分早已是 UWork**（数据根 `~/.uwork`、插件缓存 `~/.uwork/cli/plugins/cache/…`、
+`zcode → UWork` 的显示名映射、i18n 基本清零）。
+
+因此本期给"我们自己的东西"加了一层 **UWork 命名别名**，同时保持既有生态可加载：
+
+| 面       | UWork（首选）                                                                       | 兼容（继续支持）                                     |
+| -------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 清单目录 | `.uwork-plugin/plugin.json`                                                         | `.zcode-plugin` / `.claude-plugin` / `.codex-plugin` |
+| 占位符   | `${UWORK_PLUGIN_ROOT}` / `${UWORK_PLUGIN_DATA}` / `${UWORK_PROJECT_DIR}`            | `${ZCODE_*}` / `${CLAUDE_*}`                         |
+| 注入 env | `UWORK_PLUGIN_ROOT` / `UWORK_PLUGIN_ID` / `UWORK_PLUGIN_DATA` / `UWORK_PROJECT_DIR` | `ZCODE_*` / `CLAUDE_*`（同时注入）                   |
+| 新建插件 | SkillHub 包装产物落在 `.uwork-plugin/`                                              | 历史安装的 `.zcode-plugin/` 目录照旧可读             |
+
+发现顺序为 UWork 优先、随后回退；两者同时存在时取 `.uwork-plugin`。**本插件自身即采用 UWork 命名**（`.uwork-plugin/plugin.json` + `${UWORK_PLUGIN_ROOT}`），
+所以它同时是这层契约的第一个消费者与回归样本（`test/pluginUworkAliases.test.ts`、`test/officeEditorPlugin.test.ts`）。
+
+**将来重构自研底座时要改哪些**：只需处理这张表里的"面"（外加包作用域 `@zcode/*` 与目录 `apps/zcode-cli` 这类内部标识），
+不需要碰插件生态——因为别名层已经让两侧同时可用；反过来若现在就全量改名（2179+ 文件），每次上游合并都要重新做一遍，
+v3.15.1 合并的 100 个冲突就是代价样本。
+
 ## 验收
 
 - `docx_revisions_list`：在带 1 个 `w:ins`、1 个 `w:del` 的样本上返回 2 条修订，字段含 id/kind/author/date/text。
@@ -44,8 +67,16 @@
 
 ## 本次验证记录（2026-10-12）
 
-- `python3 plugins/office-editor/verify/mcp_smoke.py` → **20 项断言全过**：initialize 回显协议版本、tools/list 暴露 4 个工具、列出样本（1 插入 + 1 删除，带作者）、接受单条插入后插入文字保留且 `w:ins` 解包、备份文件已生成、**无关 zip 部件逐字节一致**、拒绝剩余删除后 `w:delText` 还原为 `w:t` 且修订清空、`docx_export_pdf` 明确 `isError`、`resources/read` 返回页面（**417 KiB**，mime `text/html;profile=mcp-app`，在宿主 16 MiB 上限内）。
-- `pnpm exec oxfmt --check specs/office-editor-plugin.md plugins/office-editor` → 全部通过；`pnpm exec oxlint plugins/office-editor` → 0 warning / 0 error。
-- 仓库级 `pnpm lint`（310 warnings / 1 error）与 `pnpm fmt:check`（1 个上游 vendored HTML）与改动前**同一状态**，本次未新增问题。
-- 配置改动：`.oxfmtrc.json` / `.oxlintrc.json` 的 `ignorePatterns` 各加一条 `plugins/office-editor/ui/vendor/**`（vendored 的官方 ext-apps 浏览器 bundle，418 KiB，属第三方产物；bundle 与其 MIT 许可同放在 `ui/vendor/`，随 SDK 升级重新拷贝）。
-- **未执行（需人工）**：应用内页面渲染与在页面里点接受/拒绝、侧栏承载与回收、公司市场安装链路、AIHub 分发。桌面 E2E 需人工在 Chrome 里授权远程调试，无人值守跑不了（仓库既有约束）。
+**已执行**
+
+- 插件自检 `python3 plugins/office-editor/verify/mcp_smoke.py` → **20 项断言全过**（协议握手、4 个工具、列出样本 1 插入 + 1 删除、接受后插入文字保留且 `w:ins` 解包、备份存在、**无关 zip 部件逐字节一致**、拒绝后 `w:delText` 还原为 `w:t`、修订清空、`docx_export_pdf` 正确 `isError`、页面 417 KiB / mime `text/html;profile=mcp-app`）。
+- **宿主真实加载链路**（`apps/zcode-cli/packages/adapters/test/officeEditorPlugin.test.ts`，`tsx --test`）：`validateLocalPluginPath` 0 error；`resolvePluginMcpServers` 解析出 `plugin:office-editor:office`，命令 `python3 <plugin>/server/server.py`，注入 `UWORK_PLUGIN_ROOT`/`UWORK_PLUGIN_ID`（并保留 `ZCODE_*`）。
+- **官方 MCP SDK 客户端**（同一测试内）：连接 stdio、列出 4 个工具、`docx_revisions_list` 得到 1 插入 + 1 删除、`docx_open_editor` 返回 `_meta.ui.resourceUri`、`resources/read` 取回页面（>1000 字符）。
+- **页面在浏览器里真渲染**：把装配后的 426,699 字节页面经本地 HTTP 打开 —— 标题/工具条正常、418 KiB 的 ext-apps bundle 无语法问题；无宿主时按设计回退。**由此发现并修掉一个问题**：原先只在 `typeof App === "undefined"` 时提示，而 bundle 已定义 `App`，于是 `connect()` 悬挂会让页面只剩灰按钮——现在加了 5 秒握手超时与失败提示（实测回退提示可见）。
+- **UWork 命名别名**（`test/pluginUworkAliases.test.ts`）：`.uwork-plugin` 单独存在可被发现、旧 `.zcode-plugin` 仍可加载、两者并存时取 `.uwork-plugin`、`${UWORK_PLUGIN_ROOT}` 与 `${ZCODE_PLUGIN_ROOT}` 都能展开、四种 env 同时注入。
+- `oxfmt --check` / `oxlint` 于新增与改动文件干净；`pnpm lint` 111 warnings / 0 errors（该基线原有 111/0）；`pnpm typecheck` 0 error，`adapters`、`bootstrap` 两个包各自的 `tsc --noEmit` 0 error。
+- CI 增加一步：`Validate office-editor plugin and UWork plugin naming aliases`（`tsx --test` 跑上面两个测试文件）。
+
+**未执行（需人工）**
+
+- 在客户端里真正承载页面（侧栏/inline）、点接受/拒绝、公司市场安装链路与 AIHub 分发。桌面 E2E 需人工在 Chrome 里授权远程调试。

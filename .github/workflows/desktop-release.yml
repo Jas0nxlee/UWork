@@ -47,6 +47,11 @@ jobs:
         run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
         run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs
+      - name: Validate office-editor plugin and UWork plugin naming aliases
+        run: >-
+          pnpm exec tsx --test
+          apps/zcode-cli/packages/adapters/test/officeEditorPlugin.test.ts
+          apps/zcode-cli/packages/adapters/test/pluginUworkAliases.test.ts
       - name: Validate provider, enterprise login, and AIHub skill source behavior
         run: >-
           pnpm exec tsx --test
