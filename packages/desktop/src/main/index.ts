@@ -48,7 +48,7 @@ import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import {
   createCredentialService,
   createSettingService,
