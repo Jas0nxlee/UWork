@@ -78,6 +78,22 @@ v3.15.1 合并的 100 个冲突就是代价样本。
 - `oxfmt --check` / `oxlint` 于新增与改动文件干净；`pnpm lint` 111 warnings / 0 errors（该基线原有 111/0）；`pnpm typecheck` 0 error，`adapters`、`bootstrap` 两个包各自的 `tsc --noEmit` 0 error。
 - CI 增加一步：`Validate office-editor plugin and UWork plugin naming aliases`（`tsx --test` 跑上面两个测试文件）。
 
+### 真机验收（2026-10-13，dev 客户端 + 真实模型 + 真实沙箱页面）
+
+- **页面真的能挂载**：`docx_open_editor` 的工具描述带 `_meta.ui.resourceUri` 后，宿主创建了
+  `ZCode Plugin Sandbox` webview + `zcode-sandbox://plugin-…` iframe，页面在对话内联卡片里渲染。
+- **页面能自举拿到目标文件**：页面显示的是真实的 `/tmp/oe-test/sample.docx`（经由 `ontoolinput` 或
+  兜底工具 `docx_current_target`），不再停在"等待宿主传入文件"。
+- **列表与位置/上下文全部正确**：实测两条修订分别渲染为「插入/删除 + 接受/拒绝 + 第 2 段 ·
+  「一、概述」+ 上下文（插入文字绿下划线、删除文字红删除线，被删文字也出现在上下文里）+ 作者/时间/id」。
+- 两个**平台行为**（真机才发现，文档未写）：
+  1. 页面引用**只从 `tools/list` 的工具描述 `_meta` 读**（`apps/zcode-cli/packages/adapters/src/mcp/descriptor.ts`），
+     写在调用结果上不会被识别——表现就是"页面不出现、回退成普通工具卡"。
+  2. 插件版本与页面资源**按会话/宿主进程绑定**：装完新版本必须**冷启动客户端**才生效
+     （用户指出并实测确认），热装只改 cache 目录不会改变已运行的会话。
+- 体验观察（待定）：页面自己发起的工具调用（列修订/处理修订）**每次都走一次权限确认**，
+  对"点一下接受/拒绝"的交互偏重；评估"始终允许本项目"或按会话授权是否合适。
+
 **未执行（需人工）**
 
 - 在客户端里真正承载页面（侧栏/inline）、点接受/拒绝、公司市场安装链路与 AIHub 分发。桌面 E2E 需人工在 Chrome 里授权远程调试。
