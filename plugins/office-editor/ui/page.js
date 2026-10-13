@@ -2,6 +2,8 @@
 // 页面只做展示与“发起工具调用”；读写都发生在插件工具里，走 Agent 的审批与审计路径。
 
 const state = { path: null, busy: false };
+// 模块级持有：refresh/resolve 与宿主回调都要用它。放进 else 块里会让模块级函数取不到（真机踩坑）。
+let app = null;
 
 const dom = {
   list: document.getElementById("list"),
@@ -100,21 +102,25 @@ function render(summary) {
 }
 
 async function refresh() {
-  if (!state.path || state.busy) return;
+  if (!app || !state.path || state.busy) return;
   setBusy(true);
   try {
     const result = await app.callServerTool({
       name: "docx_revisions_list",
       arguments: { path: state.path },
     });
+    dom.notice.hidden = true;
     render(parseToolPayload(result));
+  } catch (error) {
+    // 失败必须可见：静默失败在真机上就是"空白列表"，排查代价极高。
+    showNotice(`列修订失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     setBusy(false);
   }
 }
 
 async function resolve(action, ids) {
-  if (!state.path || state.busy) return;
+  if (!app || !state.path || state.busy) return;
   setBusy(true);
   try {
     await app.callServerTool({
@@ -122,6 +128,8 @@ async function resolve(action, ids) {
       arguments: { path: state.path, action, ids },
     });
     await refresh();
+  } catch (error) {
+    showNotice(`处理修订失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     setBusy(false);
   }
@@ -142,7 +150,7 @@ if (typeof App === "undefined") {
   showNotice("宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。");
   dom.file.textContent = "（宿主桥不可用）";
 } else {
-  const app = new App({ name: "office-editor", version: "0.1.0" });
+  app = new App({ name: "office-editor", version: "0.1.0" });
   // 宿主在工具完成后才挂载页面：先是工具输入（参数里就带 path），再是工具结果；
   // 两者都可能在本页面注册之前发生，所以连上之后还有一次"向插件要当前目标"的兜底。
   app.ontoolinput = (params) => {
