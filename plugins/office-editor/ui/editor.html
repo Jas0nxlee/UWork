@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>office-editor 修订审阅</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #6b7280;
+        --border: #d8dee4;
+        --insert: #1a7f37;
+        --insert-bg: #dafbe1;
+        --delete: #cf222e;
+        --delete-bg: #ffebe9;
+        --accent: #0969da;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #8b949e;
+          --border: #30363d;
+          --insert: #3fb950;
+          --insert-bg: #12261e;
+          --delete: #f85149;
+          --delete-bg: #2d1214;
+          --accent: #4493f8;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 12px 14px 16px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          13px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      header h1 {
+        font-size: 14px;
+        margin: 0;
+      }
+      #file {
+        color: var(--muted);
+        font-size: 12px;
+        word-break: break-all;
+      }
+      #toolbar {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 12px;
+      }
+      button {
+        font: inherit;
+        padding: 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      button[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+      .kind {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .kind.insert {
+        color: var(--insert);
+      }
+      .kind.delete {
+        color: var(--delete);
+      }
+      .text {
+        margin: 6px 0 8px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .insert .text {
+        background: var(--insert-bg);
+      }
+      .delete .text {
+        background: var(--delete-bg);
+        text-decoration: line-through;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      #empty,
+      #notice {
+        color: var(--muted);
+        padding: 8px 0;
+      }
+      #notice {
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Word 修订审阅</h1>
+      <span id="file">（等待宿主传入文件）</span>
+    </header>
+    <div id="toolbar">
+      <button id="accept-all" disabled>全部接受</button>
+      <button id="reject-all" disabled>全部拒绝</button>
+      <button id="refresh" disabled>刷新</button>
+    </div>
+    <div id="notice" hidden>
+      宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
+    </div>
+    <ul id="list"></ul>
+    <div id="empty" hidden>没有待处理的修订。</div>
+    <!--__SCRIPT__-->
+  </body>
+</html>
