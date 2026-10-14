@@ -8,10 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: public-ripgrep-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   contracts:
     runs-on: ubuntu-24.04
@@ -23,10 +19,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24.14.0
-      - run: node --test scripts/test/public-windows-ripgrep.test.mjs scripts/test/public-windows-ripgrep-repair.test.mjs scripts/test/windows-ripgrep-license-materials.test.mjs scripts/test/ripgrep-pcre2-source.test.mjs scripts/test/msvc-runtime-license-policy.test.mjs
+      - run: node --test scripts/test/public-windows-ripgrep.test.mjs scripts/test/public-windows-ripgrep-repair.test.mjs scripts/test/windows-ripgrep-license-materials.test.mjs scripts/test/ripgrep-pcre2-source.test.mjs scripts/test/msvc-runtime-license-policy.test.mjs scripts/test/windows-ripgrep-native-runtime.test.mjs
 
   build-and-verify:
     needs: contracts
+    concurrency:
+      group: public-ripgrep-${{ github.ref }}-${{ matrix.arch }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +95,23 @@ jobs:
             @{ path = $path; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
           }
           @{ nativeArch = $arch; visualStudioVersion = $version; vcToolsVersion = $values['VCToolsVersion']; windowsSdkVersion = $values['WindowsSDKVersion']; spectreComponentId = $spectreComponent; installationRequested = $installationRequested; libraries = @($libraryEvidence) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$artifactDir/msvc-toolset.json" -Encoding utf8
+          $sdkVersion = $values['WindowsSDKVersion'].TrimEnd('\', '/')
+          $sdkLibraries = foreach ($entry in @(@('ucrt', 'libucrt.lib', 'windows-sdk-ucrt'), @('um', 'ntdll.lib', 'windows-sdk-import'))) {
+            $path = Join-Path $values['WindowsSdkDir'] "Lib\$sdkVersion\$($entry[0])\$arch\$($entry[1])"
+            @{ path = $path; component = $entry[2]; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+          }
+          $sdkNoticeRoot = Join-Path $values['WindowsSdkDir'] 'Licenses'
+          $sdkEvidence = "$artifactDir/sdk-installed-licenses"
+          New-Item -ItemType Directory -Force -Path $sdkEvidence | Out-Null
+          $sdkNotices = if (Test-Path $sdkNoticeRoot) {
+            Get-ChildItem -LiteralPath $sdkNoticeRoot -Recurse -File | Where-Object { $_.Name -match 'license|eula|copyright|notice' } | ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              $name = "$hash$($_.Extension)"
+              Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $sdkEvidence $name)
+              @{ installedPath = $_.FullName; file = "sdk-installed-licenses/$name"; sha256 = $hash }
+            }
+          }
+          @{ nativeArch = $arch; windowsSdkVersion = $values['WindowsSDKVersion']; windowsSdkRoot = $values['WindowsSdkDir']; libraries = @($sdkLibraries); notices = @($sdkNotices) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$artifactDir/windows-sdk-runtime.json" -Encoding utf8
           $values['LIB'] = "$spectre;$($values['LIB'])"
           foreach ($key in @('PATH','LIB','LIBPATH','INCLUDE','VSINSTALLDIR','VCINSTALLDIR','VCToolsInstallDir','VCToolsVersion','WindowsSdkDir','WindowsSDKVersion','UniversalCRTSdkDir','WindowsLibPath','WindowsSdkBinPath','VSCMD_ARG_TGT_ARCH')) {
             if ($values.ContainsKey($key)) { Add-Content -LiteralPath $env:GITHUB_ENV -Value "$key=$($values[$key])" }

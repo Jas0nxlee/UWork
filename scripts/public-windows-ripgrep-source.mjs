@@ -224,6 +224,15 @@ export async function fetchPinnedBytes(url, expected, label) {
   return bytes;
 }
 
+export async function applyPublicRipgrepPatch(sourceDir, patchPath, inheritedEnv = process.env) {
+  // source archive has no .git; stop git from attributing the enclosing verification branch to rg.
+  const env = { ...inheritedEnv, GIT_CEILING_DIRECTORIES: dirname(sourceDir) };
+  // Windows runner 的 autocrlf 会改写已核验的 Cargo.lock；仅对本次 apply 固定 LF，保留其他字节。
+  const args = ["-c", "core.autocrlf=false", "-c", "core.eol=lf", "apply"];
+  await execute("git", [...args, "--check", patchPath], { cwd: sourceDir, env });
+  await execute("git", [...args, patchPath], { cwd: sourceDir, env });
+}
+
 export async function preparePublicRipgrepSources(
   workDir,
   artifactsDir,
@@ -251,10 +260,7 @@ export async function preparePublicRipgrepSources(
     writeFile(join(artifactsDir, "microsoft-producer-LICENSE"), patchLicense),
   ]);
   await execute("tar", ["-xzf", sourceArchive, "-C", sourceDir, "--strip-components=1"]);
-  // source archive has no .git; stop git from attributing the enclosing verification branch to rg.
-  const env = { ...process.env, GIT_CEILING_DIRECTORIES: dirname(sourceDir) };
-  await execute("git", ["apply", "--check", patchPath], { cwd: sourceDir, env });
-  await execute("git", ["apply", patchPath], { cwd: sourceDir, env });
+  await applyPublicRipgrepPatch(sourceDir, patchPath);
   const configPath = join(sourceDir, ".cargo", "config.toml");
   await writeFile(configPath, stripPrivateCargoRegistry(await readFile(configPath, "utf8")));
   const pcre2 = await prepareVendoredPcre2Sources(sourceDir, workDir, artifactsDir);

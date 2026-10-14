@@ -60,6 +60,26 @@ export function nativeRuntimeBindingMatches(runtime, notices, libraries, binding
       )
     )
       return false;
+    // 实际静态链接的 UCRT 来自独立 Windows SDK，不能借 VC 发行材料关闭其义务。
+    const sdk = binding.windowsSdkUcrt;
+    if (
+      !sdk?.publisherReview ||
+      !/^[0-9a-f]{64}$/u.test(sdk.librarySha256 ?? "") ||
+      !Array.isArray(sdk.requiredNotices) ||
+      sdk.requiredNotices.length === 0 ||
+      !libraries.some(
+        (library) =>
+          library.component === "windows-sdk-ucrt" &&
+          library.name === "libucrt.lib" &&
+          library.sha256 === sdk.librarySha256,
+      ) ||
+      !sdk.requiredNotices.every((required) =>
+        notices.some(
+          (notice) => notice.source === required.source && notice.sha256 === required.sha256,
+        ),
+      )
+    )
+      return false;
     return true;
   });
 }
@@ -83,7 +103,10 @@ export async function collectReviewedPublisherRuntimeMaterials(
   const bindings = policy.bindings.filter((binding) =>
     runtimeFingerprintMatches(runtime, libraries, binding),
   );
-  const required = bindings.flatMap((binding) => binding.requiredNotices ?? []);
+  const required = bindings.flatMap((binding) => [
+    ...(binding.requiredNotices ?? []),
+    ...(binding.windowsSdkUcrt?.requiredNotices ?? []),
+  ]);
   const notices = [];
   const publisherOriginals = [];
   const scriptsRoot = fileURLToPath(new URL("./", import.meta.url));
@@ -138,12 +161,15 @@ export async function collectReviewedPublisherRuntimeMaterials(
 export async function collectNativeRuntimeMaterials(build, save) {
   const runtime = build.nativeRuntime ?? {};
   const notices = [];
-  for (const record of runtime.notices ?? []) {
+  for (const record of [...(runtime.notices ?? []), ...(runtime.sdkNotices ?? [])]) {
     requireValue(
       typeof record.source === "string" && /^[0-9a-f]{64}$/u.test(record.sha256 ?? ""),
       "Missing native runtime original source/hash",
     );
-    const bytes = await readFile(record.path);
+    const path = runtime.sdkNotices?.includes(record)
+      ? await checkedPath(runtime.windowsSdkRoot, record.path)
+      : record.path;
+    const bytes = await readFile(path);
     requireValue(
       digest(bytes) === record.sha256,
       "Native runtime original notice checksum mismatch",
@@ -163,6 +189,22 @@ export async function collectNativeRuntimeMaterials(build, save) {
     const name = path.split(/[\\/]/u).at(-1).toLowerCase();
     libraries.push({ name, sha256: record.sha256, bytes: bytes.length });
   }
+  for (const record of runtime.sdkLibraries ?? []) {
+    requireValue(runtime.windowsSdkRoot, "Missing actual Windows SDK root");
+    requireValue(
+      ["windows-sdk-ucrt", "windows-sdk-import"].includes(record.component),
+      "Unknown SDK runtime library component",
+    );
+    const path = await checkedPath(runtime.windowsSdkRoot, record.path);
+    const bytes = await readFile(path);
+    requireValue(digest(bytes) === record.sha256, "Actual Windows SDK library checksum mismatch");
+    libraries.push({
+      name: path.split(/[\\/]/u).at(-1).toLowerCase(),
+      component: record.component,
+      sha256: record.sha256,
+      bytes: bytes.length,
+    });
+  }
   const reviewed = await collectReviewedPublisherRuntimeMaterials(runtime, libraries, save);
   notices.push(...reviewed.notices);
   const proven = nativeRuntimeBindingMatches(runtime, notices, libraries, reviewed.policy.bindings);
@@ -174,7 +216,7 @@ export async function collectNativeRuntimeMaterials(build, save) {
     unprovedScope: proven
       ? []
       : [
-          "Actual MSVC/CRT/Spectre version/library hashes have no reviewed applicable publisher EULA + redistribution + static-link binding.",
+          "Actual MSVC/Spectre and Windows SDK UCRT version/library hashes lack a complete reviewed publisher EULA, redistribution and static-link binding.",
         ],
   };
 }

@@ -33,8 +33,46 @@ test("actual x64 fingerprint binds full publisher originals, extracted notices a
   assert.equal(result.notices.length, 2);
   assert.equal(result.publisherOriginals.length, 2);
   assert.ok(result.policySnapshot.sha256);
-  assert.ok(
+  assert.equal(
     nativeRuntimeBindingMatches(runtime, result.notices, libraries, result.policy.bindings),
+    false,
+    "VC publisher material alone cannot close separately linked SDK UCRT",
+  );
+});
+
+test("complete runtime binding requires the actual SDK UCRT digest and applicable original notice", async () => {
+  const result = await collectReviewedPublisherRuntimeMaterials(runtime, libraries, save);
+  const ucrt = { name: "libucrt.lib", sha256: "a".repeat(64), component: "windows-sdk-ucrt" };
+  const sdkNotice = { source: "fixture:installed-sdk-license", sha256: "b".repeat(64) };
+  const complete = {
+    ...binding,
+    windowsSdkUcrt: {
+      librarySha256: ucrt.sha256,
+      requiredNotices: [sdkNotice],
+      publisherReview: "Fixture SDK terms and static linkage review",
+    },
+  };
+  assert.equal(
+    nativeRuntimeBindingMatches(
+      runtime,
+      [...result.notices, sdkNotice],
+      [...libraries, ucrt],
+      [complete],
+    ),
+    true,
+  );
+  assert.equal(
+    nativeRuntimeBindingMatches(runtime, result.notices, [...libraries, ucrt], [complete]),
+    false,
+  );
+  assert.equal(
+    nativeRuntimeBindingMatches(
+      runtime,
+      [...result.notices, sdkNotice],
+      [...libraries, { ...ucrt, sha256: "c".repeat(64) }],
+      [complete],
+    ),
+    false,
   );
 });
 

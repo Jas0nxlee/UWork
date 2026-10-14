@@ -40,6 +40,16 @@ This SHA binding is not a claim that the release signature was verified.
 
 ## Preparation rules and failure semantics
 
+On Windows, inherited Git `core.autocrlf=true` can rewrite patched Cargo inputs
+to CRLF even when the verified archive and patch are LF. A native CI failure was
+reproduced with the original pinned archives: patch application produced 566
+CRLF lines, and the strict lock identity was then rejected. Each source-local
+`git apply --check` and `git apply` must explicitly set `core.autocrlf=false` and
+`core.eol=lf`, retaining the verified source bytes' line endings. Do not alter
+global Git settings, normalize the whole lock, or relax exact identity checks.
+An actual Git fixture under inherited autocrlf/eol settings must fail before the
+fix and pass after it, preserving every unrelated lock byte.
+
 1. Verify both archives and the original pcre2-sys lock identity/checksum.
 2. Extract pcre2-sys into `source/vendor/pcre2-sys`; preserve its Rust bindings,
    build.rs and original Rust license files byte for byte.

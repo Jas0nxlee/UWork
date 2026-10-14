@@ -30,7 +30,8 @@ const RUST_LICENSE_SNAPSHOTS_SHA256 =
   "189fd8f31fd50e9a937cf37585647eb41d4716128ee8687954e0cb209684065f";
 const RG_REVISION = sourcePins.sourceCommit;
 const TARGETS = new Set(["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]);
-const STD_BASE_TARGETS = ["core", "alloc", "std", "compiler_builtins"];
+// Cargo build-std 隐式构建 proc_macro；真实产物要求其 registry/in-tree 依赖同样进入原文闭包。
+const STD_BASE_TARGETS = ["core", "alloc", "std", "compiler_builtins", "proc_macro"];
 
 function toolchainFields(text) {
   return Object.fromEntries(

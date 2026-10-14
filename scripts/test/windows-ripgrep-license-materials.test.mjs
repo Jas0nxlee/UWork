@@ -77,7 +77,8 @@ async function fixture(t) {
     "dep-1.0.0/Cargo.toml": "[package]\nname='dep'\n",
   });
   const lock = `version = 4\n[[package]]\nname = "ripgrep"\nversion = "14.1.1"\n[[package]]\nname = "dep"\nversion = "1.0.0"\nsource = "${registrySource}"\nchecksum = "${sha(archive)}"\n`;
-  const stdNames = ["core", "alloc", "std", "panic_unwind", "compiler_builtins"];
+  // run38530696328 的 build-std 真实多编了 proc_macro 和下列两项 normal 依赖。
+  const stdNames = ["core", "alloc", "std", "panic_unwind", "compiler_builtins", "proc_macro"];
   const stdPackages = stdNames.map((name) => ({
     id: `path+${name}@0.0.0`,
     name,
@@ -86,14 +87,42 @@ async function fixture(t) {
     license: "MIT OR Apache-2.0",
     manifest_path: join(rustSource, "library", name, "Cargo.toml"),
   }));
+  const stdWorkspace = {
+    id: "path+rustc-std-workspace-std@1.99.0",
+    name: "rustc-std-workspace-std",
+    version: "1.99.0",
+    source: null,
+    license: "MIT OR Apache-2.0",
+    manifest_path: join(rustSource, "library/rustc-std-workspace-std/Cargo.toml"),
+  };
+  const escaper = {
+    id: "registry+rustc-literal-escaper@0.0.4",
+    name: "rustc-literal-escaper",
+    version: "0.0.4",
+    source: registrySource,
+    license: "Apache-2.0 OR MIT",
+    manifest_path: join(
+      options.cargoHome,
+      "registry/src/index/rustc-literal-escaper-0.0.4/Cargo.toml",
+    ),
+  };
+  const escaperArchive = tar({
+    "rustc-literal-escaper-0.0.4/LICENSE-MIT": "Original escaper publisher fixture bytes\n",
+    "rustc-literal-escaper-0.0.4/Cargo.toml": "[package]\nname='rustc-literal-escaper'\n",
+  });
+  stdPackages.push(stdWorkspace, escaper);
   const stdLock = stdPackages
-    .map((pkg) => `[[package]]\nname = "${pkg.name}"\nversion = "${pkg.version}"\n`)
+    .map(
+      (pkg) =>
+        `[[package]]\nname = "${pkg.name}"\nversion = "${pkg.version}"\n` +
+        (pkg.source ? `source = "${pkg.source}"\nchecksum = "${sha(escaperArchive)}"\n` : ""),
+    )
     .join("\n");
   const artifacts = [
     ...[app, dep, ...stdPackages].map((pkg) => ({
       reason: "compiler-artifact",
       package_id: pkg.id,
-      target: { name: pkg.name },
+      target: { name: pkg.name.replaceAll("-", "_") },
       fresh: false,
     })),
     { reason: "build-finished", success: true },
@@ -131,6 +160,10 @@ async function fixture(t) {
   for (const pkg of stdPackages) await put(pkg.manifest_path, "[package]\n");
   await put(join(options.cargoHome, "registry/cache/index/dep-1.0.0.crate"), archive);
   await put(
+    join(options.cargoHome, "registry/cache/index/rustc-literal-escaper-0.0.4.crate"),
+    escaperArchive,
+  );
+  await put(
     artifact("cargo-metadata.json"),
     JSON.stringify({
       packages: [app, dep],
@@ -142,11 +175,24 @@ async function fixture(t) {
       },
     }),
   );
+  const stdDependencies = new Map([
+    ["proc_macro", ["core", "std", "rustc-literal-escaper"]],
+    ["rustc-literal-escaper", ["rustc-std-workspace-std"]],
+    ["rustc-std-workspace-std", ["std"]],
+  ]);
   await put(
     artifact("std-cargo-metadata.json"),
     JSON.stringify({
       packages: stdPackages,
-      resolve: { nodes: stdPackages.map((pkg) => ({ id: pkg.id, deps: [] })) },
+      resolve: {
+        nodes: stdPackages.map((pkg) => ({
+          id: pkg.id,
+          deps: (stdDependencies.get(pkg.name) ?? []).map((name) => ({
+            pkg: stdPackages.find((dependency) => dependency.name === name).id,
+            dep_kinds: [{ kind: null, target: null }],
+          })),
+        })),
+      },
     }),
   );
   await put(
@@ -178,7 +224,7 @@ test("original checksum-bound crate bytes, rebuilt std artifacts and original Ru
   // 修改解压树不能冒充 archive 中的原许可。
   await f.put(join(dirname(f.dep.manifest_path), "LICENSE-MIT"), "mutated source tree license");
   const result = await collectWindowsRipgrepLicenseMaterials(f.options);
-  assert.equal(result.packages.length, 7);
+  assert.equal(result.packages.length, 10);
   const dep = result.packages.find((pkg) => pkg.name === "dep");
   assert.equal(
     await readFile(join(f.options.outputDir, dep.notices[0].file), "utf8"),
@@ -191,10 +237,42 @@ test("original checksum-bound crate bytes, rebuilt std artifacts and original Ru
       (notice) => notice.file === "rust/COPYRIGHT.html",
     ),
   );
-  assert.equal(result.compilerArtifacts.length, 7);
+  assert.equal(result.compilerArtifacts.length, 10);
   assert.equal(result.unprovedScope.length, 1);
   assert.equal(result.status, "incomplete-native-runtime");
   assert.match(result.scope, /build-only/u);
+});
+
+test("implicit proc_macro closure retains original registry and same-revision Rust notices", async (t) => {
+  const f = await fixture(t);
+  const result = await collectWindowsRipgrepLicenseMaterials(f.options);
+  for (const name of ["proc_macro", "rustc-std-workspace-std", "rustc-literal-escaper"])
+    assert.ok(
+      result.packages.some((pkg) => pkg.graph === "build-std" && pkg.name === name),
+      name,
+    );
+  const escaper = result.packages.find((pkg) => pkg.name === "rustc-literal-escaper");
+  assert.match(escaper.archiveSha256, /^[a-f0-9]{64}$/u);
+  assert.equal(
+    await readFile(join(f.options.outputDir, escaper.notices[0].file), "utf8"),
+    "Original escaper publisher fixture bytes\n",
+  );
+  const proc = result.packages.find((pkg) => pkg.name === "proc_macro");
+  assert.ok(proc.notices.some((notice) => notice.file === "rust/COPYRIGHT-library.html"));
+  const messages = (await readFile(f.artifact("cargo-build-messages.jsonl"), "utf8"))
+    .split("\n")
+    .map(JSON.parse);
+  await f.put(
+    f.artifact("cargo-build-messages.jsonl"),
+    messages
+      .filter((item) => item.target?.name !== "proc_macro")
+      .map(JSON.stringify)
+      .join("\n"),
+  );
+  await assert.rejects(
+    collectWindowsRipgrepLicenseMaterials(f.options),
+    /Missing rebuilt.*proc_macro/u,
+  );
 });
 
 test("wrong compiler identity or publisher manifest fails before a completed inventory", async (t) => {

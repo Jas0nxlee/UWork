@@ -1,6 +1,9 @@
 # Public Windows ripgrep compatibility build
 
-The candidate keeps ripgrep 14.1.1 at upstream commit 4649aa9700 and the original Microsoft BinSkim patch from producer 7ea8b7eb6c0de96fe4275bba5e88cb49297af42e. A fixed public nightly-2025-06-26 compiler, matching rust-src and source hashes replace the private ms-1.88 toolchain. Every Rust crate, including std and panic runtime, is rebuilt with `-Zbuild-std`; RUSTC_BOOTSTRAP is forbidden. The private Cargo registry redirect is removed; a source-bound official PCRE2 maintenance release and additional stack protection preserve the original hardening and all unrelated locked crate checksums.
+The candidate keeps ripgrep 14.1.1 at upstream commit 4649aa9700 and the original Microsoft BinSkim patch from producer 7ea8b7eb6c0de96fe4275bba5e88cb49297af42e. A fixed public nightly-2025-06-26 compiler, matching rust-src and source hashes replace the private ms-1.88 toolchain. Every Rust crate, including std and panic runtime, is rebuilt with `-Zbuild-std`; caller-supplied RUSTC_BOOTSTRAP overrides are forbidden. Cargo's own internal std compilation environment is retained in the original build log. The private Cargo registry redirect is removed; a source-bound official PCRE2 maintenance release and additional stack protection preserve the original hardening and all unrelated locked crate checksums.
+
+Native CI concurrency is scoped by architecture. A slow ARM toolset installation must not block the
+independent x64 candidate; an in-progress build for the same architecture retains its evidence.
 
 The producer owns source verification, isolated cargo/rustup homes, build flags and executable/archive fingerprints. The material collector owns complete raw distribution copyright files and the target Cargo/std closure, without substituting another Rust revision. Native Windows x64 and arm64 jobs execute upstream tests, compatibility tests, PE/CFG/CET/static-runtime checks and BinSkim. A success requires native execution on each architecture; inspecting a PE on macOS is not a Windows pass.
 

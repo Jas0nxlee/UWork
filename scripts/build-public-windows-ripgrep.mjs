@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,6 +19,7 @@ import {
   bindOfficialRustCompilerComponent,
   readBuildProvenance,
 } from "./public-windows-ripgrep-build-evidence.mjs";
+import { collectNativeWindowsRuntimeEvidence } from "./public-windows-ripgrep-native-runtime.mjs";
 import { runPcre2StandardRegression } from "./public-windows-ripgrep-pcre2-regression.mjs";
 import { createDeterministicRipgrepZip } from "./public-windows-ripgrep-archive.mjs";
 import {
@@ -32,38 +33,6 @@ function option(name) {
   if (inline) return inline.slice(prefix.length);
   const index = process.argv.indexOf(`--${name}`);
   return index < 0 ? undefined : process.argv[index + 1];
-}
-async function locateNativeNotices(env) {
-  const roots = [
-    join(env.VSINSTALLDIR ?? "", "Licenses"),
-    join(env.VCINSTALLDIR ?? "", "Redist"),
-    join(env.VSINSTALLDIR ?? "", "Common7", "IDE", "Licenses"),
-  ].filter(
-    (path) =>
-      !path.startsWith("Licenses") && !path.startsWith("Redist") && !path.startsWith("Common7"),
-  );
-  const notices = [];
-  async function visit(directory, depth) {
-    let entries;
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      if (error.code === "ENOENT") return;
-      throw error;
-    }
-    for (const entry of entries) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory() && depth > 0) await visit(path, depth - 1);
-      else if (entry.isFile() && /license|redist.*\.txt$|eula/iu.test(entry.name))
-        notices.push({
-          path,
-          source: "installed Microsoft Visual Studio/MSVC redistribution material",
-          sha256: sha256(await readFile(path)),
-        });
-    }
-  }
-  for (const root of roots) await visit(root, 4);
-  return notices;
 }
 
 export async function buildPublicWindowsRipgrep({
@@ -105,6 +74,8 @@ export async function buildPublicWindowsRipgrep({
       rustFlags: plan.rustFlags,
       cflags: plan.cflags,
       rustcBootstrap: false,
+      rustcBootstrapScope:
+        "External override absent; Cargo's internal std build environment remains in the unmodified build log.",
     },
     security: {
       pcre2: {
@@ -265,29 +236,7 @@ export async function buildPublicWindowsRipgrep({
         { capture: true },
       ),
     );
-    const spectreDir = resolve(env.VCToolsInstallDir ?? "", "lib", "spectre", arch);
-    const firstLib = (env.LIB ?? "").split(";")[0];
-    if (!firstLib || resolve(firstLib).toLowerCase() !== spectreDir.toLowerCase())
-      throw new Error("Spectre CRT directory must be first in LIB");
-    if (!(env.VCToolsVersion ?? "").startsWith("14.44."))
-      throw new Error("The audited v143 MSVC 14.44 toolset is required");
-    const spectreLibraries = [];
-    for (const name of ["libcmt.lib", "libvcruntime.lib", "libcpmt.lib"]) {
-      const path = join(spectreDir, name);
-      spectreLibraries.push({ path, sha256: sha256(await readFile(path)) });
-    }
-    evidence.nativeRuntime = {
-      visualStudioVersion: env.UWORK_VS_INSTALLATION_VERSION,
-      vcToolsVersion: env.VCToolsVersion,
-      vcToolsInstallDir: env.VCToolsInstallDir,
-      windowsSdkVersion: env.WindowsSDKVersion,
-      spectreDirectory: spectreDir,
-      spectreComponentId: env.UWORK_SPECTRE_COMPONENT_ID,
-      spectreInstallationRequested: env.UWORK_SPECTRE_INSTALLATION_REQUESTED,
-      spectreLibraries,
-      linkSearchOrder: (env.LIB ?? "").split(";"),
-      notices: await locateNativeNotices(env),
-    };
+    evidence.nativeRuntime = await collectNativeWindowsRuntimeEvidence(env, arch);
     evidence.status = "building";
     await save();
     await cargo(plan.cargoBuildArgs, {

@@ -9,6 +9,8 @@
 4ab56f5eae0b8d5a58ce20c5197117be9facc4edceca01f8122f7aaf5baf9645。
 源码为 ripgrep14.1.1 /4649aa9700619f94cf9c66876e9549d83420e16c，保留 producer 的微软安全补丁。
 禁止用公开材料冒充旧私有 6a6eaca… 二进制；旧阻断必须等实际归档替换后另行退役。
+`hardening.rustcBootstrap=false` 只描述外部 override 缺席；`rustcBootstrapScope` 明确范围，
+Cargo 内部 std 编译的 bootstrap 环境保留在原始日志，不能据此字段声称所有子进程都未设置。
 
 接口：`node scripts/collect-windows-ripgrep-license-materials.mjs --source-dir ... --cargo-home ...
 --rustup-home ... --toolchain nightly-2025-06-26 --target {x86_64,aarch64}-pc-windows-msvc
@@ -20,7 +22,10 @@
   源码/补丁/锁摘要和 producer manifest 目标。源码锁与保存副本必须逐字节一致。
 - 分别遍历两份 metadata 中 ripgrep/std 的 target-filtered resolve graph，包含 normal/build
   依赖并排除 dev 边。所有实际 compiler-artifact package_id 必须被两图覆盖；必须观察到
-  core/alloc/std/panic_unwind/compiler_builtins 重编产物，不能把预编译 std 当成重编完成。
+  core/alloc/std/panic_unwind/compiler_builtins 及 Cargo build-std 隐式加入的 proc_macro
+  重编产物。proc_macro 的 normal/build 依赖也必须保留：真实 run38530696328 包括
+  rustc-literal-escaper 和 rustc-std-workspace-std，分别核验 registry 原 crate 与同 revision
+  Rust 原文；未知 artifact 仍失败，不能把预编译 std 当成重编完成。
 - Cargo registry 材料直接从锁文件 checksum 核验的原 `.crate` gzip/tar 取得，不能相信可修改
   的解压源树自报 checksum；保留 root/嵌套 LICENSE、COPYING、COPYRIGHT、NOTICE、AUTHORS
   与显式 license_file。缺完整文件时失败，不按 SPDX 拼版权。工作区原文只从所声明源码根读取。
@@ -54,3 +59,11 @@ producer manifest 的已知 panicStrategy 绑定相应 std artifact，未知策�
 首个 x64 证据为 run38530696328、VS17.14.37710.0、VC14.44.35207、SDK10.0.26100.0。
 静态 release CRT 的技术范围来自 Microsoft CRT library features 与 Deployment Concepts；
 发行要求保留适用 EULA 的 Section5 和对应 REDIST，不能将工程材料检查描述为独立法律认证。
+
+真实 x64 PDB 还包含 Windows SDK `libucrt.lib` 的静态对象。SDK 版本字符串与三份 VC Spectre
+库不能覆盖这份独立组件。producer 必须登记真实 UCRT 库路径、SHA 和 SDK 安装原件，collector
+从 SDK 根核验字节并保留原文；受审 binding 必须同时匹配该库和适用 SDK 条款摘要。
+SDK `ntdll.lib` 是系统 DLL 导入库，记录实际输入而不将其算作静态 UCRT 实现。
+缺少 UCRT binding 时现有 VC 材料仍保存，但整体保持 incomplete，不关闭原私有 Rust 阻断。
+`public-windows-ripgrep-native-runtime.mjs` 是安装材料读取的唯一入口，负责实际库指纹与
+安装原件目录发现；构建 runner 只记录返回值，最终 collector 和 seal 重新核对原字节。

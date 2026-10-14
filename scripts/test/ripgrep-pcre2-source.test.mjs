@@ -10,6 +10,7 @@ import {
   preparePcre2Crate,
   prepareVendoredPcre2Sources,
   fetchPinnedBytes,
+  applyPublicRipgrepPatch,
 } from "../public-windows-ripgrep-source.mjs";
 import { sha256 } from "../public-windows-ripgrep-plan.mjs";
 
@@ -53,6 +54,30 @@ test("archive digest mismatch fails before extraction", async () => {
   const url = `data:application/octet-stream;base64,${Buffer.from(bytes).toString("base64")}`;
   assert.deepEqual(await fetchPinnedBytes(url, sha256(bytes), "fixture"), Buffer.from(bytes));
   await assert.rejects(fetchPinnedBytes(url, "0".repeat(64), "fixture"), /SHA-256 mismatch/u);
+});
+
+test("real Git patch application retains LF Cargo bytes under inherited Windows autocrlf settings", async (t) => {
+  const { crateDir, put } = await fixture(t);
+  await put(join(crateDir, "Cargo.toml"), manifest);
+  await put(join(crateDir, "Cargo.lock"), lock);
+  const patchPath = join(dirname(crateDir), "original.patch");
+  const inserted = "# Original producer patch fixture\n";
+  await put(
+    patchPath,
+    `diff --git a/Cargo.lock b/Cargo.lock\n--- a/Cargo.lock\n+++ b/Cargo.lock\n@@ -1,2 +1,3 @@\n version = 3\n+${inserted} \n`,
+  );
+  await applyPublicRipgrepPatch(crateDir, patchPath, {
+    ...process.env,
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: "core.autocrlf",
+    GIT_CONFIG_VALUE_0: "true",
+    GIT_CONFIG_KEY_1: "core.eol",
+    GIT_CONFIG_VALUE_1: "crlf",
+  });
+  const actual = await readFile(join(crateDir, "Cargo.lock"), "utf8");
+  assert.equal(actual, lock.replace("version = 3\n", "version = 3\n" + inserted));
+  assert.doesNotMatch(actual, /\r/u);
+  assert.doesNotThrow(() => patchPcre2CargoInputs(manifest, actual));
 });
 
 async function fixture(t) {
