@@ -54,6 +54,23 @@
 2. **打开方式（open-with）注册点**：文件树/预览面板出现「用 <插件> 打开」入口，把 workspace 文件路径作为工具参数交给插件。
 3. （可选，最后评估）**受控文件句柄原语**：capability-gated 的 workspace 二进制读写句柄（含授权范围与审计），用于消除「每次保存一次 agent 往返」的开销。首期不做。
 
+## 基线依赖（页面的可用前置，2026-10-14 确认）
+
+**页面不是"装了就能画出来"——它还需要宿主那条线合进来。** 宿主页面体系（`packages/ui/src/plugin-ui/`、
+`packages/shared/src/mcp-apps/`、沙箱 `pluginSandbox` preload）是**上游 v3.15.1 才带进来的**；`uwork`（3.16.0）基线上
+这些源码不存在，`_meta.ui` 无处可渲染，宿主按契约回退成普通工具卡——基线分支上冷启动实测：主文档 DOM 里**没有**
+iframe/webview/沙箱目标，日志里也没有 `plugin-ui-bridge` 行（是"无事发生"，不是报错）。
+
+因此本插件的交付顺序与验收口径：
+
+- **基线分支（`uwork`）**：MCP 工具可用（列修订/处理修订/导出）。页面**不会**出现，属预期；不要当成插件缺陷排查。
+- **上游合并线（`chore/upstream-v3.15.1-sync`）**：页面才真正挂载——本 spec 的页面类验收全部在这条线上取得。
+- **安装形态随宿主而变**：3.15.1 宿主只认 `.zcode-plugin/` + `${ZCODE_PLUGIN_ROOT}`；仓库内的 `.uwork-plugin/`
+  - `${UWORK_PLUGIN_ROOT}` 需要带 UWork 别名的新宿主（`UWORK_MANIFEST_PATH`/`UWORK_*` env）。本地实测走
+    `~/.uwork/cli/plugins/marketplaces/uwork-local-dev/office-editor/`（**拷贝**，非软链），改完插件要重新拷 + **冷启动**。
+- **页面挂载期的瞬态**：冷启动恢复任务时，卡片会在会话的 MCP app 连接登记前就 prepare，宿主回 `-32001`；
+  该窗口由宿主侧修复（`specs/plugin-ui-session-warmup-resilience.md`，有界退避自动重试），插件侧无需处理。
+
 ## 插件命名契约（UWork 命名 + 既有生态兼容）
 
 结论先说：插件交互面里 **`.zcode-plugin`、`ZCODE_PLUGIN_ROOT`、`@zcode/*` 都不是"忘了改品牌"**，而是宿主契约与上游内部命名——
