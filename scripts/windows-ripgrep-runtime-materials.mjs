@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { digest, requireValue } from "./windows-ripgrep-license-archive.mjs";
 import { checkedPath } from "./windows-ripgrep-license-files.mjs";
 
@@ -24,15 +25,26 @@ export async function collectMicrosoftPatchNotice(build, artifactRoot, sourcePin
   return { source, ...(await save("microsoft-patch/LICENSE.txt", bytes)) };
 }
 
+function runtimeFingerprintMatches(runtime, libraries, binding) {
+  if (
+    binding.visualStudioVersion !== runtime.visualStudioVersion ||
+    binding.vcToolsVersion !== runtime.vcToolsVersion ||
+    binding.windowsSdkVersion !== runtime.windowsSdkVersion ||
+    !binding.spectreLibraries ||
+    Object.keys(binding.spectreLibraries).length !== 3
+  )
+    return false;
+  return ["libcmt.lib", "libvcruntime.lib", "libcpmt.lib"].every((name) =>
+    libraries.some(
+      (library) => library.name === name && library.sha256 === binding.spectreLibraries[name],
+    ),
+  );
+}
+
 /** 只有逐版本/逐库/逐原文的受审 binding 能关闭 CRT 范围，不能按文件数量放行。 */
 export function nativeRuntimeBindingMatches(runtime, notices, libraries, bindings) {
   return bindings.some((binding) => {
-    if (
-      binding.visualStudioVersion !== runtime.visualStudioVersion ||
-      binding.vcToolsVersion !== runtime.vcToolsVersion ||
-      binding.windowsSdkVersion !== runtime.windowsSdkVersion
-    )
-      return false;
+    if (!runtimeFingerprintMatches(runtime, libraries, binding)) return false;
     if (
       !binding.publisherReview?.eula ||
       !binding.publisherReview?.redistribution ||
@@ -48,15 +60,81 @@ export function nativeRuntimeBindingMatches(runtime, notices, libraries, binding
       )
     )
       return false;
-    if (!binding.spectreLibraries || Object.keys(binding.spectreLibraries).length !== 3)
-      return false;
-    return ["libcmt.lib", "libvcruntime.lib", "libcpmt.lib"].every((name) =>
-      libraries.some(
-        (library) => library.name === name && library.sha256 === binding.spectreLibraries[name],
-      ),
-    );
+    return true;
   });
 }
+
+export async function collectReviewedPublisherRuntimeMaterials(
+  runtime,
+  libraries,
+  save,
+  { policyPath = new URL("./msvc-runtime-license-bindings.json", import.meta.url) } = {},
+) {
+  const policyBytes = await readFile(policyPath);
+  const policy = JSON.parse(policyBytes);
+  requireValue(
+    policy.schemaVersion === 1 &&
+      Array.isArray(policy.bindings) &&
+      Array.isArray(policy.publisherNotices),
+    "Invalid native runtime license binding policy",
+  );
+  const policySnapshot = await save("native-runtime/reviewed-policy.json", policyBytes);
+  // 先匹配实际编译器和库，防止另一架构借用公开原文关闭自己的未证明范围。
+  const bindings = policy.bindings.filter((binding) =>
+    runtimeFingerprintMatches(runtime, libraries, binding),
+  );
+  const required = bindings.flatMap((binding) => binding.requiredNotices ?? []);
+  const notices = [];
+  const publisherOriginals = [];
+  const scriptsRoot = fileURLToPath(new URL("./", import.meta.url));
+  for (const record of policy.publisherNotices) {
+    if (!required.some((item) => item.source === record.source && item.sha256 === record.sha256))
+      continue;
+    requireValue(
+      typeof record.source === "string" &&
+        record.originalSource === record.source &&
+        typeof record.extraction === "string" &&
+        /^[0-9a-f]{64}$/u.test(record.sha256 ?? "") &&
+        /^[0-9a-f]{64}$/u.test(record.originalSha256 ?? "") &&
+        typeof record.file === "string" &&
+        typeof record.originalFile === "string",
+      "Invalid reviewed publisher original source/hash",
+    );
+    const original = await readFile(
+      await checkedPath(scriptsRoot, resolve(scriptsRoot, record.originalFile)),
+    );
+    requireValue(
+      digest(original) === record.originalSha256,
+      "Publisher original notice checksum mismatch",
+    );
+    const extracted = await readFile(
+      await checkedPath(scriptsRoot, resolve(scriptsRoot, record.file)),
+    );
+    requireValue(
+      digest(extracted) === record.sha256,
+      "Publisher extracted notice checksum mismatch",
+    );
+    notices.push({
+      source: record.source,
+      ...(await save(`native-runtime/publisher/${record.sha256}.txt`, extracted)),
+    });
+    const extension = record.originalFile.match(/\.[a-zA-Z0-9]+$/u)?.[0] ?? ".bin";
+    publisherOriginals.push({
+      source: record.originalSource,
+      noticeSha256: record.sha256,
+      extraction: record.extraction,
+      ...(await save(`native-runtime/publisher/${record.originalSha256}${extension}`, original)),
+    });
+  }
+  requireValue(
+    required.every((item) =>
+      notices.some((notice) => notice.source === item.source && notice.sha256 === item.sha256),
+    ),
+    "Missing required reviewed publisher original notice",
+  );
+  return { policy, policySnapshot, notices, publisherOriginals };
+}
+
 export async function collectNativeRuntimeMaterials(build, save) {
   const runtime = build.nativeRuntime ?? {};
   const notices = [];
@@ -85,17 +163,14 @@ export async function collectNativeRuntimeMaterials(build, save) {
     const name = path.split(/[\\/]/u).at(-1).toLowerCase();
     libraries.push({ name, sha256: record.sha256, bytes: bytes.length });
   }
-  const policy = JSON.parse(
-    await readFile(new URL("./msvc-runtime-license-bindings.json", import.meta.url)),
-  );
-  requireValue(
-    policy.schemaVersion === 1 && Array.isArray(policy.bindings),
-    "Invalid native runtime license binding policy",
-  );
-  const proven = nativeRuntimeBindingMatches(runtime, notices, libraries, policy.bindings);
+  const reviewed = await collectReviewedPublisherRuntimeMaterials(runtime, libraries, save);
+  notices.push(...reviewed.notices);
+  const proven = nativeRuntimeBindingMatches(runtime, notices, libraries, reviewed.policy.bindings);
   return {
     notices,
     libraries,
+    policySnapshot: reviewed.policySnapshot,
+    publisherOriginals: reviewed.publisherOriginals,
     unprovedScope: proven
       ? []
       : [

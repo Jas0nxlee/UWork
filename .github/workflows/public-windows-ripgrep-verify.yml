@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24.14.0
-      - run: node --test scripts/test/public-windows-ripgrep.test.mjs scripts/test/windows-ripgrep-license-materials.test.mjs
+      - run: node --test scripts/test/public-windows-ripgrep.test.mjs scripts/test/public-windows-ripgrep-repair.test.mjs scripts/test/windows-ripgrep-license-materials.test.mjs scripts/test/ripgrep-pcre2-source.test.mjs scripts/test/msvc-runtime-license-policy.test.mjs
 
   build-and-verify:
     needs: contracts
@@ -54,19 +54,48 @@ jobs:
         run: |
           $arch = '${{ matrix.arch }}'
           if ((node -p "process.arch") -ne $arch) { throw 'Runner Node architecture is not native' }
+          $artifactDir = ".tmp/public-windows-ripgrep/$arch/artifacts"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $component = if ($arch -eq 'arm64') { 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' } else { 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' }
           $installation = & $vswhere -latest -products '*' -requires $component -property installationPath
           if (-not $installation) { throw 'MSVC installation was not found' }
           $version = (& $vswhere -latest -products '*' -requires $component -property installationVersion)
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "UWORK_VS_INSTALLATION_VERSION=$version"
-          $setup = "`"$installation\Common7\Tools\VsDevCmd.bat`" -no_logo -vcvars_ver=14.44 -host_arch=$arch -arch=$arch >nul && set"
-          $values = @{}
-          & cmd.exe /d /s /c $setup | ForEach-Object {
-            if ($_ -match '^([^=]+)=(.*)$') { $values[$matches[1]] = $matches[2] }
+          function Read-NativeToolsetEnvironment {
+            $setup = "`"$installation\Common7\Tools\VsDevCmd.bat`" -no_logo -vcvars_ver=14.44 -host_arch=$arch -arch=$arch >nul && set"
+            $result = @{}
+            & cmd.exe /d /s /c $setup | ForEach-Object {
+              if ($_ -match '^([^=]+)=(.*)$') { $result[$matches[1]] = $matches[2] }
+            }
+            if ($LASTEXITCODE -ne 0 -or -not $result['VCToolsInstallDir']) { throw 'Native v14.44 MSVC setup failed' }
+            return $result
           }
+          $values = Read-NativeToolsetEnvironment
           $spectre = Join-Path $values['VCToolsInstallDir'] "lib\spectre\$arch"
-          if (-not (Test-Path $spectre)) { throw 'Required native Spectre-mitigated CRT libraries are missing' }
+          $spectreComponent = if ($arch -eq 'arm64') { 'Microsoft.VisualStudio.Component.VC.14.44.17.14.ARM64.Spectre' } else { 'Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64.Spectre' }
+          $installationRequested = $false
+          # ARM image has v14.44 tools without its matching Spectre libs; install the official component.
+          # https://learn.microsoft.com/visualstudio/install/workload-component-id-vs-enterprise?view=vs-2022
+          if (-not (Test-Path (Join-Path $spectre 'libcmt.lib'))) {
+            $installationRequested = $true
+            $installer = Join-Path (Split-Path $vswhere) 'setup.exe'
+            $arguments = @('modify', '--installPath', "`"$installation`"", '--add', $spectreComponent, '--quiet', '--norestart')
+            $process = Start-Process -FilePath $installer -ArgumentList $arguments -PassThru -Wait
+            if ($process.ExitCode -notin @(0, 3010)) { throw "Official Spectre component installation failed: $($process.ExitCode)" }
+            $values = Read-NativeToolsetEnvironment
+            $spectre = Join-Path $values['VCToolsInstallDir'] "lib\spectre\$arch"
+          }
+          foreach ($library in @('libcmt.lib', 'libvcruntime.lib', 'libcpmt.lib')) {
+            if (-not (Test-Path (Join-Path $spectre $library))) { throw "Required Spectre library remains missing: $library" }
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "UWORK_SPECTRE_COMPONENT_ID=$spectreComponent"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "UWORK_SPECTRE_INSTALLATION_REQUESTED=$installationRequested"
+          $libraryEvidence = foreach ($library in @('libcmt.lib', 'libvcruntime.lib', 'libcpmt.lib')) {
+            $path = Join-Path $spectre $library
+            @{ path = $path; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+          }
+          @{ nativeArch = $arch; visualStudioVersion = $version; vcToolsVersion = $values['VCToolsVersion']; windowsSdkVersion = $values['WindowsSDKVersion']; spectreComponentId = $spectreComponent; installationRequested = $installationRequested; libraries = @($libraryEvidence) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$artifactDir/msvc-toolset.json" -Encoding utf8
           $values['LIB'] = "$spectre;$($values['LIB'])"
           foreach ($key in @('PATH','LIB','LIBPATH','INCLUDE','VSINSTALLDIR','VCINSTALLDIR','VCToolsInstallDir','VCToolsVersion','WindowsSdkDir','WindowsSDKVersion','UniversalCRTSdkDir','WindowsLibPath','WindowsSdkBinPath','VSCMD_ARG_TGT_ARCH')) {
             if ($values.ContainsKey($key)) { Add-Content -LiteralPath $env:GITHUB_ENV -Value "$key=$($values[$key])" }

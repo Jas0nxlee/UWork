@@ -37,6 +37,20 @@
 当前实际 release profile 的 panic 语义为 unwind，不能注入 abort 改变原工具行为。采集器按
 producer manifest 的已知 panicStrategy 绑定相应 std artifact，未知策略拒绝。
 
-官方布局依据为固定 Rust commit 的 `src/bootstrap/src/core/build_steps/dist.rs:521` 与
-`run.rs:262`；GenerateCopyright 返回两份 HTML，不能套用后来新增的 license 目录布局。
+官方布局依据为固定 Rust commit 和已实际核验的 dated rustc 归档：包含两份版权 HTML 与
+12 份 `licenses/*.txt` 原件。GenerateCopyright 自身返回两份 HTML，不能据此推断归档只有两个文件。
 同 commit 的15份原始 source notice 快照与目录登记摘要固定在采集器，不能改 SPDX 拼条款。
+
+## MSVC 发行材料的精确绑定
+
+只按真实 Windows 构建的 IDE、VC toolset、SDK 与三份 release Spectre 库 SHA 选择受审 binding。
+不能把 NuGet/.NET 的安装器 EULA 当成 CRT 授权，也不能把 2026 材料冒充 2022。每个 binding
+登记适用的官方开发工具 EULA、发行清单、静态 CRT 的官方部署依据；对应发布方原件和完整
+文字提取快照同时核验摘要并保存，策略本身也作为采集输入原样保存。匹配不到精确版本或库
+摘要时继续 incomplete；公开文档存在不自动关闭其他架构的范围。
+输出 `nativeRuntimePolicySnapshot` 保存策略原字节记录，`nativeRuntimePublisherOriginals`
+保存发布方原件记录；最终 seal 会逐一重算这两个字段里的文件摘要。
+
+首个 x64 证据为 run38530696328、VS17.14.37710.0、VC14.44.35207、SDK10.0.26100.0。
+静态 release CRT 的技术范围来自 Microsoft CRT library features 与 Deployment Concepts；
+发行要求保留适用 EULA 的 Section5 和对应 REDIST，不能将工程材料检查描述为独立法律认证。

@@ -13,6 +13,7 @@ third-party/native-search/licenses/** -text -whitespace
 third-party/runtime/*.txt -text -whitespace
 # 此验证分支的发布方原件同样绑定原始字节，Windows checkout 不得改写换行。
 scripts/rust-license-snapshots/*.txt -text -whitespace
+scripts/msvc-license-snapshots/** -text -whitespace
 scripts/test/fixtures/microsoft-ripgrep-producer-LICENSE.txt -text -whitespace
 scripts/test/fixtures/public-rust-nightly-2025-06-26.manifest.txt -text -whitespace
 docs/knip/docs/LICENSE -text -whitespace

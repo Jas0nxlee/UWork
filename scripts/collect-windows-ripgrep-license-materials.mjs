@@ -57,7 +57,7 @@ function manifestSection(text, section) {
   return result;
 }
 
-function collectGraph(metadata, rootNames) {
+export function collectGraph(metadata, rootNames) {
   requireValue(
     Array.isArray(metadata.packages) && Array.isArray(metadata.resolve?.nodes),
     "Missing locked Cargo resolve graph",
@@ -330,6 +330,8 @@ export async function collectWindowsRipgrepLicenseMaterials(options) {
     patchNotice,
     nativeRuntime: runtime.notices,
     nativeRuntimeLibraries: runtime.libraries,
+    nativeRuntimePolicySnapshot: runtime.policySnapshot,
+    nativeRuntimePublisherOriginals: runtime.publisherOriginals,
     unprovedScope: runtime.unprovedScope,
     completion:
       "All required Rust/Cargo provenance, artifact coverage and original notice byte checks passed; distribution replacement remains a separate gate.",
@@ -338,20 +340,9 @@ export async function collectWindowsRipgrepLicenseMaterials(options) {
   return result;
 }
 
-function cliOptions(argv) {
+export function cliOptions(argv) {
   const result = {};
-  for (let index = 0; index < argv.length; index += 2) {
-    requireValue(
-      /^--[a-z-]+$/u.test(argv[index] ?? "") && argv[index + 1],
-      "Expected named material collector arguments",
-    );
-    const key = argv[index]
-      .slice(2)
-      .replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase());
-    requireValue(!Object.hasOwn(result, key), "Duplicate material collector argument");
-    result[key] = argv[index + 1];
-  }
-  for (const key of [
+  const keys = [
     "sourceDir",
     "cargoHome",
     "rustupHome",
@@ -359,7 +350,19 @@ function cliOptions(argv) {
     "target",
     "outputDir",
     "buildManifest",
-  ])
+  ];
+  // CI 使用 --name=value；按第一个等号拆分，避免路径中的等号被截断。
+  for (let index = 0; index < argv.length; index += 1) {
+    const match = /^(--[a-z]+(?:-[a-z]+)*)(?:=(.*))?$/u.exec(argv[index] ?? "");
+    requireValue(match, "Expected named material collector arguments");
+    const key = match[1].slice(2).replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase());
+    requireValue(keys.includes(key), "Unknown material collector argument");
+    const value = match[2] ?? argv[++index];
+    requireValue(value && !value.startsWith("--"), "Missing material collector argument value");
+    requireValue(!Object.hasOwn(result, key), "Duplicate material collector argument");
+    result[key] = value;
+  }
+  for (const key of keys)
     requireValue(
       result[key],
       `Missing --${key.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`,

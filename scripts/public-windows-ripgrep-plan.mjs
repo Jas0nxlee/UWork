@@ -45,6 +45,10 @@ export function createPublicWindowsRipgrepPlan({
   const target = arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
   const rustFlags = [
     "-Ccontrol-flow-guard=yes",
+    // BA2014 的 PDB 结果列出 Rust 函数；std 与所有目标 crate 一起启用真实栈保护。
+    // https://github.com/rust-lang/rust/blob/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/compiler/rustc_session/src/options.rs
+    "-Zstack-protector=all",
+    "--print=link-args",
     "-Ctarget-feature=+crt-static",
     "-Clink-arg=/DYNAMICBASE",
     "-Clink-arg=/HIGHENTROPYVA",
@@ -56,7 +60,7 @@ export function createPublicWindowsRipgrepPlan({
     target,
     toolchain: PUBLIC_WINDOWS_RIPGREP_PINS.toolchain,
     rustFlags,
-    cflags: "/guard:cf /Qspectre /W3",
+    cflags: "/GS /guard:cf /Qspectre /W3",
     cargoBuildArgs: [
       "build",
       "--release",

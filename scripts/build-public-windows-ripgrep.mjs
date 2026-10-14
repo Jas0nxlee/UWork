@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PUBLIC_WINDOWS_RIPGREP_PINS as pins,
@@ -9,7 +9,17 @@ import {
   readRustManifestComponents,
   sha256,
 } from "./public-windows-ripgrep-plan.mjs";
-import { execute, preparePublicRipgrepSources } from "./public-windows-ripgrep-source.mjs";
+import {
+  execute,
+  preparePublicRipgrepSources,
+  PCRE2_SOURCE_PINS,
+} from "./public-windows-ripgrep-source.mjs";
+import {
+  assertPePdbBinding,
+  bindOfficialRustCompilerComponent,
+  readBuildProvenance,
+} from "./public-windows-ripgrep-build-evidence.mjs";
+import { runPcre2StandardRegression } from "./public-windows-ripgrep-pcre2-regression.mjs";
 import { createDeterministicRipgrepZip } from "./public-windows-ripgrep-archive.mjs";
 import {
   verifyPublicWindowsPeHardening,
@@ -98,11 +108,11 @@ export async function buildPublicWindowsRipgrep({
     },
     security: {
       pcre2: {
-        version: "10.43",
+        version: PCRE2_SOURCE_PINS.version,
         advisories: [
           {
             id: "GHSA-r9hj-j2rw-4q3m",
-            status: "baseline-unpatched",
+            status: "official-release-source-prepared",
             regressionStatus: "not-run",
             advisoryUrl:
               "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-r9hj-j2rw-4q3m",
@@ -117,6 +127,12 @@ export async function buildPublicWindowsRipgrep({
     const source = await preparePublicRipgrepSources(work, artifacts);
     evidence.source.sourceDir = source.sourceDir;
     evidence.source.cargoLockSha256 = source.cargoLockSha256;
+    evidence.source.pcre2 = {
+      file: "pcre2-source-evidence.json",
+      sha256: sha256(await readFile(join(artifacts, "pcre2-source-evidence.json"))),
+      version: source.pcre2.version,
+      archiveSha256: source.pcre2.archiveSha256,
+    };
     evidence.toolchain.componentHashes = readRustManifestComponents(source.manifest, plan.target);
     await save();
     if (prepareOnly) {
@@ -191,6 +207,15 @@ export async function buildPublicWindowsRipgrep({
     evidence.toolchain.installedManifestSha256 = sha256(installedManifest);
     evidence.toolchain.installedComponentHashes = installedComponents;
     evidence.toolchain.compilerSha256 = sha256(await readFile(join(sysroot, "bin", "rustc.exe")));
+    evidence.toolchain.officialCompiler = await bindOfficialRustCompilerComponent({
+      component: installedComponents.find(
+        (entry) => entry.component === `pkg.rustc.target.${plan.target}`,
+      ),
+      sysroot,
+      workDir: work,
+      artifactsDir: artifacts,
+      env,
+    });
     const stdSource = join(sysroot, "lib", "rustlib", "src", "rust", "library");
     evidence.toolchain.sysroot = sysroot;
     evidence.toolchain.stdSource = stdSource;
@@ -257,13 +282,15 @@ export async function buildPublicWindowsRipgrep({
       vcToolsInstallDir: env.VCToolsInstallDir,
       windowsSdkVersion: env.WindowsSDKVersion,
       spectreDirectory: spectreDir,
+      spectreComponentId: env.UWORK_SPECTRE_COMPONENT_ID,
+      spectreInstallationRequested: env.UWORK_SPECTRE_INSTALLATION_REQUESTED,
       spectreLibraries,
       linkSearchOrder: (env.LIB ?? "").split(";"),
       notices: await locateNativeNotices(env),
     };
     evidence.status = "building";
     await save();
-    const build = await cargo(plan.cargoBuildArgs, {
+    await cargo(plan.cargoBuildArgs, {
       capture: true,
       logPath: join(artifacts, "cargo-build-messages.jsonl"),
     });
@@ -276,6 +303,7 @@ export async function buildPublicWindowsRipgrep({
       throw new Error("The original release profile must emit an auditable PDB");
     await copyFile(pdb, join(artifacts, "rg.pdb"));
     evidence.outputs.pdbSha256 = sha256(await readFile(pdb));
+    evidence.hardening.pdbBinding = assertPePdbBinding(binary, await readFile(pdb));
     const archive = createDeterministicRipgrepZip(binary);
     const archiveName = `ripgrep-v14.1.1-uwork-public-1-${plan.target}.zip`;
     await writeFile(join(artifacts, archiveName), archive);
@@ -288,42 +316,40 @@ export async function buildPublicWindowsRipgrep({
     });
     evidence.hardening.pe = parsePublicWindowsPeHardening(binary);
     await save();
-    const messages = build
-      .split(/\r?\n/u)
-      .filter((line) => line.startsWith("{"))
-      .map((line) => JSON.parse(line));
-    const stdBuild = messages.find(
-      (message) =>
-        message.reason === "compiler-artifact" &&
-        message.target?.name === "std" &&
-        message.fresh === false,
-    );
-    if (!stdBuild) throw new Error("Build did not prove a fresh, instrumented std compilation");
-    const panicBuild = messages.find(
-      (message) =>
-        message.reason === "compiler-artifact" &&
-        message.target?.name === "panic_unwind" &&
-        message.fresh === false,
-    );
-    if (!panicBuild)
-      throw new Error("Build did not prove the original unwind panic runtime was recompiled");
-    evidence.hardening.panicArtifact = panicBuild;
-    evidence.hardening.stdArtifact = stdBuild;
     const compilerLog = await readFile(join(artifacts, "cargo-build-messages.jsonl"), "utf8");
-    const stdCommand = compilerLog
-      .split(/\r?\n/u)
-      .find(
-        (line) => line.includes("--crate-name std ") && /-C\s*control-flow-guard=yes/u.test(line),
-      );
-    if (!stdCommand) throw new Error("Missing actual std compiler command with CFG enforcement");
-    if (/D9002|ignoring unknown option|argument unused.*control-flow-guard/iu.test(compilerLog))
-      throw new Error("A required hardening flag was ignored by the compiler");
-    evidence.hardening.stdCompilerCommand = stdCommand;
+    const provenance = readBuildProvenance(compilerLog);
+    Object.assign(evidence.hardening, provenance);
+    evidence.hardening.buildLogSha256 = sha256(compilerLog);
+    evidence.hardening.rebuiltLibraries = [];
+    await mkdir(join(artifacts, "rebuilt-std"));
+    for (const path of provenance.linkedArtifacts) {
+      const file = `rebuilt-std/${basename(path)}`;
+      const bytes = await readFile(path);
+      await writeFile(join(artifacts, file), bytes);
+      evidence.hardening.rebuiltLibraries.push({ file, buildPath: path, sha256: sha256(bytes) });
+    }
+    await writeFile(join(artifacts, "rg-link-command.txt"), provenance.linkCommand + "\n");
     await verifyPublicWindowsPeHardening(binaryPath, arch);
-    if (!binary.includes(Buffer.from(pins.rustCommit)))
-      throw new Error("Executable lacks the expected rebuilt std source revision marker");
+    evidence.security.pcre2.standardRegression = await runPcre2StandardRegression({
+      source,
+      workDir: work,
+      artifactsDir: artifacts,
+      env,
+      plan,
+      candidateSha256: evidence.outputs.executableSha256,
+    });
     env.CARGO_TARGET_DIR = join(work, "target-tests");
     await cargo(plan.cargoTestArgs, { logPath: join(artifacts, "upstream-test.log") });
+    evidence.security.pcre2.upstreamTests = {
+      status: "passed",
+      file: "upstream-test.log",
+      sha256: sha256(await readFile(join(artifacts, "upstream-test.log"))),
+      sourceEvidenceSha256: evidence.source.pcre2.sha256,
+      candidateSha256: evidence.outputs.executableSha256,
+    };
+    evidence.security.pcre2.advisories[0].status = "patched";
+    evidence.security.pcre2.advisories[0].acceptance =
+      "official-updated-release-standard-regression-and-native-cli";
     if (
       sha256(await readFile(join(source.sourceDir, "Cargo.lock"))) !== source.cargoLockSha256 ||
       sha256(await readFile(join(stdSource, "Cargo.lock"))) !==

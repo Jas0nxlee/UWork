@@ -146,17 +146,45 @@ test("BinSkim failures, reviews, invocation errors and an empty analysis cannot 
 });
 
 const { assertCandidateReports } = await import("../verify-public-windows-ripgrep-candidate.mjs");
+const { PCRE2_SOURCE_PINS: pcre } = await import("../public-windows-ripgrep-source.mjs");
+const { RIPGREP_COMPATIBILITY_CASES } = await import("../public-ripgrep-compatibility.mjs");
 test("the final candidate seal rejects incomplete runtime material and unverified reports", () => {
   const p = PUBLIC_WINDOWS_RIPGREP_PINS;
   const build = {
     status: "built-awaiting-compatibility-and-binskim",
     arch: "x64",
     target: "x86_64-pc-windows-msvc",
-    source: { revision: p.sourceCommit },
+    source: {
+      revision: p.sourceCommit,
+      pcre2: { version: pcre.version, archiveSha256: pcre.archiveSha256, sha256: "1".repeat(64) },
+    },
+    outputs: { executableSha256: "2".repeat(64) },
     security: {
       pcre2: {
-        version: "10.43",
-        advisories: [{ id: "GHSA-r9hj-j2rw-4q3m", status: "patched", regressionStatus: "passed" }],
+        version: pcre.version,
+        advisories: [
+          {
+            id: "GHSA-r9hj-j2rw-4q3m",
+            status: "patched",
+            regressionStatus: "not-run",
+            acceptance: "official-updated-release-standard-regression-and-native-cli",
+          },
+        ],
+        standardRegression: {
+          status: "passed",
+          version: pcre.version,
+          archiveSha256: pcre.archiveSha256,
+          sourceEvidenceSha256: "1".repeat(64),
+          candidateSha256: "2".repeat(64),
+          nativePlatform: "win32",
+          nativeArch: "x64",
+          tests: ["pcre2_test_bat", "pcre2_grep_test_bat", "pcre2_jit_test", "pcre2posix_test"],
+        },
+        upstreamTests: {
+          status: "passed",
+          sourceEvidenceSha256: "1".repeat(64),
+          candidateSha256: "2".repeat(64),
+        },
       },
     },
     toolchain: { commit: p.rustCommit, manifestSha256: p.rustManifestSha256 },
@@ -165,13 +193,24 @@ test("the final candidate seal rejects incomplete runtime material and unverifie
       panicStrategy: "unwind",
       rustcBootstrap: false,
       stdArtifact: { fresh: false },
-      panicArtifact: { target: { name: "panic_unwind" } },
+      panicArtifact: { target: { name: "panic_unwind" }, fresh: false },
+      rustFlags: createPublicWindowsRipgrepPlan({
+        arch: "x64",
+        hostPlatform: "win32",
+        hostArch: "x64",
+        env: {},
+      }).rustFlags,
     },
   };
   const compatibility = {
     nativePlatform: "win32",
     nativeArch: "x64",
-    cases: Array.from({ length: 11 }, () => ({ passed: true })),
+    candidateSha256: "2".repeat(64),
+    cases: RIPGREP_COMPATIBILITY_CASES.map((entry) => ({
+      name: entry.name,
+      status: entry.code,
+      passed: true,
+    })),
   };
   const materials = {
     status: "complete",
@@ -197,6 +236,14 @@ test("the final candidate seal rejects incomplete runtime material and unverifie
       pcre2: {
         version: "10.43",
         advisories: [{ id: "GHSA-r9hj-j2rw-4q3m", status: "patched", regressionStatus: "not-run" }],
+      },
+    },
+    { pcre2: { ...build.security.pcre2, standardRegression: undefined } },
+    { pcre2: { ...build.security.pcre2, upstreamTests: { status: "not-run" } } },
+    {
+      pcre2: {
+        ...build.security.pcre2,
+        advisories: [{ ...build.security.pcre2.advisories[0], regressionStatus: "passed" }],
       },
     },
   ])

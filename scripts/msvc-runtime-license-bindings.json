@@ -1,5 +1,60 @@
 {
   "schemaVersion": 1,
-  "scope": "Exact installed Visual Studio/MSVC/SDK version and static Spectre library hashes must be reviewed against applicable publisher EULA and redistribution originals. File count alone is not proof. Bindings remain empty until actual Windows evidence is available.",
-  "bindings": []
+  "scope": "Exact actual IDE/toolset/SDK/release Spectre hashes plus applicable publisher materials. Unmatched builds remain incomplete. This records engineering evidence and does not provide a general legal certification.",
+  "publisherNotices": [
+    {
+      "id": "vs2022-eula",
+      "source": "https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Enterprise-Professional-License-EN.docx",
+      "originalSource": "https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Enterprise-Professional-License-EN.docx",
+      "extraction": "Word document.xml paragraphs and text runs in document order",
+      "file": "msvc-license-snapshots/3f8ed5a873fcea9e41b0f7bba1b39c284a7a986405ca335c5f446cece0d86c4a.txt",
+      "sha256": "3f8ed5a873fcea9e41b0f7bba1b39c284a7a986405ca335c5f446cece0d86c4a",
+      "originalFile": "msvc-license-snapshots/9c0cd52b20db9d081854c75bd1b50c75514b8f8cb09c8cad15e89d90b97b5bf3.docx",
+      "originalSha256": "9c0cd52b20db9d081854c75bd1b50c75514b8f8cb09c8cad15e89d90b97b5bf3"
+    },
+    {
+      "id": "vs2022-redist",
+      "source": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+      "originalSource": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+      "extraction": "All nonempty HTML text nodes in document order; raw original retained",
+      "file": "msvc-license-snapshots/62d89109962de3c77a7b693fc3ecb5ad70ba3e27b8d9cbb6d33290ba29c52cef.txt",
+      "sha256": "62d89109962de3c77a7b693fc3ecb5ad70ba3e27b8d9cbb6d33290ba29c52cef",
+      "originalFile": "msvc-license-snapshots/37bdedf9831ba710ba4c37afcc51adeb193d630f7ec5cb2dffc350bec185511e.html.txt",
+      "originalSha256": "37bdedf9831ba710ba4c37afcc51adeb193d630f7ec5cb2dffc350bec185511e"
+    }
+  ],
+  "bindings": [
+    {
+      "visualStudioVersion": "17.14.37710.0",
+      "vcToolsVersion": "14.44.35207",
+      "windowsSdkVersion": "10.0.26100.0\\",
+      "spectreLibraries": {
+        "libcmt.lib": "992eea87c12796f8b3d81e02cc225288d852553013ca5e3048b2d5fee96cf7c2",
+        "libvcruntime.lib": "2d5f365a2d82d04c4b4f1a3c2cfae7fcb2478b318517cb31237c6b5711d3b1a0",
+        "libcpmt.lib": "1f83413e85ad2e8236ef3b9d12672ed94b48bc777ac3d2effc8cc274e2441c2d"
+      },
+      "requiredNotices": [
+        {
+          "source": "https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Enterprise-Professional-License-EN.docx",
+          "sha256": "3f8ed5a873fcea9e41b0f7bba1b39c284a7a986405ca335c5f446cece0d86c4a"
+        },
+        {
+          "source": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+          "sha256": "62d89109962de3c77a7b693fc3ecb5ad70ba3e27b8d9cbb6d33290ba29c52cef"
+        }
+      ],
+      "publisherReview": {
+        "eula": "Visual Studio 2022 Enterprise/Professional EULA Section 5; original DOCX and full text are retained.",
+        "redistribution": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution; retain the publisher distribution conditions and file list.",
+        "staticLinkBasis": "Microsoft CRT library features (https://learn.microsoft.com/en-us/cpp/c-runtime-library/crt-library-features?view=msvc-170) documents release libcmt/libvcruntime/libcpmt static /MT linkage; Deployment Concepts (https://learn.microsoft.com/en-us/cpp/windows/deployment-concepts?view=msvc-170) documents application deployment with static CRT. Debug CRT and separate DLL redistribution are outside this build."
+      },
+      "buildEvidence": {
+        "runId": 38530696328,
+        "jobId": 115741725814,
+        "commit": "2e558e6b8e4b97cd9946cb5c3cc9ea6701cd7999",
+        "artifactDigest": "sha256:f9512725fcc4cad182ea1f627d33fdf96ad790e5188c88504216b7fa757355e7",
+        "scope": "Exact x64 toolset and release Spectre files, not an ARM or future image binding."
+      }
+    }
+  ]
 }
