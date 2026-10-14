@@ -8,7 +8,7 @@
 - Electron 的锁定、开发验证和最终发布版本一致；同步上游后再次执行生产依赖审计与原有发布契约测试，已有失败和新增失败分别报告，不删除测试或降低门禁。
 - 上游新增消费方同样使用安全版本的 MCP client；已不被生产源码使用的 forge 和 shadcn CLI 不得因清单取并集重新进入生产闭包。Share UI 已复用 UI 的静态样式，无需再次安装 shadcn CLI。网络栈按公告更新 undici 6 系列，保留公开接口。
 - GB2312 文件为字节级编码测试数据，不是可执行源码：使用 `.fixture` 扩展名保存原始字节，测试仍复制到临时 `.js` 路径验证解码和写回，不通过扩大 lint 排除范围绕过非法 UTF-8。
-- 上游将同名 CA 单测改为 Vitest 时，原有 Node 安全验收另存为 `appCaCertSecurity.test.ts` 并继续进入 Node CI 命令；保留上游 Vitest 单测。安全验收继续验证 RSA 位数、自签验签、私钥匹配、十年有效期、TLS 可用性及持久化身份复用。
+- 上游将同名 CA 单测改为 Vitest 时，原有 Node 安全验收另存为原生 ESM 的 `appCaCertSecurity.test.mts` 并继续进入 Node CI 命令，避免被 Vitest 的 `*.test.ts` 清单误收；保留上游 Vitest 单测。安全验收继续验证 RSA 位数、自签验签、私钥匹配、十年有效期、TLS 可用性及持久化身份复用。
 
 - 本次正式发布必须消除 `pnpm audit --prod --audit-level=high` 中的 high/critical 报告。按公告修复版本更新依赖，优先保留主版本；Electron 保留 41 系列并更新到 41.10.7。
 - electron-builder 的 `electronVersion` 必须直接使用桌面 package.json 中的固定版本；通过加载真实打包配置的测试校验两者一致，禁止打包配置中的旧硬编码绕过已更新的锁文件。

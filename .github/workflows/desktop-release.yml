@@ -78,7 +78,7 @@ jobs:
           packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
-          packages/services/test/appCaCertSecurity.test.ts
+          packages/services/test/appCaCertSecurity.test.mts
           scripts/test/dependencySecurity.test.ts
           scripts/test/mcpOAuthIssuer.test.ts
       - name: Dependency release gate
