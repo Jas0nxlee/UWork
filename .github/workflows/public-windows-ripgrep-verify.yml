@@ -1,0 +1,112 @@
+name: Public Windows ripgrep compatibility candidate
+
+on:
+  push:
+    branches: [codex/pr4-ripgrep-verify]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-ripgrep-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - run: node --test scripts/test/public-windows-ripgrep.test.mjs scripts/test/windows-ripgrep-license-materials.test.mjs
+
+  build-and-verify:
+    needs: contracts
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-2022
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+          architecture: ${{ matrix.arch }}
+      - name: Bind native MSVC and Spectre library environment
+        run: |
+          $arch = '${{ matrix.arch }}'
+          if ((node -p "process.arch") -ne $arch) { throw 'Runner Node architecture is not native' }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $component = if ($arch -eq 'arm64') { 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' } else { 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' }
+          $installation = & $vswhere -latest -products '*' -requires $component -property installationPath
+          if (-not $installation) { throw 'MSVC installation was not found' }
+          $version = (& $vswhere -latest -products '*' -requires $component -property installationVersion)
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "UWORK_VS_INSTALLATION_VERSION=$version"
+          $setup = "`"$installation\Common7\Tools\VsDevCmd.bat`" -no_logo -vcvars_ver=14.44 -host_arch=$arch -arch=$arch >nul && set"
+          $values = @{}
+          & cmd.exe /d /s /c $setup | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { $values[$matches[1]] = $matches[2] }
+          }
+          $spectre = Join-Path $values['VCToolsInstallDir'] "lib\spectre\$arch"
+          if (-not (Test-Path $spectre)) { throw 'Required native Spectre-mitigated CRT libraries are missing' }
+          $values['LIB'] = "$spectre;$($values['LIB'])"
+          foreach ($key in @('PATH','LIB','LIBPATH','INCLUDE','VSINSTALLDIR','VCINSTALLDIR','VCToolsInstallDir','VCToolsVersion','WindowsSdkDir','WindowsSDKVersion','UniversalCRTSdkDir','WindowsLibPath','WindowsSdkBinPath','VSCMD_ARG_TGT_ARCH')) {
+            if ($values.ContainsKey($key)) { Add-Content -LiteralPath $env:GITHUB_ENV -Value "$key=$($values[$key])" }
+          }
+      - name: Build original rg source and matching public std
+        run: node scripts/build-public-windows-ripgrep.mjs --arch=${{ matrix.arch }}
+      - name: Compare actual CLI behavior with the pinned original binary
+        if: ${{ always() && hashFiles(format('.tmp/public-windows-ripgrep/{0}/artifacts/rg.exe', matrix.arch)) != '' }}
+        run: >-
+          node scripts/test-public-windows-ripgrep-compatibility.mjs
+          --arch=${{ matrix.arch }}
+          --candidate=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts/rg.exe
+          --baseline-archive=apps/zcode-cli/dependencies/native-search/ripgrep-v14.1.1-1/ripgrep-v14.1.1-1-${{ matrix.target }}.zip
+          --output-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts
+      - name: Enforce complete BinSkim analysis
+        if: ${{ always() && hashFiles(format('.tmp/public-windows-ripgrep/{0}/artifacts/rg.exe', matrix.arch)) != '' }}
+        run: >-
+          node scripts/run-public-windows-ripgrep-binskim.mjs
+          --arch=${{ matrix.arch }}
+          --binary=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts/rg.exe
+          --work-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/binskim
+          --output-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts
+      - name: Collect complete source-bound license material
+        if: always()
+        run: >-
+          node scripts/collect-windows-ripgrep-license-materials.mjs
+          --source-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/work/source
+          --cargo-home=.tmp/public-windows-ripgrep/${{ matrix.arch }}/work/cargo-home
+          --rustup-home=.tmp/public-windows-ripgrep/${{ matrix.arch }}/work/rustup-home
+          --toolchain=nightly-2025-06-26
+          --target=${{ matrix.target }}
+          --output-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts/materials
+          --build-manifest=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts/build-evidence.json
+      - name: Seal the fully verified candidate without promotion
+        run: node scripts/verify-public-windows-ripgrep-candidate.mjs --output-dir=.tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts
+      - name: Preserve candidate and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: public-ripgrep-${{ matrix.arch }}
+          path: .tmp/public-windows-ripgrep/${{ matrix.arch }}/artifacts
+          if-no-files-found: error
+          retention-days: 14

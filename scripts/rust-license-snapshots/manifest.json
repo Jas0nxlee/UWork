@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "revision": "0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa",
+  "scope": "Original same-commit Rust project COPYRIGHT and complete LICENSES directory. License corpus is conservative source/toolchain material, not a claim every license applies to the executable.",
+  "records": [
+    {
+      "path": "COPYRIGHT",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/COPYRIGHT",
+      "snapshot": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af.txt",
+      "sha256": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af",
+      "bytes": 1571,
+      "gitBlobSha1": "4dad74f234eaaaa3c311ca031216e16fc9c4e940"
+    },
+    {
+      "path": "LICENSE-MIT",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSE-MIT",
+      "snapshot": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1.txt",
+      "sha256": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+      "bytes": 1068,
+      "gitBlobSha1": "a2070c4be7acd5316f8d0357ca3c12419a2f3c62"
+    },
+    {
+      "path": "LICENSE-APACHE",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSE-APACHE",
+      "snapshot": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+      "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+      "bytes": 9723,
+      "gitBlobSha1": "1b5ec8b78e237b5c3b3d812a7c0a6589d0f7161d"
+    },
+    {
+      "path": "LICENSES/Apache-2.0.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/Apache-2.0.txt",
+      "snapshot": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+      "bytes": 10280,
+      "gitBlobSha1": "137069b823873b8bcf42979bcf8e9371052d26a2"
+    },
+    {
+      "path": "LICENSES/BSD-2-Clause.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/BSD-2-Clause.txt",
+      "snapshot": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df.txt",
+      "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df",
+      "bytes": 1267,
+      "gitBlobSha1": "5f662b354cd40cd5339d5aa05d74b15405138230"
+    },
+    {
+      "path": "LICENSES/CC-BY-SA-4.0.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/CC-BY-SA-4.0.txt",
+      "snapshot": "23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2.txt",
+      "sha256": "23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2",
+      "bytes": 20137,
+      "gitBlobSha1": "7d4f96c54aa155a17387e64501c50b6a0469932c"
+    },
+    {
+      "path": "LICENSES/GCC-exception-3.1.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/GCC-exception-3.1.txt",
+      "snapshot": "a3966c9410ef94a1efbfa9ec04e9c1994026a70623fbf0885ce36737bfba3b54.txt",
+      "sha256": "a3966c9410ef94a1efbfa9ec04e9c1994026a70623fbf0885ce36737bfba3b54",
+      "bytes": 3320,
+      "gitBlobSha1": "eecede4d0707e2b8ff69c24c5c0160f00ada80e9"
+    },
+    {
+      "path": "LICENSES/GPL-2.0-only.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/GPL-2.0-only.txt",
+      "snapshot": "54b212ba1f97f6948fa5486239ab505dd820b02e50cbfd296b4062c8609a70af.txt",
+      "sha256": "54b212ba1f97f6948fa5486239ab505dd820b02e50cbfd296b4062c8609a70af",
+      "bytes": 17642,
+      "gitBlobSha1": "492485e09b411a53771ce08b50cfc4cb1bf4edde"
+    },
+    {
+      "path": "LICENSES/GPL-3.0-or-later.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/GPL-3.0-or-later.txt",
+      "snapshot": "05315fce6c35f79b8a35454828995fa26336f235895ac64557abc028f4ffcea2.txt",
+      "sha256": "05315fce6c35f79b8a35454828995fa26336f235895ac64557abc028f4ffcea2",
+      "bytes": 34795,
+      "gitBlobSha1": "37b6b8e91b85e34ac07f77bb6d5d9f90626f8d60"
+    },
+    {
+      "path": "LICENSES/ISC.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/ISC.txt",
+      "snapshot": "0ff61769b238634e042ab759dddfd104a8e69d091e3600ae3410e401a6164381.txt",
+      "sha256": "0ff61769b238634e042ab759dddfd104a8e69d091e3600ae3410e401a6164381",
+      "bytes": 730,
+      "gitBlobSha1": "6f41c8c63b96e0460597a8dc1255d9c7a65482fa"
+    },
+    {
+      "path": "LICENSES/LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/LLVM-exception.txt",
+      "snapshot": "e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e.txt",
+      "sha256": "e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e",
+      "bytes": 919,
+      "gitBlobSha1": "fa4b725a0ee50ef723ce5292865e54de7b0bfca4"
+    },
+    {
+      "path": "LICENSES/MIT.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/MIT.txt",
+      "snapshot": "b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0.txt",
+      "sha256": "b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0",
+      "bytes": 1078,
+      "gitBlobSha1": "2071b23b0e08594ea6bc99ac71129ef992abf498"
+    },
+    {
+      "path": "LICENSES/NCSA.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/NCSA.txt",
+      "snapshot": "39cb0234065c92b9e6cee3830cbb52b1aa289aa8fe9ba2e66730fec5cf05c630.txt",
+      "sha256": "39cb0234065c92b9e6cee3830cbb52b1aa289aa8fe9ba2e66730fec5cf05c630",
+      "bytes": 1676,
+      "gitBlobSha1": "bb193323bf615d67c591d677636dfdcfba6ec7ff"
+    },
+    {
+      "path": "LICENSES/OFL-1.1.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/OFL-1.1.txt",
+      "snapshot": "8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd.txt",
+      "sha256": "8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd",
+      "bytes": 4016,
+      "gitBlobSha1": "6fe84ee21ebe5d2b54dc63b53b4d5c404c083409"
+    },
+    {
+      "path": "LICENSES/Unicode-3.0.txt",
+      "source": "https://raw.githubusercontent.com/rust-lang/rust/0fa4ec6cde46fa17ab07acb5531cfe0dc1349ffa/LICENSES/Unicode-3.0.txt",
+      "snapshot": "f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443.txt",
+      "sha256": "f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443",
+      "bytes": 1995,
+      "gitBlobSha1": "ee8e69b233293872fcb4d6d4930ec196b63626e7"
+    }
+  ]
+}

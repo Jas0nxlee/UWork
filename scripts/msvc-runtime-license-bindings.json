@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "scope": "Exact installed Visual Studio/MSVC/SDK version and static Spectre library hashes must be reviewed against applicable publisher EULA and redistribution originals. File count alone is not proof. Bindings remain empty until actual Windows evidence is available.",
+  "bindings": []
+}
