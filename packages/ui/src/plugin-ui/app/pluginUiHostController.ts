@@ -24,6 +24,7 @@ import type {
 import { runPluginUiHostTeardown } from "./pluginUiHostTeardown.js";
 import { wirePluginUiInteractions } from "./pluginUiInteractionPorts.js";
 import { createPluginUiResourceSubscriptions } from "./pluginUiResourceSubscriptions.js";
+import { retryPluginUiWarmup } from "./pluginUiWarmupRetry.js";
 
 export type {
   PluginUiHostController,
@@ -239,16 +240,29 @@ export function createPluginUiHostController(
         try {
           const ownerWebContentsId = await deps.platform.getOwnerWebContentsId();
           if (disposed) return;
-          const prepared = await deps.bridge.prepareSandbox({
-            ...baseScope(),
-            scopeId: buildPluginSandboxScopeId(deps.scope.scope),
-            resourceUri: deps.presentation.resourceUri,
-            ownerWebContentsId,
-            ...(deps.presentation.csp ? { csp: deps.presentation.csp } : {}),
-            ...(deps.presentation.prefersBorder !== undefined
-              ? { prefersBorder: deps.presentation.prefersBorder }
-              : {}),
-          });
+          // 冷启动恢复任务时连接还没登记：-32001 是暖启动窗口内的瞬态，退避重试而不是让用户手点重试。
+          const prepared = await retryPluginUiWarmup(
+            () =>
+              deps.bridge.prepareSandbox({
+                ...baseScope(),
+                scopeId: buildPluginSandboxScopeId(deps.scope.scope),
+                resourceUri: deps.presentation.resourceUri,
+                ownerWebContentsId,
+                ...(deps.presentation.csp ? { csp: deps.presentation.csp } : {}),
+                ...(deps.presentation.prefersBorder !== undefined
+                  ? { prefersBorder: deps.presentation.prefersBorder }
+                  : {}),
+              }),
+            {
+              isDisposed: () => disposed,
+              onRetry: (attempt, delayMs, error) =>
+                deps.log?.("[plugin-ui] MCP app connection not ready, retrying prepare", {
+                  attempt,
+                  delayMs,
+                  message: error instanceof Error ? error.message : String(error),
+                }),
+            },
+          );
           // prepare 已在 Host/Main 完成登记时，卸载不能只忽略回包，否则沙箱无人释放。
           if (disposed) {
             await deps.bridge.closeInstance({ ...baseScope(), instance: prepared.instance });
