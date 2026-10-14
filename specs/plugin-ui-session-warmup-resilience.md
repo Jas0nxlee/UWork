@@ -46,5 +46,12 @@
 ## 验证记录
 
 - 2026-10-14 真机复现与时间线见上（用户报告"刚开始 unavailable，需要点击一下 retry"）。
-- 单测：`pnpm --filter @zcode/ui exec vitest run src/plugin-ui/app/pluginUiWarmupRetry.test.ts` —— 待补。
-- A5 真机：待补。
+- 单测（6/6 通过，`pnpm --filter @zcode/ui exec vitest run src/plugin-ui/app/pluginUiWarmupRetry.test.ts`）：
+  A1 两次 -32001 后成功且退避为 250/500ms；A2 非瞬态一次即抛、不等待；A3 预算用尽共 6 次调用后抛出；
+  A4 `isDisposed` 为真不多等；另两条覆盖"等待期间被释放"与瞬态判定（错误码/文案）。
+- 根 `pnpm typecheck` 0 错误（`tsc -b` 全清单，含 `packages/ui`）。
+- **A5 真机通过（2026-10-14 21:41 冷启动）**：重启实例后恢复带插件卡片的任务——`prepareSandbox FAIL -32001` 发生 1 次，
+  日志出现 1 次 `[plugin-ui] MCP app connection not ready, retrying prepare`，随后 `phase: 'mounted'` 1 次；
+  `[plugin-ui] host failed` 0 次、`physical assembly rejected` 0 次。用户侧无需再手点重试。
+- 同轮顺带确认：`fault.subscription.recoveryFailed` 与本修复无关（成因是在运行中的实例下切分支导致的渲染端/host 混装，
+  冷启动即清除，会话数据未损坏）。
