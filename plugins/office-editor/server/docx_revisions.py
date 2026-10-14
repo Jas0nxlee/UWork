@@ -22,6 +22,10 @@ from xml.etree import ElementTree as ET
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W = f"{{{W_NS}}}"
 DOCUMENT_PART = "word/document.xml"
+# 宿主对工具结果有字节上限（content 32 KiB / structuredContent 64 KiB），
+# 实测每条修订约 0.6 KiB：25 条 ≈ 16 KiB，40 条约 23 KiB（留出安全余量）。
+DEFAULT_PAGE_SIZE = 25
+MAX_PAGE_SIZE = 40
 COMMENTS_PART = "word/comments.xml"
 
 
@@ -50,7 +54,7 @@ def _load(path: str) -> tuple[zipfile.ZipFile, ET.Element, str]:
 
 CONTEXT_BEFORE_CHARS = 60
 CONTEXT_AFTER_CHARS = 60
-PARAGRAPH_TEXT_CHARS = 200
+PARAGRAPH_TEXT_CHARS = 120
 HEADING_STYLE_PATTERN = re.compile(r"^(?:heading\s*(\d+)|标题\s*(\d+)|(\d+))$", re.IGNORECASE)
 
 
@@ -165,8 +169,20 @@ def _snippet(text: str, limit: int = 80) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
-def list_revisions(path: str) -> dict:
-    """列出文档里的修订与批注。返回 {revisions: [...], comments: [...], counts: {...}}。"""
+# 解析缓存：大文档（几 MB document.xml、上千条修订）下每次翻页/刷新都重解析是不可接受的。
+# 缓存键含 size 与 mtime_ns，写回后自动失效（原子替换会换 inode，run 内部也会清）。
+_parse_cache: dict[tuple[str, int, int], tuple[list[dict], list[dict]]] = {}
+_PARSE_CACHE_LIMIT = 4
+
+
+def _parse(path: str) -> tuple[list[dict], list[dict]]:
+    """返回 (revisions, comments)，按文件大小+mtime 缓存。"""
+    absolute = os.path.abspath(path)
+    stat = os.stat(path)
+    key = (absolute, stat.st_size, stat.st_mtime_ns)
+    hit = _parse_cache.get(key)
+    if hit is not None:
+        return hit
     archive, root, _ = _load(path)
     try:
         revisions = _collect_revisions(root)
@@ -179,20 +195,63 @@ def list_revisions(path: str) -> dict:
                         "id": element.get(f"{W}id", ""),
                         "author": element.get(f"{W}author", ""),
                         "date": element.get(f"{W}date", ""),
-                        "text": _snippet(_text_of(element, "t")),
+                        "text": _snippet(_text_of(element, "t"), 200),
                     }
                 )
-        return {
-            "revisions": revisions,
-            "comments": comments,
-            "counts": {
-                "insert": sum(1 for item in revisions if item["kind"] == "insert"),
-                "delete": sum(1 for item in revisions if item["kind"] == "delete"),
-                "comments": len(comments),
-            },
-        }
     finally:
         archive.close()
+    if len(_parse_cache) >= _PARSE_CACHE_LIMIT:
+        _parse_cache.clear()
+    _parse_cache[key] = (revisions, comments)
+    return revisions, comments
+
+
+def _page(items: list, offset: int, limit: int) -> dict:
+    total = len(items)
+    start = max(int(offset), 0)
+    size = max(min(int(limit), MAX_PAGE_SIZE), 1)
+    window = items[start : start + size]
+    return {
+        "items": window,
+        "total": total,
+        "offset": start,
+        "limit": size,
+        "hasMore": start + len(window) < total,
+        "nextOffset": start + len(window),
+    }
+
+
+def list_revisions(
+    path: str, *, offset: int = 0, limit: int = DEFAULT_PAGE_SIZE, kind: str | None = None
+) -> dict:
+    """分页列出修订。总数与分布始终给全量，仅条目按页返回——单次返回体必须远小于宿主上限。"""
+    revisions, comments = _parse(path)
+    filtered = revisions if kind in (None, "") else [item for item in revisions if item["kind"] == kind]
+    page = _page(filtered, offset, limit)
+    page["counts"] = {
+        "insert": sum(1 for item in revisions if item["kind"] == "insert"),
+        "delete": sum(1 for item in revisions if item["kind"] == "delete"),
+        "comments": len(comments),
+    }
+    page["kind"] = kind or None
+    return page
+
+
+def list_comments(path: str, *, offset: int = 0, limit: int = DEFAULT_PAGE_SIZE) -> dict:
+    """分页列出批注（只读）。"""
+    _, comments = _parse(path)
+    page = _page(comments, offset, limit)
+    page["total"] = len(comments)
+    return page
+
+
+def revision_counts(path: str) -> dict:
+    revisions, comments = _parse(path)
+    return {
+        "insert": sum(1 for item in revisions if item["kind"] == "insert"),
+        "delete": sum(1 for item in revisions if item["kind"] == "delete"),
+        "comments": len(comments),
+    }
 
 
 def _replace_with_children(parent: ET.Element, element: ET.Element) -> None:
@@ -286,6 +345,8 @@ def resolve_revisions(path: str, action: str, ids: list[str] | None = None) -> d
     if processed["insert"] == 0 and processed["delete"] == 0:
         return {"path": path, "action": action, "processed": processed, "backup": None, "written": False}
 
+    _parse_cache.pop((os.path.abspath(path), 0, 0), None)
+    _parse_cache.clear()  # 写回后全清：简单可靠，解析成本远低于误用陈旧数据的风险
     backup = _unique_backup_path(path)
     shutil.copy2(path, backup)
     _rewrite_document_part(path, _serialize(root))

@@ -147,6 +147,44 @@
         font-size: 11px;
       }
       #empty,
+      #totals {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      #pager,
+      .comments-pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 0 10px;
+        font-size: 12px;
+      }
+      #page-label {
+        color: var(--muted);
+      }
+      #comments {
+        margin-top: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      .comments-head {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .comment {
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+      }
+      .comment-text {
+        margin-bottom: 6px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       #notice {
         color: var(--muted);
         padding: 8px 0;
@@ -166,13 +204,21 @@
     <div id="toolbar">
       <button id="accept-all" disabled>全部接受</button>
       <button id="reject-all" disabled>全部拒绝</button>
+      <button id="comments-toggle" disabled>加载批注</button>
       <button id="refresh" disabled>刷新</button>
+    </div>
+    <div id="totals"></div>
+    <div id="pager" hidden>
+      <button id="prev">上一页</button>
+      <span id="page-label"></span>
+      <button id="next">下一页</button>
     </div>
     <div id="notice" hidden>
       宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
     </div>
     <ul id="list"></ul>
     <div id="empty" hidden>没有待处理的修订。</div>
+    <div id="comments"></div>
     <!--__SCRIPT__-->
   </body>
 </html>

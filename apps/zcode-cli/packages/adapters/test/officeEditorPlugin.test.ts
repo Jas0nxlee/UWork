@@ -113,6 +113,7 @@ test(
       assert.deepEqual(
         tools.tools.map((tool) => tool.name).sort(),
         [
+          "docx_comments_list",
           "docx_current_target",
           "docx_export_pdf",
           "docx_open_editor",

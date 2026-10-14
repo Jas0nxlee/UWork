@@ -19,7 +19,13 @@ import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from docx_revisions import list_revisions, resolve_revisions  # noqa: E402
+from docx_revisions import (  # noqa: E402
+    DEFAULT_PAGE_SIZE,
+    list_comments,
+    list_revisions,
+    revision_counts,
+    resolve_revisions,
+)
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(PLUGIN_ROOT, "ui")
@@ -34,10 +40,29 @@ TOOLS = [
     {
         "name": "docx_revisions_list",
         "title": "列出 Word 修订",
-        "description": "列出 DOCX 里的修订（w:ins/w:del）与批注（只读）。",
+        "description": "分页列出 DOCX 里的修订（w:ins/w:del）：总数始终全量返回，条目按页取（大文档必需）。",
         "inputSchema": {
             "type": "object",
-            "properties": {"path": {"type": "string", "description": "工作区内的 .docx 绝对路径"}},
+            "properties": {
+                "path": {"type": "string", "description": "工作区内的 .docx 绝对路径"},
+                "offset": {"type": "integer", "description": "起始序号（默认 0）"},
+                "limit": {"type": "integer", "description": f"每页条数（默认 {DEFAULT_PAGE_SIZE}，上限 100）"},
+                "kind": {"type": "string", "enum": ["insert", "delete"], "description": "只看插入或删除"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "docx_comments_list",
+        "title": "列出 Word 批注",
+        "description": "分页列出 DOCX 批注（只读）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "offset": {"type": "integer"},
+                "limit": {"type": "integer"},
+            },
             "required": ["path"],
         },
     },
@@ -147,7 +172,21 @@ def _text(payload) -> list[dict]:
 def call_tool(name: str, arguments: dict) -> dict:
     if name == "docx_revisions_list":
         remember_target(arguments["path"])
-        return {"content": _text(list_revisions(arguments["path"]))}
+        payload = list_revisions(
+            arguments["path"],
+            offset=int(arguments.get("offset") or 0),
+            limit=int(arguments.get("limit") or DEFAULT_PAGE_SIZE),
+            kind=arguments.get("kind"),
+        )
+        return {"content": _text(payload), "structuredContent": payload}
+    if name == "docx_comments_list":
+        remember_target(arguments["path"])
+        payload = list_comments(
+            arguments["path"],
+            offset=int(arguments.get("offset") or 0),
+            limit=int(arguments.get("limit") or DEFAULT_PAGE_SIZE),
+        )
+        return {"content": _text(payload), "structuredContent": payload}
     if name == "docx_revisions_resolve":
         result = resolve_revisions(
             arguments["path"], arguments["action"], arguments.get("ids")
@@ -155,6 +194,7 @@ def call_tool(name: str, arguments: dict) -> dict:
         return {"content": _text(result), "structuredContent": result}
     if name == "docx_open_editor":
         payload = remember_target(arguments["path"])
+        payload = {**payload, "counts": revision_counts(arguments["path"])}
         return {
             "content": _text(payload),
             "structuredContent": payload,
