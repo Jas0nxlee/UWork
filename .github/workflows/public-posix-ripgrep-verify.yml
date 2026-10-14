@@ -1,0 +1,85 @@
+name: Public POSIX ripgrep compatibility candidates
+
+on:
+  push:
+    branches: [codex/pr4-ripgrep-verify]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-posix-ripgrep-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+      - run: node --test scripts/test/public-posix-ripgrep.test.mjs scripts/test/ripgrep-pcre2-source.test.mjs scripts/test/public-posix-ripgrep-seal.test.mjs scripts/test/remote-ripgrep-compatibility.test.mjs
+
+  native-build-and-verify:
+    needs: contracts
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin
+            arch: arm64
+            runner: macos-15
+          - platform: darwin
+            arch: x64
+            runner: macos-15-intel
+          - platform: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - platform: linux
+            arch: x64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.0
+          architecture: ${{ matrix.arch }}
+      - name: Bind native musl C compiler and LLVM linker
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools lld
+      - name: Build and verify pinned rg and updated official PCRE2 source
+        run: node scripts/build-public-posix-ripgrep.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Independently seal the native candidate without promotion
+        run: node scripts/verify-public-posix-ripgrep-candidate.mjs --output-dir=.tmp/public-posix-ripgrep/${{ matrix.platform }}-${{ matrix.arch }}/artifacts
+      - name: Verify existing remote Darwin flags against the rg13 baseline
+        if: matrix.platform == 'darwin'
+        run: |
+          if [ '${{ matrix.arch }}' = 'arm64' ]; then
+            remote_rg_archive_arch=aarch64
+          else
+            remote_rg_archive_arch=x86_64
+          fi
+          node scripts/test-remote-ripgrep-compatibility.mjs \
+            --arch=${{ matrix.arch }} \
+            --candidate=.tmp/public-posix-ripgrep/darwin-${{ matrix.arch }}/artifacts/rg \
+            --baseline-archive=apps/zcode-cli/dependencies/native-search/ripgrep-v13.0.0-10/ripgrep-v13.0.0-10-${remote_rg_archive_arch}-apple-darwin.tar.gz \
+            --output-dir=.tmp/public-posix-ripgrep/darwin-${{ matrix.arch }}/artifacts
+      - name: Preserve native candidate and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: public-posix-ripgrep-${{ matrix.platform }}-${{ matrix.arch }}
+          path: .tmp/public-posix-ripgrep/${{ matrix.platform }}-${{ matrix.arch }}/artifacts
+          if-no-files-found: error
+          retention-days: 14

@@ -60,7 +60,7 @@ export function normalizeCompatibilityResult(result, format) {
   return result;
 }
 
-async function invoke(binary, args, cwd, input) {
+export async function invokeRipgrep(binary, args, cwd, input) {
   const child = spawn(binary, args, { cwd, shell: false, stdio: ["pipe", "pipe", "pipe"] });
   const stdout = [];
   const stderr = [];
@@ -138,12 +138,7 @@ export const RIPGREP_COMPATIBILITY_CASES = Object.freeze([
   { name: "invalid regex exit 2", args: ["[", "."], code: 2, format: "text" },
 ]);
 
-export async function runRipgrepCompatibility({
-  candidate,
-  baseline,
-  fixtureDir: fixture,
-  requireJit = true,
-}) {
+export async function prepareRipgrepCompatibilityFixture(fixture) {
   await mkdir(join(fixture, "子目录"), { recursive: true });
   await execute("git", ["init", "--quiet", fixture]);
   for (const [name, text] of Object.entries({
@@ -155,7 +150,16 @@ export async function runRipgrepCompatibility({
     "crlf.txt": "needle\r\n中文 result\r\n",
   }))
     await writeFile(join(fixture, name), text);
-  const version = await invoke(candidate, ["--version"], fixture);
+}
+
+export async function runRipgrepCompatibility({
+  candidate,
+  baseline,
+  fixtureDir: fixture,
+  requireJit = true,
+}) {
+  await prepareRipgrepCompatibilityFixture(fixture);
+  const version = await invokeRipgrep(candidate, ["--version"], fixture);
   assert.equal(version.code, 0);
   assert.equal(
     version.stdout.split(/\r?\n/u)[0],
@@ -166,8 +170,8 @@ export async function runRipgrepCompatibility({
   assert.match(version.stdout, requireJit ? /JIT is available/u : /JIT is not available/u);
   const results = [];
   for (const entry of RIPGREP_COMPATIBILITY_CASES) {
-    const old = await invoke(baseline, entry.args, fixture, entry.input);
-    const current = await invoke(candidate, entry.args, fixture, entry.input);
+    const old = await invokeRipgrep(baseline, entry.args, fixture, entry.input);
+    const current = await invokeRipgrep(candidate, entry.args, fixture, entry.input);
     assert.equal(old.code, entry.code, `${entry.name}: baseline status`);
     assert.equal(current.code, entry.code, `${entry.name}: candidate status`);
     assert.deepEqual(
