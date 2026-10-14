@@ -1,44 +1,30 @@
-# 上游 v3.15.1 合并状态（2026-10-12，WIP）
+# 上游 v3.15.1 同步修复状态（2026-10-14，WIP）
 
-上游 `zai-org/ZCode` 于 2026-10-10 发布整树快照 `aac4755`（v3.15.1），本分支把它并进 `uwork`。
-**状态：`pnpm typecheck` 已全绿（0 错误）**，依赖可安装。但仍有未完成项：上游新增的远控 UI 未移植、生成物未重生成、单测未跑完（见下）。
+本 PR 将上游 `aac4755` 的 v3.15.1 快照同步到 UWork。机械合并和类型检查不等于产品验收；本轮修复审查发现的发布、迁移和远控接缝，仍保留未收敛的全量测试与严格许可材料缺口。
 
-## 一、已完成的机械性合并
+## 已修复
 
-| 内容 | 结果 |
-| --- | --- |
-| 冲突文件 | 100 项（62 内容冲突 + 20 我们裁剪/上游改 + 15 上游删除 + 2 双方新增 + 1 改名），全部解决，无残留冲突标记 |
-| 上游新增 | 9940 个文件（含 `packages/android`、`apps/dev-docs`、`packages/stream-animate`、`packages/web`、`packages/e2e-report`、`packages/client` 等我们此前整棵缺失的包） |
-| 文件更新 | 1819 个；上游删除 6 个；改名 1 个（`profile-frontmatter.ts` → `packages/shared/src/subagent-profile-frontmatter.ts`） |
-| 依赖 | `pnpm install` 通过（+863/−325），`pnpm-lock.yaml` 由上游版本重算 |
+- 依赖策略收口到 `pnpm-workspace.yaml`，重生成根锁文件及 packageExtensions 校验和，移除快照中的旧 npm 锁。保留安全解压与六份有效补丁；Electron 开发、锁文件和发布均使用 41.10.7。生产依赖审计 high=0、critical=0。
+- 恢复打包配置中的企业身份公开配置路径、存在性和发布必需校验；Windows 安装清单独立于 Computer Use producer，placeholder 包仍生成升级所有权清单。
+- 数据目录迁移重新委托唯一 UWork 全根迁移实现，保留冲突拒绝、原子激活与元数据路径重定位，禁止误复制另一应用的 `.zcode/v2`。
+- 套餐兼容服务恢复既有 provider 无关的退役边界，并实现上游新接口。动态工作流使用本地 offer 和当前用户选择，UCAS 初始化不等待上游 client/configs。
+- 手机三种 Root 显式使用企业身份只读投影，修复 Root 到 shell/sidebar 的 switcher、导航和 transport 状态透传，恢复桌面任务索引与重连接线。桌面 continuous、手机 replayable 的运行时所有者不变；手机不重复启动职业或迁移引导。
+- 补齐缺失中文词条并保留现有 UWork 定制，Web 图标复用既有 UWork 资产。GB2312 编码夹具改用数据扩展名，保留字节和实际读写测试，没有扩大 lint 排除范围。
+- 补齐 safe-extract-zip 与 Gen UI 公共契约验收。许可生成器读取 workspace 唯一补丁策略；核验 rrweb 2.0.0 精确源码许可并重生成通知及 inventory。
 
-## 二、采用的处理策略（按类）
+## 已执行验证
 
-1. **元数据/清单**：`package.json` 等用 JSON 三方合并（依赖取并集；版本、我们钉死的依赖以我方为准）；`pnpm-lock.yaml` 取上游后由 `pnpm install` 重算。
-2. **我们的品牌与数据根**：`ZCode→UWork`、`~/.zcode→~/.uwork` 等改名映射按文件推导后套回上游新文本（`services/node.ts`、`paths.ts`、桌面主进程、server、zcode-agent 等）。
-3. **底层/接线类 18 个文件**：三方合并（base + 我方补丁 + 上游补丁），冲突处取上游结构，再手工接回我方定制。
-4. **我们故意分叉的产品文件**：保留我方实现 —— `ModelProviderSection.tsx`、AIHub 插件市场三态（`PluginStoreListView/SourcesDialog`）、`README(.en).md`、`.agents/.../zcode-feature-graph.yaml`。
-5. **删除取舍**：上游删除且我方源码/测试不再引用的文件接受删除（4 个上游测试 + `endpointHostname.ts` + `sessionCreateSource.ts`）；被引用的取回（`deviceMid.ts`、`webThemeSeed.ts`、`armsRumShared.*`、`prompt-trajectory/src/prompt.ts`、我们自有的 `workflow-concurrency-ceiling.ts`、`profile-model-selection.ts`）。
+- Node 24.14.0 / pnpm 10.33.2：frozen 安装、typecheck、lint、全仓架构检查均通过。Lint 仍有已有 warnings，不能称无告警。
+- 桌面 Agent CLI 与完整 Desktop 主进程、preload、renderer 构建通过；未生成五平台安装包。
+- 发布配置、安全解压、真实 ASN.1 ASAR 闭包、补丁与许可生成回归进入 CI；企业身份、网关、AIHub、UWork 路径等 Node CI 验收 129/129 通过。
+- 服务修复回归 Node 10/10、Vitest 95/95；UCAS 装配与夹具回归 32/32，Server 2/2；桌面环境与发布策略回归 89/89，编码适配器 34/34。
+- browser-harness 离线场景覆盖真实 Web main → Root 首页的 390px / 1200px、明暗主题，以及同路径不同 workspace identity 切换、进入聊天、恢复提示和身份只读计数。夹具不连接真实企业微信、外部 relay、SSH 或 Agent 生成，不能当作真实配对验收。
 
-## 三、typecheck 收敛过程（已完成，0 错误）
+## 尚未关闭
 
-从 88 → 76 → 48 → 20 → 16 → 11 → 6 → 2 → 0，做法：
-- 我方**有意裁剪**的文件（侧栏页脚、帮助菜单、侧栏、Root、WorkspaceSidebar）取回我方版本（我们的产品去掉了账号/套餐/coding-plan 入口）；
-- 被上游新代码引用的、我们裁掉的**上游模块**逐个从上游恢复（oauth 系列、codingPlanStatusPanel 系列、`LoginApiKeyForm`、`desktopUpdateMenu`、`AccountConnectionLoss*` 等 19 个文件）；
-- 上游 shell 传入我们侧栏的新 props（`webRemoteControlWorkspaceSwitcher` / `isWebRemoteControl` / `onWebRemoteTaskOpen` / `onWebRemoteTaskSwitchingChange`）暂时"接受但不渲染"——**远控工作区切换 UI 尚未移植**（已知功能缺口，待产品确认是否需要）。
+1. 本轮第一场全量单测报告为 18,075 项：17,518 通过、547 失败、10 跳过。该报告发生在后续中文词条、UCAS 测试夹具和桌面共享 mock 修正前；后续定向通过不能通过减法推定全量通过。最终全量结果以 PR 后续验证记录为准。
+2. 上游测试仍有旧品牌、旧数据根、已裁 OAuth/账号套餐及旧 Footer 假设。需要逐项按 UWork 产品契约修正；不能为了全绿恢复已退役产品功能，或直接删除/跳过失败测试。
+3. 基础许可与声明新鲜度检查通过；严格许可检查仍保留 18 项待核验材料，详见 `third-party/inventory.json` 的 `reviewRequired`。不能据此声称严格合规或可正式发布。
+4. 尚未完成真实手机与桌面配对、三组织扫码/回调以及五平台安装包验收；本轮提交不发布版本，也不执行合并。
 
-## 四、其它校验
-
-- `pnpm typecheck`：**0 错误** ✅
-- `pnpm lint`：1 处 error —— 上游新增的编码夹具 `apps/zcode-cli/tests/gb2312.js` 不是 UTF-8，本机 oxlint 读不了（上游同款配置与文件，非本合并引入）。
-- `pnpm fmt:check`：1 个上游 vendored 文档示例 `docs/electron/docs/fiddles/system/clipboard/copy/index.html` 不通过（内容与上游逐字节相同，非本合并引入）。
-- `pnpm test:unit`：**528 个用例失败**。两类：
-  1. 上游为「我们已裁掉的功能」写的测试（`workspaceSidebar*`、`webRemoteControl*`、`codingPlan*`、`workflowRun*` 等）——这些用例在我们产品里已不适用，需要在后续按"产品裁剪"口径删除或跳过；
-  2. 真需要适配的少数：如 `packages/services/test/providerConfigRuntime.test.ts`（5 例，与数据根/旧配置迁移相关）。
-- 打包与桌面 E2E：未运行。
-
-## 五、需要产品决定的三处（建议由分发仓维护者处理）
-
-1. **企业身份 + 企业网关接线**：`services/node.ts` 里我们的 `enterpriseIdentityAdapter` / ucas-gateway 服务构造与注册，在冲突处被上游结构覆盖（部分仍在）。桌面端企业登录窗口（`desktop/src/main/index.ts`）、`Root.tsx` 的登录入口同理。这些功能必须在上游新结构上重新接回。
-2. **`codingPlanSubscriptionService`**：我方曾把它改成 provider 无关（替换 Zhipu coding-plan），上游版本实现了新的 `ICodingPlanSubscriptionService` 接口（含 `claimManualPlan`、`getBillingDiscount` 等）。本次取上游版本以先满足接口，我方设计是否重做需产品确认。
-3. **生成物**：`THIRD-PARTY-NOTICES.md` / `third-party/inventory.json` 保持上游版本——本地 `node scripts/licenses.mjs notices` 因缺 9 个上游依赖的许可材料而失败（需 CI/发布流程里的 fetch 步骤），发布前必须重生成。
+企业身份只读开关约束手机初始化和切换时的自动身份恢复、登录、退出及自动网关同步；本轮没有将现有设置面板的全部显式 RPC 写权限重新设计为服务端授权规则。

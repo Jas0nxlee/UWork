@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ZCODE_DYNAMIC_WORKFLOW_MODE_ENV, type ApiClient } from "@zcode/shared";
+import {
+  ZCODE_DYNAMIC_WORKFLOW_MODE_ENV,
+  type ApiClient,
+  type DynamicWorkflowMode,
+} from "@zcode/shared";
 import { BigModelCodingPlanSubscriptionProvider } from "../src/coding-plan-subscription/bigmodelCodingPlanSubscriptionProvider.js";
 import { createCodingPlanSubscriptionService } from "../src/coding-plan-subscription/codingPlanSubscriptionService.js";
 
@@ -148,12 +152,12 @@ describe("getDynamicWorkflowClientConfig", () => {
     expect(apiClient.request).not.toHaveBeenCalled();
   });
 
-  it("service 把 options 原样委托给 bigmodel provider", async () => {
+  it("UWork service 默认配置与 forceRefresh 都不查询远端", async () => {
+    vi.stubEnv(ZCODE_DYNAMIC_WORKFLOW_MODE_ENV, "");
     const apiClient: ApiClient = {
-      request: vi
-        .fn()
-        .mockResolvedValueOnce(createConfigsResponse({ mode: "disabled" }))
-        .mockResolvedValueOnce(createConfigsResponse({ mode: "alwaysOn" })),
+      request: vi.fn(async () => {
+        throw new Error("UCAS initialization must not request remote client config");
+      }),
     };
     const service = createCodingPlanSubscriptionService({
       apiClient,
@@ -162,10 +166,60 @@ describe("getDynamicWorkflowClientConfig", () => {
 
     await expect(service.getDynamicWorkflowClientConfig()).resolves.toMatchObject({
       enabled: false,
+      source: "default",
     });
     await expect(
       service.getDynamicWorkflowClientConfig({ forceRefresh: true }),
-    ).resolves.toMatchObject({ enabled: true, source: "remote" });
-    expect(apiClient.request).toHaveBeenCalledTimes(2);
+    ).resolves.toMatchObject({ enabled: false, source: "default" });
+    expect(apiClient.request).not.toHaveBeenCalled();
+  });
+
+  it("UWork service 不等待永不完成的远端请求", async () => {
+    vi.stubEnv(ZCODE_DYNAMIC_WORKFLOW_MODE_ENV, "");
+    const apiClient: ApiClient = {
+      request: vi.fn(() => new Promise<Response>(() => {})),
+    };
+    const service = createCodingPlanSubscriptionService({
+      apiClient,
+      credentialService: { load: vi.fn() },
+    });
+
+    const config = service.getDynamicWorkflowClientConfig();
+    expect(apiClient.request).not.toHaveBeenCalled();
+    await expect(config).resolves.toMatchObject({ enabled: false, source: "default" });
+  });
+
+  it("UWork service 保留本地 offer 且每次读取最新用户选择", async () => {
+    vi.stubEnv(ZCODE_DYNAMIC_WORKFLOW_MODE_ENV, "alwaysOn");
+    let userMode: DynamicWorkflowMode | undefined = "disabled";
+    const credentials = { load: vi.fn() };
+    const apiClient: ApiClient = { request: vi.fn() };
+    const service = createCodingPlanSubscriptionService({
+      apiClient,
+      credentialService: credentials,
+      resolveDynamicWorkflowUserMode: async () => userMode,
+    });
+
+    await expect(service.getDynamicWorkflowClientConfig()).resolves.toMatchObject({
+      offeredMode: "alwaysOn",
+      mode: "disabled",
+      userMode: "disabled",
+      source: "override",
+    });
+    userMode = "onDemand";
+    await expect(service.getDynamicWorkflowClientConfig()).resolves.toMatchObject({
+      offeredMode: "alwaysOn",
+      mode: "onDemand",
+      userMode: "onDemand",
+    });
+    userMode = undefined;
+    await expect(service.getDynamicWorkflowClientConfig()).resolves.toEqual({
+      offeredMode: "alwaysOn",
+      mode: "alwaysOn",
+      enabled: true,
+      source: "override",
+    });
+    expect(apiClient.request).not.toHaveBeenCalled();
+    expect(credentials.load).not.toHaveBeenCalled();
   });
 });

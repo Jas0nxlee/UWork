@@ -1,8 +1,11 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { createUcasTemplateFixture } from "./uworkProviderReleaseFixture.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ProviderConfigMap,
+  UCAS_DEFAULT_MODEL_IDS,
   extractManualModelConfig,
   type AccountProviderConfigSnapshot,
   type ProviderSource,
@@ -47,6 +50,36 @@ class StaticAccountSource implements ProviderSource<AccountProviderConfigSnapsho
 }
 
 describe("ProviderRuntime", () => {
+  it("真实随包 Release 在空数据目录播种唯一 UCAS，不依赖账号源", async () => {
+    const root = await mkdtemp(join(tmpdir(), "uwork-bundled-provider-runtime-"));
+    const runtime = createProviderRuntime({
+      zcodeBuiltinFilePath: fileURLToPath(
+        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+      ),
+      personalFilePath: join(root, "personal.json"),
+      watch: false,
+      personalPollingIntervalMs: false,
+    });
+    try {
+      const view = await runtime.providerSettings.getView();
+      expect(view.providers.map((provider) => provider.providerId)).toEqual(["ucas"]);
+      expect(view.providers[0]?.effectiveConfig).toMatchObject({
+        access: { type: "api-key" },
+        api: { type: "openai-chat-completions", baseUrl: "https://llm.ucas.com.cn:15000/v1" },
+      });
+      const access = view.providers[0]?.effectiveConfig.access;
+      if (access?.type !== "api-key") throw new Error("UCAS must use API key access");
+      expect(access.apiKey).toBeUndefined();
+      expect(view.providers[0]?.models.map((model) => model.modelId)).toEqual(
+        UCAS_DEFAULT_MODEL_IDS,
+      );
+      expect((await runtime.configService.read()).personalProviders.keys()).toEqual(["ucas"]);
+    } finally {
+      runtime.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("Host View 原子返回 Configured Default 解析后的 preferredSelection", async () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-provider-runtime-preferred-"));
     const zcodeBuiltinFilePath = join(root, "zcode-builtin.json");
@@ -60,6 +93,7 @@ describe("ProviderRuntime", () => {
           providerConfigRules: {
             providerRules: [],
             templateRules: [
+              createUcasTemplateFixture(),
               {
                 templateId: "provider-template",
                 templateNameMap: { "en-US": "Provider Template" },
@@ -177,6 +211,8 @@ describe("ProviderRuntime", () => {
     await expect(firstStart).resolves.toBeUndefined();
     expect(configStart).toHaveBeenCalledTimes(2);
     await expect(configRuntime.start()).resolves.toBeUndefined();
+    // 缺少 Key 的 UCAS 已播种到设置事实，但不会作为可执行供应商进入 Registry。
+    expect((await configRuntime.configService.read()).personalProviders.has("ucas")).toBe(true);
     expect(runtime.registryService.getSnapshot()).toMatchObject({ registry: { providers: [] } });
     const initial = runtime.registryService.getSnapshot()!;
     const created = await runtime.providerSettings.createPersonalProvider({
@@ -226,12 +262,18 @@ describe("ProviderRuntime", () => {
       watch: false,
     });
 
-    await expect(
-      Promise.all([runtime.providerSettings.getView(), runtime.modelSelection.getView()]),
-    ).resolves.toEqual([
-      { revision: 1, providerTemplates: [], providerOrder: [], providers: [] },
-      { revision: 1, providers: [] },
+    const [settings, selection] = await Promise.all([
+      runtime.providerSettings.getView(),
+      runtime.modelSelection.getView(),
     ]);
+    // UCAS 播种的配置通知可能合并进首次发布；只要求 Facade 返回当前 Registry 的权威版本。
+    expect(settings.revision).toBe(runtime.registryService.getSnapshot()!.registry.revision);
+    expect(settings.providerTemplates.map((template) => template.templateId)).toEqual(["ucas"]);
+    expect(settings.providerOrder).toEqual(["ucas"]);
+    expect(settings.providers.map((provider) => provider.providerId)).toEqual(["ucas"]);
+    // 模型选择 Facade 有独立的单调 revision；无 Key 时可执行模型视图仍为空。
+    expect(selection.revision).toBeGreaterThan(0);
+    expect(selection.providers).toEqual([]);
 
     runtime.dispose();
   });
@@ -265,7 +307,7 @@ describe("ProviderRuntime", () => {
                 },
               },
             ],
-            templateRules: [],
+            templateRules: [createUcasTemplateFixture()],
           },
           modelConfigRules: {
             modelRules: [
@@ -349,8 +391,10 @@ describe("ProviderRuntime", () => {
         builtinModelIds: ["model-a"],
       },
     });
-    expect(await runtime.modelSelection.getView()).toEqual({
-      revision: 1,
+    // Configured Default 与 UCAS 播种都会更新 Facade 的独立 revision，不能假定与 Registry 相同。
+    const { revision, ...selection } = await runtime.modelSelection.getView();
+    expect(revision).toBeGreaterThan(0);
+    expect(selection).toEqual({
       preferredSelection: {
         providerId: "account-plan",
         modelId: "model-a",
@@ -426,7 +470,7 @@ describe("ProviderRuntime", () => {
                 },
               },
             ],
-            templateRules: [],
+            templateRules: [createUcasTemplateFixture()],
           },
           modelConfigRules: {
             modelRules: [
@@ -668,6 +712,7 @@ describe("ProviderRuntime", () => {
           providerConfigRules: {
             providerRules: [],
             templateRules: [
+              createUcasTemplateFixture(),
               {
                 templateId: "builtin:demo",
                 templateNameMap: { "en-US": "Official Demo" },
@@ -768,7 +813,7 @@ function emptyZCodeBuiltinRelease(modelDefaults: object = {}): object {
     schemaVersion: 1,
     revision: 1,
     config: {
-      providerConfigRules: { providerRules: [], templateRules: [] },
+      providerConfigRules: { providerRules: [], templateRules: [createUcasTemplateFixture()] },
       modelConfigRules: {
         modelRules: [{ modelMatch: ".*", config: modelDefaults }],
         modelApiRules: [],

@@ -2561,7 +2561,8 @@ describe("ZaiCodingPlanSubscriptionProvider (family-aware Team Plan)", () => {
   });
 });
 
-describe("createCodingPlanSubscriptionService (family routing)", () => {
+// UWork 的兼容工厂遵循 custom-providers-only；上游 provider 的网络与 family 行为在上方独立验证。
+describe("createCodingPlanSubscriptionService (retired account boundary)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -2576,7 +2577,7 @@ describe("createCodingPlanSubscriptionService (family routing)", () => {
     };
   }
 
-  it("getEnterprisePricing 缺省 family 时走 bigmodel 域名（向后兼容）", async () => {
+  it("getEnterprisePricing 缺省 family 仍拒绝已退役接口", async () => {
     const requestUrls: string[] = [];
     const apiClient: ApiClient = {
       request: vi.fn(async (input) => {
@@ -2589,55 +2590,52 @@ describe("createCodingPlanSubscriptionService (family routing)", () => {
       credentialService: createCredentialService(),
     });
 
-    await service.getEnterprisePricing({ authenticated: true });
+    await expect(service.getEnterprisePricing({ authenticated: true })).rejects.toThrow("移除");
 
-    expect(requestUrls).toEqual(["https://bigmodel.cn/api/biz/subscription/enterprise/v2/pricing"]);
+    expect(requestUrls).toEqual([]);
   });
 
-  it("getEnterprisePricing family=bigmodel 走 bigmodel 域名 + bigmodel token", async () => {
+  it("getEnterprisePricing family=bigmodel 不恢复历史 token 或请求套餐 API", async () => {
     const apiClient: ApiClient = {
       request: vi.fn(async () => createJsonResponse({ code: 200, data: { productList: [] } })),
     };
+    const credentials = createCredentialService();
     const service = createCodingPlanSubscriptionService({
       apiClient,
-      credentialService: createCredentialService(),
+      credentialService: credentials,
     });
 
-    await service.getEnterprisePricing({
-      authenticated: true,
-      family: "bigmodel",
-    });
+    await expect(
+      service.getEnterprisePricing({
+        authenticated: true,
+        family: "bigmodel",
+      }),
+    ).rejects.toThrow("移除");
 
-    expect(String(vi.mocked(apiClient.request).mock.calls[0]?.[0])).toBe(
-      "https://bigmodel.cn/api/biz/subscription/enterprise/v2/pricing",
-    );
-    expect(vi.mocked(apiClient.request).mock.calls[0]?.[1]).toMatchObject({
-      headers: { Authorization: "bigmodel-token" },
-    });
+    expect(apiClient.request).not.toHaveBeenCalled();
+    expect(credentials.load).not.toHaveBeenCalled();
   });
 
-  it("getEnterprisePricing family=zai 走 zai 域名 + zai token", async () => {
+  it("getEnterprisePricing family=zai 不恢复历史 token 或请求套餐 API", async () => {
     vi.stubEnv("ZAI_BUSINESS_BASE_URL", "");
     const apiClient: ApiClient = {
       request: vi.fn(async () => createJsonResponse({ code: 200, data: { productList: [] } })),
     };
+    const credentials = createCredentialService();
     const service = createCodingPlanSubscriptionService({
       apiClient,
-      credentialService: createCredentialService(),
+      credentialService: credentials,
     });
 
-    await service.getEnterprisePricing({ authenticated: true, family: "zai" });
+    await expect(
+      service.getEnterprisePricing({ authenticated: true, family: "zai" }),
+    ).rejects.toThrow("移除");
 
-    // 关键：service 层按 family 路由，zai 不能误用 bigmodel.cn
-    expect(String(vi.mocked(apiClient.request).mock.calls[0]?.[0])).toBe(
-      "https://api.z.ai/api/biz/subscription/enterprise/v2/pricing",
-    );
-    expect(vi.mocked(apiClient.request).mock.calls[0]?.[1]).toMatchObject({
-      headers: { Authorization: "zai-token" },
-    });
+    expect(apiClient.request).not.toHaveBeenCalled();
+    expect(credentials.load).not.toHaveBeenCalled();
   });
 
-  it("企业购买闭环接口仍走 bigmodel 域名（与 family 无关）", async () => {
+  it("企业购买闭环继续退役，不请求 bigmodel 余额", async () => {
     const apiClient: ApiClient = {
       request: vi.fn(async () =>
         createJsonResponse({
@@ -2651,10 +2649,8 @@ describe("createCodingPlanSubscriptionService (family routing)", () => {
       credentialService: createCredentialService(),
     });
 
-    await service.getEnterpriseBalance();
+    await expect(service.getEnterpriseBalance()).rejects.toThrow("移除");
 
-    expect(String(vi.mocked(apiClient.request).mock.calls[0]?.[0])).toBe(
-      "https://bigmodel.cn/api/biz/subscription/enterprise/v2/balance",
-    );
+    expect(apiClient.request).not.toHaveBeenCalled();
   });
 });

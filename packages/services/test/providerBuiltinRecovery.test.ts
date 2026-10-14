@@ -1,3 +1,4 @@
+import { createUcasTemplateFixture } from "./uworkProviderReleaseFixture.js";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,7 +16,7 @@ describe("App Built-in / Account 失败恢复", () => {
       schemaVersion: 1,
       revision: 1,
       config: {
-        providerConfigRules: { templateRules: [], providerRules: [] },
+        providerConfigRules: { templateRules: [createUcasTemplateFixture()], providerRules: [] },
         modelConfigRules: {
           modelRules: [],
           modelApiRules: [],

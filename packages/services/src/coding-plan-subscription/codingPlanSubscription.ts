@@ -70,8 +70,8 @@ export interface ICodingPlanSubscriptionService {
   /** 闲时任务灰度配置（D31）：forceRefresh 供入口打开时补拉（绕过 1h 快照缓存）。 */
   getOffPeakClientConfig(options?: { forceRefresh?: boolean }): Promise<OffPeakClientConfig>;
   /**
-   * 动态工作流灰度快照：远端 `configs.dynamicWorkflow.mode`
-   * 与本地覆盖折叠后的结果；forceRefresh 绕过 1h 快照缓存。请求失败 fail-closed（disabled/default）。
+   * 动态工作流快照：UWork 从本地覆盖与默认值构造 offer，再应用当前用户选择。
+   * forceRefresh 保留调用兼容，不发起远端 client/configs 请求。
    */
   getDynamicWorkflowClientConfig(options?: {
     forceRefresh?: boolean;

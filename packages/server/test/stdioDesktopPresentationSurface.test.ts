@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IModelSelectionService, IZCodeAgentService } from "@zcode/services";
@@ -82,8 +82,19 @@ describe("stdio Desktop presentation surface", () => {
       "--stdio",
     ]);
     const zcodeBuiltinProviderConfigFilePath = join(home, "zcode-builtin.json");
-    const personalConfigFilePath = join(home, ".zcode", "v2", "provider_config.json");
-    await mkdir(join(home, ".zcode", "v2"), { recursive: true });
+    const personalConfigFilePath = join(home, ".uwork", "v2", "provider_config.json");
+    await mkdir(join(home, ".uwork", "v2"), { recursive: true });
+    // UWork Host 必须播种 UCAS；读取随包公开 fixture，仍由 Host 既有解码路径校验，不引用 services 测试实现。
+    const bundled = JSON.parse(
+      await readFile(
+        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { config: { providerConfigRules: { templateRules: { templateId: string }[] } } };
+    const ucasTemplate = bundled.config.providerConfigRules.templateRules.find(
+      (rule) => rule.templateId === "ucas",
+    );
+    if (!ucasTemplate) throw new Error("UWork bundled release must provide the UCAS template");
     await writeFile(
       personalConfigFilePath,
       JSON.stringify({
@@ -118,6 +129,7 @@ describe("stdio Desktop presentation surface", () => {
           providerConfigRules: {
             providerRules: [],
             templateRules: [
+              ucasTemplate,
               {
                 templateId: "test-template",
                 templateNameMap: { "en-US": "Test Provider" },
@@ -194,17 +206,16 @@ describe("stdio Desktop presentation surface", () => {
     });
 
     try {
-      await expect(bootstrap.services.get(IModelSelectionService).getView()).resolves.toMatchObject(
-        {
-          revision: 1,
-          providers: [
-            {
-              providerId: "test-provider",
-              models: [{ modelId: "test-model" }],
-            },
-          ],
-        },
-      );
+      const modelSelection = await bootstrap.services.get(IModelSelectionService).getView();
+      expect(modelSelection.revision).toBeGreaterThan(0);
+      expect(modelSelection).toMatchObject({
+        providers: [
+          {
+            providerId: "test-provider",
+            models: [{ modelId: "test-model" }],
+          },
+        ],
+      });
       await expect(
         bootstrap.services.get(IZCodeAgentService).initialize({
           workspaceIdentity: "ssh://host/workspace/project",
@@ -212,7 +223,7 @@ describe("stdio Desktop presentation surface", () => {
         }),
       ).resolves.toMatchObject({
         available: false,
-        reason: expect.stringContaining("ZCode agent server command is not configured"),
+        reason: expect.stringContaining("UWork agent server command is not configured"),
       });
 
       expect(bootstrap.authorityModeParseResult.mode).toBe("desktop-attached-remote");

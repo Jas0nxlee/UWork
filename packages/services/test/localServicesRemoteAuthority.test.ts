@@ -1,3 +1,4 @@
+import { createUcasTemplateFixture } from "./uworkProviderReleaseFixture.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ function makeTempHome(): string {
 }
 
 function writeLegacyZapiConfig(home: string): void {
-  const configDir = join(home, ".zcode", "v2");
+  const configDir = join(home, ".uwork", "v2");
   mkdirSync(configDir, { recursive: true });
   writeFileSync(
     join(configDir, "config.json"),
@@ -61,7 +62,7 @@ function writeZCodeBuiltinProviderConfig(home: string): string {
       revision: 1,
       config: {
         // 装配测试必须使用当前发布合同；上面的 config.json 才是待迁移的旧数据。
-        providerConfigRules: { templateRules: [], providerRules: [] },
+        providerConfigRules: { templateRules: [createUcasTemplateFixture()], providerRules: [] },
         modelConfigRules: {
           modelRules: [],
           modelApiRules: [],
@@ -224,7 +225,7 @@ describe("createLocalServices remote authority", () => {
   it("只在本进程成功持久化 Provisioning Source 事实后通知 Host", async () => {
     const home = makeTempHome();
     process.env.HOME = home;
-    mkdirSync(join(home, ".zcode", "v2"), { recursive: true });
+    mkdirSync(join(home, ".uwork", "v2"), { recursive: true });
     const onProviderProvisioningSourceChanged = vi.fn();
     const [{ createLocalServices, disposeServiceResources }, serviceDescriptors] =
       await Promise.all([import("../src/node.js"), import("../src/index.js")]);
@@ -234,6 +235,10 @@ describe("createLocalServices remote authority", () => {
     });
 
     try {
+      // UCAS 首次播种也是本进程成功持久化的事实，先独立验收，再观察用户操作的通知。
+      await services.get(serviceDescriptors.IProviderSettingsService).getView();
+      expect(onProviderProvisioningSourceChanged.mock.calls).toEqual([["personal-config"]]);
+      onProviderProvisioningSourceChanged.mockClear();
       await services.get(serviceDescriptors.IProviderSettingsService).createPersonalProvider({
         initialConfig: {
           access: { type: "api-key", apiKey: "key" },
@@ -335,6 +340,7 @@ describe("createLocalServices remote authority", () => {
         "legacy-coding-plan-key",
       );
 
+      // UWork 保留私有装配边界，但历史账号凭据已退役，不能再用它换取项目 token。
       await expect(
         accountRequestAuthService!.resolveCurrent({
           providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
@@ -346,19 +352,8 @@ describe("createLocalServices remote authority", () => {
           },
           reason: "model-request",
         }),
-      ).resolves.toEqual({
-        apiKey: "current-project-token",
-        apiKeyId: "key-id",
-        accountScope: expect.stringMatching(/^[a-f0-9]{64}$/),
-      });
-      const tokenRequest = fetchToken.mock.calls.find(([url]) =>
-        String(url).endsWith("/api_keys/key-id/access_tokens"),
-      );
-      expect(tokenRequest).toBeDefined();
-      expect(new Headers(tokenRequest![1]?.headers).get("authorization")).toBe(
-        "Bearer login-token",
-      );
-      expect(fetchToken.mock.calls.some(([url]) => String(url).includes("/copy/"))).toBe(false);
+      ).rejects.toMatchObject({ name: "AccountRequestCredentialUnavailableError" });
+      expect(fetchToken).not.toHaveBeenCalled();
     } finally {
       disposeServiceResources(services);
     }
@@ -381,6 +376,7 @@ describe("createLocalServices remote authority", () => {
     const [{ createLocalServices, disposeServiceResources }, { IClientScenesService }] =
       await Promise.all([import("../src/node.js"), import("../src/index.js")]);
     const services = createLocalServices({
+      zcodeBuiltinProviderConfigFilePath: writeZCodeBuiltinProviderConfig(home),
       hostApiNetworkTransport: transport,
       serviceAuthorityMode: "desktop-attached-remote",
     });

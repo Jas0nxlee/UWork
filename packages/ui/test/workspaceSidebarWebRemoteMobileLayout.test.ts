@@ -7,8 +7,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IPlatformService } from "@zcode/shared";
 
-const { setPendingSettingsSectionMock } = vi.hoisted(() => ({
+const { setPendingSettingsSectionMock, remoteTaskIndexProps } = vi.hoisted(() => ({
   setPendingSettingsSectionMock: vi.fn(),
+  remoteTaskIndexProps: vi.fn(),
 }));
 
 vi.stubGlobal(
@@ -82,11 +83,29 @@ vi.mock("@/BotsDialog.js", () => ({
 }));
 
 vi.mock("@/WebRemoteControlTaskIndex.js", () => ({
-  WebRemoteControlTaskIndex: ({
-    renderBeforePinnedTasks,
-  }: {
+  WebRemoteControlTaskIndex: (props: {
     renderBeforePinnedTasks?: () => ReactNode;
-  }) => createElement("div", { "data-testid": "remote-task-index" }, renderBeforePinnedTasks?.()),
+    onTaskOpen?: (options: { crossWorkspace: boolean }) => void;
+    onCrossWorkspaceSwitchingChange?: (switching: boolean) => void;
+  }) => {
+    remoteTaskIndexProps(props);
+    return createElement(
+      "div",
+      { "data-testid": "remote-task-index" },
+      props.renderBeforePinnedTasks?.(),
+      createElement(
+        "button",
+        {
+          onClick: () => {
+            props.onCrossWorkspaceSwitchingChange?.(true);
+            props.onTaskOpen?.({ crossWorkspace: true });
+            props.onCrossWorkspaceSwitchingChange?.(false);
+          },
+        },
+        "open cross-workspace task",
+      ),
+    );
+  },
 }));
 
 vi.mock("@/WorkspaceArchivedTasksFlatSection.js", () => ({
@@ -146,6 +165,9 @@ vi.mock("@/store/StoreProvider.js", () => ({
 
 vi.mock("@/store/TabStoreProvider.js", () => ({
   useTabStore: (selector: (state: typeof tabStoreState) => unknown) => selector(tabStoreState),
+  // 企业身份 badge 读取可选 tab store；保留真实桌面 header 的依赖形状。
+  useOptionalTabStore: (selector: (state: typeof tabStoreState) => unknown) =>
+    selector(tabStoreState),
 }));
 
 vi.mock("@/settings/CodingPlanUpgradeDialogProvider.js", () => ({
@@ -216,6 +238,27 @@ describe("WorkspaceSidebar Web remote mobile layout", () => {
     vi.clearAllMocks();
   });
 
+  it("forwards the attachment switcher and cross-workspace lifecycle to the remote task index", async () => {
+    const onWebRemoteTaskOpen = vi.fn();
+    const onWebRemoteTaskSwitchingChange = vi.fn();
+    const switcher = {
+      listWorkspaces: vi.fn(async () => ({ tasks: [], workspaces: [] })),
+      switchWorkspace: vi.fn(async () => {}),
+    };
+    render(
+      await createSidebarElement({
+        webRemoteControlWorkspaceSwitcher: switcher,
+        onWebRemoteTaskOpen,
+        onWebRemoteTaskSwitchingChange,
+      }),
+    );
+    expect(remoteTaskIndexProps).toHaveBeenLastCalledWith(expect.objectContaining({ switcher }));
+    fireEvent.click(screen.getByRole("button", { name: "open cross-workspace task" }));
+    expect(onWebRemoteTaskSwitchingChange.mock.calls).toEqual([[true], [false]]);
+    expect(onWebRemoteTaskOpen).toHaveBeenCalledWith({ crossWorkspace: true });
+    expect(screen.queryByTestId("enterprise-login-page")).toBeNull();
+  });
+
   // Bugfix: 该用例需要 SSR WorkspaceSidebar；pre-push 全量并发时首次导入和渲染偶尔超过默认 5s。
   // 子组件已经尽量 mock，剩余成本来自被测布局自身，局部放宽避免误报。
   it("places remote tasks and workspace navigation in one mobile scroll area", async () => {
@@ -259,7 +302,6 @@ describe("WorkspaceSidebar Web remote mobile layout", () => {
   });
 
   it("归档视图打开后将关闭按钮的 tooltip label 切换为 Close", async () => {
-
     render(await createSidebarElement());
     const archiveButton = screen.getByRole("button", {
       name: "workspaceSidebar.toggleArchivedTasks",
@@ -271,7 +313,6 @@ describe("WorkspaceSidebar Web remote mobile layout", () => {
   });
 
   it("places plugins immediately after automations on the desktop home sidebar", async () => {
-
     render(await createSidebarElement({ webRemoteControlWorkspaceSwitcher: undefined }));
     const automationsButton = screen.getByRole("button", {
       name: "workspace.openScheduledSettings",

@@ -1,3 +1,4 @@
+import { createUcasTemplateFixture } from "./uworkProviderReleaseFixture.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,14 +15,14 @@ async function createProviderFixture(prefix: string): Promise<string> {
   process.env.HOME = home;
   const filePath = join(home, "zcode-builtin.json");
   // 修复原因：只传 {} 会让后台 Provider 初始化读取 undefined 路径并写出错误日志。
-  // 使用当前 Release 合同的空配置，让装配测试独立于真实用户配置和发布文件。
+  // 使用当前 UWork Release 的 UCAS 模板，让装配独立于真实用户配置而满足默认供应商合同。
   await writeFile(
     filePath,
     JSON.stringify({
       schemaVersion: 1,
       revision: 1,
       config: {
-        providerConfigRules: { templateRules: [], providerRules: [] },
+        providerConfigRules: { templateRules: [createUcasTemplateFixture()], providerRules: [] },
         modelConfigRules: {
           modelRules: [],
           modelApiRules: [],

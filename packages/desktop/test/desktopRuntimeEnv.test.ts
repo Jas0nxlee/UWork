@@ -24,7 +24,9 @@ vi.mock("electron", () => ({
   app: appMock,
 }));
 
-vi.mock("@zcode/shared", () => ({
+// 合并新增共享字段后，局部测试替身应保留其余公开导出，避免掩盖真实环境装配。
+vi.mock("@zcode/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@zcode/shared")>()),
   ZCODE_APP_VERSION_ENV: "ZCODE_APP_VERSION",
   ZCODE_BUILD_COMMIT_ID_ENV: "ZCODE_BUILD_COMMIT_ID",
   ZCODE_RUNTIME_ENV_KEY: "ZCODE_RUNTIME_ENV",
@@ -647,7 +649,7 @@ describe("desktopRuntimeEnv buildHostProcessEnv", () => {
     expect(env.ZCODE_CUA_HELPER_ALLOW_UNSIGNED_LOCAL).toBeUndefined();
   });
 
-  it("打包 Preview 不向 Host 注入 storage profile 或精确 CLI 根", async () => {
+  it("打包 Preview 向 Host 传递 UWork 数据根且不新建 storage profile", async () => {
     appMock.isPackaged = true;
     Object.defineProperty(process, "resourcesPath", {
       value: "/mock/resources",
@@ -658,18 +660,18 @@ describe("desktopRuntimeEnv buildHostProcessEnv", () => {
     const env = buildHostProcessEnv({});
 
     expect(env.ZCODE_STORAGE_PROFILE).toBeUndefined();
-    expect(env.ZCODE_STORAGE_DIR).toBeUndefined();
+    expect(env.ZCODE_STORAGE_DIR).toBe(join("/mock/db", ".uwork"));
     expect(env.ZCODE_HOME).toBeUndefined();
   });
 
-  it("源码开发态不向 Host 注入独立 storage profile 或精确 CLI 根", async () => {
+  it("源码开发态复用 UWork 数据根且不新建独立 storage profile", async () => {
     appMock.isPackaged = false;
     const { buildHostProcessEnv } = await import("../src/main/desktopRuntimeEnv.js");
 
     const env = buildHostProcessEnv({});
 
     expect(env.ZCODE_STORAGE_PROFILE).toBeUndefined();
-    expect(env.ZCODE_STORAGE_DIR).toBeUndefined();
+    expect(env.ZCODE_STORAGE_DIR).toBe(join("/mock/db", ".uwork"));
     expect(env.ZCODE_HOME).toBeUndefined();
   });
 
@@ -976,13 +978,13 @@ describe("desktopRuntimeEnv runtime identity", () => {
     } = await import("../src/main/desktopRuntimeEnv.js");
 
     expect(isPreviewPackagedRuntime).toBe(true);
-    expect(runtimeApplicationName).toBe("ZCode Preview");
+    expect(runtimeApplicationName).toBe("UWork Preview");
     // Bugfix：这两条路径由实现用宿主 path.join 从 app.getPath("appData") 拼出，
     // Windows 上是 `\mock\appData\ZCode Preview`，写死 POSIX 字面量必然失败。
     // 用例要断言的是「Preview 单独占一个 Electron 数据目录」的目录结构，与分隔符无关，
     // 所以用同样的 join 表达；在 POSIX 上是恒等变换。
-    expect(runtimeUserDataPath).toBe(join("/mock/appData", "ZCode Preview"));
-    expect(runtimeSessionDataPath).toBe(join("/mock/appData", "ZCode Preview", "session"));
+    expect(runtimeUserDataPath).toBe(join("/mock/appData", "UWork Preview"));
+    expect(runtimeSessionDataPath).toBe(join("/mock/appData", "UWork Preview", "session"));
   });
 
   it("e2e 可保留 Chromedriver 注入的 Electron userData 目录", async () => {

@@ -29,7 +29,8 @@ import {
 const execFile = promisify(execFileCallback);
 // Bugfix: 这些测试可能从仓库根或 apps/zcode-cli 子工程启动；fixture 路径必须绑定到当前测试文件位置。
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const GB2312_FIXTURE_PATH = join(TEST_DIR, "..", "..", "..", "tests", "gb2312.js");
+// 编码夹具保留原始 GB2312 字节，用数据扩展名避免源码工具按 UTF-8 解析。
+const GB2312_FIXTURE_PATH = join(TEST_DIR, "..", "..", "..", "tests", "gb2312.fixture");
 const GB2312_THIS_IS_BYTES = Buffer.from([0xd5, 0xe2, 0xca, 0xc7]);
 
 class HangingRipgrepWorker extends EventEmitter {

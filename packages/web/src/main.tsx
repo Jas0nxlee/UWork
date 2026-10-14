@@ -1072,6 +1072,11 @@ function createEmptyHomeOnlyService<T extends object>(handlers: Record<string, S
       if (typeof property !== "string") {
         return undefined;
       }
+      // 修复原因：动态订阅接口返回同步 Event；首页没有 runtime，不能用 async 空方法冒充它，
+      // 否则 Root/Shell 的列表观察者会在 attachment 建立前因 Promise 不可调用而崩溃。
+      if (property.startsWith("onDynamic") && !target[property]) {
+        return () => () => ({ dispose: () => {} });
+      }
       return target[property] ?? (async () => undefined);
     },
   }) as T;
@@ -2051,6 +2056,8 @@ async function bootstrapExternalRelayWebRemoteControl(params: URLSearchParams): 
           preferSettingServiceLocale
         >
           <Root
+            // 修复原因：手机 attachment 只能读取已有 Host 身份，不能发起登录、续期或网关配置。
+            enterpriseIdentityReadOnly
             services={services}
             platform={createWebPlatform({
               externalWebRemoteControlProxy: {
@@ -2124,6 +2131,8 @@ async function bootstrapExternalRelayWebRemoteControl(params: URLSearchParams): 
       <AppErrorBoundary key={`home-only-${workspaceKey}`}>
         <ZCodeIntlProvider>
           <Root
+            // 修复原因：手机 attachment 只能读取已有 Host 身份，不能发起登录、续期或网关配置。
+            enterpriseIdentityReadOnly
             services={createHomeOnlyWebRemoteControlServices()}
             platform={createWebPlatform({
               externalWebRemoteControlProxy: {
@@ -2296,6 +2305,8 @@ async function bootstrapWebRemoteControlByToken(params: URLSearchParams): Promis
           preferSettingServiceLocale
         >
           <Root
+            // 修复原因：手机 attachment 只能读取已有 Host 身份，不能发起登录、续期或网关配置。
+            enterpriseIdentityReadOnly
             services={services}
             platform={createWebPlatform({ webRemoteControlProxy: proxy })}
             // 与 external relay 保持相同的 Renderer 投影；普通 Web Server Root 继续使用默认关闭。

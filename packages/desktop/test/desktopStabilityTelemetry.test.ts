@@ -22,7 +22,9 @@ vi.mock("@arms/rum-electron", () => ({
   },
 }));
 
-vi.mock("@zcode/shared", () => ({
+// UWork 的进程角色匹配是共享契约；仅替换本测试需要控制的环境映射。
+vi.mock("@zcode/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@zcode/shared")>()),
   mapZCodeEnvToArmsRumEnv: vi.fn(() => "local"),
 }));
 
@@ -311,55 +313,52 @@ describe("desktopStabilityTelemetry", () => {
     });
   });
 
-  it.each(["oom", "memory-eviction"])(
-    "classifies Host %s exits as OOM crashes",
-    async (reason) => {
-      const { configureDesktopStabilityTelemetry, registerDesktopStabilityMonitors } =
-        await import("../src/main/desktopStabilityTelemetry.js");
-      configureDesktopStabilityTelemetry({
-        deviceMid: "test-device",
-        platform: "darwin",
-        appVersion: "0.0.0-test",
-        armsEnv: "local",
-      });
-      const logger = {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      };
+  it.each(["oom", "memory-eviction"])("classifies Host %s exits as OOM crashes", async (reason) => {
+    const { configureDesktopStabilityTelemetry, registerDesktopStabilityMonitors } =
+      await import("../src/main/desktopStabilityTelemetry.js");
+    configureDesktopStabilityTelemetry({
+      deviceMid: "test-device",
+      platform: "darwin",
+      appVersion: "0.0.0-test",
+      armsEnv: "local",
+    });
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
 
-      registerDesktopStabilityMonitors(logger, {} as never);
-      const hooks = registerCrashEventMonitor.mock.calls[0]?.[2] as {
-        onChildProcessGone: (details: {
-          type: string;
-          reason: string;
-          exitCode: number;
-          serviceName?: string;
-          name?: string;
-        }) => void;
-      };
+    registerDesktopStabilityMonitors(logger, {} as never);
+    const hooks = registerCrashEventMonitor.mock.calls[0]?.[2] as {
+      onChildProcessGone: (details: {
+        type: string;
+        reason: string;
+        exitCode: number;
+        serviceName?: string;
+        name?: string;
+      }) => void;
+    };
 
-      hooks.onChildProcessGone({
-        type: "Utility",
-        reason,
-        exitCode: 137,
-        serviceName: "zcode-host-local-1",
-        name: "Node Utility Process",
-      });
+    hooks.onChildProcessGone({
+      type: "Utility",
+      reason,
+      exitCode: 137,
+      serviceName: "zcode-host-local-1",
+      name: "Node Utility Process",
+    });
 
-      const report = sendCustom.mock.calls.find((call) => call[0]?.name === "perf_crash")?.[0];
-      expect(report).toMatchObject({
-        name: "perf_crash",
-        properties: expect.objectContaining({
-          crash_kind: "oom",
-          crash_cause: "oom",
-          crash_scope: "host",
-          process_role: "host",
-        }),
-      });
-    },
-  );
+    const report = sendCustom.mock.calls.find((call) => call[0]?.name === "perf_crash")?.[0];
+    expect(report).toMatchObject({
+      name: "perf_crash",
+      properties: expect.objectContaining({
+        crash_kind: "oom",
+        crash_cause: "oom",
+        crash_scope: "host",
+        process_role: "host",
+      }),
+    });
+  });
 
   describe("child process crash reporting", () => {
     it("does not report recoverable Chromium GPU and utility process exits as crash", async () => {

@@ -19,3 +19,10 @@ Widget state remains scoped to the current workspace identity and session.
 State storage is an injected adapter. Atomic file replacement and the existing cross-process file
 lock serialize full snapshots; notifications project durable state. Only modelContent is exported
 as untrusted next-turn context. Main owns native sandbox resources, not persisted state.
+
+Contract verification lives in `contract.test.ts` and imports the browser-safe descriptor from
+`index.ts` and the Host factory from `node.ts`. It checks the public channel binding, durable state
+round trips through `IGenUiService`, and isolation by workspace identity and session. Adapter tests
+continue to cover fragment authorization, bounded reads, sandbox provenance, escaping, atomic writes
+and notifications. Both public contract and adapter suites run through the root Vitest configuration;
+the architecture gate requires the contract test without changing the accepted baseline.

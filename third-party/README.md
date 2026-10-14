@@ -14,6 +14,8 @@
 
 `THIRD-PARTY-NOTICES.md` 与 `inventory.json` 已在冻结安装后按当前锁文件重新生成，基础许可标识与声明新鲜度检查通过。开源导出流程会再按开源树的实际依赖重新生成，两棵树不共用生成结果。
 
+2026-10-14 的 UWork 修复重新生成 924 个精确包版本、12 项复制内容、18 个原生输入归档及 workspace 策略中的 6 份补丁。rrweb 2.0.0 的五个包分别核对 npm registry 的 gitHead、锁文件 integrity 与官方源码包版本；许可来自对应提交 `c826076ce529c411b32372d540e70a8a3a9577c2`，来源证据保存在 `npm-overrides.json`，没有用 2.1.6 的版本记录代替。
+
 基础检查通过不代表材料缺口已关闭：`inventory.json` 的 `reviewRequired` 仍保留待补齐的原文和来源证据。当前覆盖的精确包版本、复制组件与待核验数量以生成清单为准，避免文档中的历史数量被误当作当前状态。
 
 ## 更新依赖后
@@ -49,9 +51,9 @@ ugrep 的 BSD-3-Clause 版权、条件和免责声明完整保留。ripgrep 保�
 ## 已明确的资料边界
 
 - ARMS 按当前生产依赖图进入声明，部分原始材料仍待补齐；不沿用其他分支已移除它的结论。`@dukelib/sheets-wasm@0.1.21` 已取得 `wasm-v0.1.21` 对应 commit 的原始 LICENSE。
-- 当前有 21 个包未取得对应版本的完整 LICENSE 文件，保留发布方许可标识、可取得的 README 许可段及标准条款，逐项记录在 `npm-overrides.json` 的 `evidenceKind` 字段。`reviewEvidence` 保存本次 npm 归档哈希及可取得的固定上游树证据。标准条款不能冒称上游原始版权声明；它们继续出现在清单的 `reviewRequired`，严格检查失败。其中 6 个是 sharp 预编译的 `@img/sharp-libvips-*`（只由真实 Computer Use 包引入）：发布方只声明 LGPL-3.0-or-later，并在 README 许可段列出 aom、cairo、glib 等约 28 个内置库，各内置库对应版本的原文尚未收集；标准条款取自 SPDX license-list-data v3.27.0（其 LGPL-3.0 文本已内含 GPL-3.0 全文）。
+- 当前有 14 个包未取得对应版本的完整 LICENSE 文件，保留发布方许可标识、可取得的 README 许可段及标准条款，逐项记录在 `npm-overrides.json` 的 `evidenceKind` 字段。`reviewEvidence` 保存已取得的 npm 归档哈希及固定上游树证据。标准条款不能冒称上游原始版权声明；它们继续出现在清单的 `reviewRequired`，严格检查失败。开源占位 Computer Use 不引入 sharp/libvips；未来恢复真实 producer 时，仍须重新核对其 LGPL 原文、内置库版本及全部适用义务，不能沿用当前不分发时的材料范围。
 - `embedded-components.json` 记录 Canvas 0.1.100 的 Skia 子模块和 quickjs-wasi 2.2.0 的 QuickJS-NG 子模块固定 revision 及完整原文。现已补充固定 Skia DEPS 中的字体、图片、压缩库材料，以及 QuickJS 的 WASI libc、LLVM runtime、Mbed TLS、Project Everest 和 Ada URL parser 材料；`buildEvidence` 保存构建脚本和 SDK submodule 来源，按原文字节校验。Mbed TLS 采用 Apache-2.0 选项，FreeType 采用 FTL 选项。各平台最终二进制、Rust/C++ 运行库及全部嵌套依赖的对应关系仍未完成核验，两项 reviewRequired 保留。
-- 原生来源清单中的 Rust 标准库 revision `6a6eaca656978778f7c1c750ee0c3db87f8bffb2` 尚无原文快照。本次从两个 Windows ripgrep 输入归档的 PE 文件重新提取出相同 revision，但公开 rust-lang/rust 无对应 commit；没有用其他 Rust 版本的材料替代。连同上述 npm 包、复制源码、内嵌组件与链接来源问题，`inventory.json` 的 `reviewRequired` 当前共 25 项。
+- 原生来源清单中的 Rust 标准库 revision `6a6eaca656978778f7c1c750ee0c3db87f8bffb2` 尚无原文快照。本次从两个 Windows ripgrep 输入归档的 PE 文件重新提取出相同 revision，但公开 rust-lang/rust 无对应 commit；没有用其他 Rust 版本的材料替代。连同上述 npm 包、复制源码、内嵌组件与链接来源问题，`inventory.json` 的 `reviewRequired` 当前共 18 项。
 - shadcn、AI Elements、Fig 注册表和 Material Icon Theme 的当前文件及核验许可证均已记录。当前 checkout 没有最初复制 revision，因此 `importRevision` 为 null；固定的许可参考 commit 不冒充最初复制版本。
 - 预编译原生工具的编译器/PCRE2 字符串与构建输入已记录。musl 的精确补丁版本未能从现有二进制恢复，保留上游 COPYRIGHT 参考并明确标记。源码配置和材料清单不等于每个平台最终安装包的完整链接审计。
 

@@ -33,6 +33,21 @@ describe("createHomeOnlyWebRemoteControlServices", () => {
     const { createHomeOnlyWebRemoteControlServices } = await import("../src/main.js");
     const services = createHomeOnlyWebRemoteControlServices();
 
+    // 首页仍会挂载列表/配置观察者；未连接 attachment 时必须提供同步的空 Event，而不是 Promise。
+    const target = {
+      workspacePath: "/remote/offline",
+      workspaceIdentity: "remote:ssh:test:/remote/offline",
+    };
+    for (const event of [
+      services.zcodeAgentService.onDynamicSessionsIndexFrame(target),
+      services.zcodeAgentService.onDynamicConversationFrame(target),
+      services.zcodeTaskService.onDynamicWorkspaceEvent(target),
+    ]) {
+      const subscription = event(() => {});
+      expect(typeof subscription.dispose).toBe("function");
+      expect(() => subscription.dispose()).not.toThrow();
+    }
+
     await expect(services.oauthService.restoreCachedSession()).resolves.toBeNull();
     await expect(services.modelSelectionService.getView()).resolves.toEqual({
       revision: 0,

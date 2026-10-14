@@ -1102,7 +1102,8 @@ const enUS: Record<string, string> = {
   "browser.permission.deviceBluetooth": "Bluetooth devices",
   "browser.permission.unknownCapability": "an unknown capability",
   "browser.permission.screenShareTitle": "{origin} wants to share your screen",
-  "browser.permission.screenShareDescription": "Choose the screen or window to share. This choice applies only to this session.",
+  "browser.permission.screenShareDescription":
+    "Choose the screen or window to share. This choice applies only to this session.",
   "browser.permission.deviceTitle": "{origin} wants to connect a device",
   "browser.permission.connect": "Connect",
   "browser.permission.screenGroup.screen": "Entire Screen",
@@ -2061,7 +2062,7 @@ const enUS: Record<string, string> = {
   "webRemoteControl.taskStatus.running": "Running",
   "webRemoteControl.taskStatus.completed": "Done",
   "webRemoteControl.taskStatus.error": "Error",
-  "webRemoteControl.mobileHome.title": "ZCode remote control",
+  "webRemoteControl.mobileHome.title": "UWork remote control",
   "webRemoteControl.mobileHome.connected": "Connected to this desktop window",
   "webRemoteControl.mobileHome.notice":
     "This connection can view the projects, tasks, and sessions currently open on this device. If the QR code expires, return to desktop and connect again.",

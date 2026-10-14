@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 import {
   desktopProductIdentities,
@@ -12,21 +13,20 @@ import {
 } from "../scripts/desktop-product-identity.mjs";
 
 describe("desktop product identity", () => {
-  it("根锁文件的发布版本与构建版本一致", () => {
-    // 合并上游发布提交只对齐当前版本，不恢复上游旧版本，也不重算依赖锁。
-    const readRootJson = (name: string) =>
-      JSON.parse(readFileSync(resolve(import.meta.dirname, "../../..", name), "utf8"));
-    const version = readRootJson("package.json").version;
-    const lock = readRootJson("package-lock.json");
-    expect(lock.version).toBe(version);
-    expect(lock.packages[""].version).toBe(version);
+  it("根安装边界使用唯一 pnpm 锁，不保留上游旧 npm 项目锁", () => {
+    const root = resolve(import.meta.dirname, "../../..");
+    const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+    const lock = parseYaml(readFileSync(resolve(root, "pnpm-lock.yaml"), "utf8"));
+    expect(manifest.packageManager).toBe("pnpm@10.33.2");
+    expect(lock.importers["."]).toBeDefined();
+    expect(existsSync(resolve(root, "package-lock.json"))).toBe(false);
   });
 
   it("ZCODE_ENV=test 使用可与生产版并排安装的 Preview 身份", () => {
     expect(resolveDesktopProductIdentity({ ZCODE_ENV: "test" })).toEqual({
       flavor: "preview",
       appId: "dev.zcode.app.preview",
-      productName: "ZCode Preview",
+      productName: "UWork Preview",
       linuxExecutableName: "zcode-preview",
       linuxPackageName: "zcode-preview",
       cuaHelperInstallVariant: "preview",
@@ -81,7 +81,7 @@ describe("desktop product identity", () => {
     expect(desktopProductIdentities.production).toEqual({
       flavor: "production",
       appId: "dev.zcode.app",
-      productName: "ZCode",
+      productName: "UWork",
       linuxExecutableName: "zcode",
       linuxPackageName: "zcode",
       cuaHelperInstallVariant: null,

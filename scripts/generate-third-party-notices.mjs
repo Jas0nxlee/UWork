@@ -1,5 +1,6 @@
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { collectNpmNotices, hashBytes } from "./third-party-npm.mjs";
 import {
   noticesFileName,
@@ -23,9 +24,9 @@ export async function generateThirdPartyNotices(root = repositoryRoot) {
     if (hashBytes(await readInput(runtime.file)) !== runtime.sha256)
       throw new Error(`Changed Node ${runtime.version} license`);
   }
-  const pkg = await readJson("package.json");
+  await readInput("package.json");
   await readInput("pnpm-lock.yaml");
-  await readInput("pnpm-workspace.yaml");
+  const workspacePolicy = parseYaml((await readInput("pnpm-workspace.yaml")).toString("utf8"));
   await readInput("third-party/native-search/sources.json");
   const { packages, notInstalled, workspaceManifests } = await collectNpmNotices(root, overrides);
   // 修复：递归扫描会把 bundled-agents/mock-cdn 的可删除缓存当作源码输入，重建立即失效。
@@ -109,7 +110,9 @@ export async function generateThirdPartyNotices(root = repositoryRoot) {
     "Apache License, Version 2.0",
   );
   const patches = [];
-  for (const [name, file] of Object.entries(pkg.pnpm?.patchedDependencies ?? {})) {
+  // 修复原因：补丁策略已迁入 workspace，继续读旧 manifest 会漏掉声明与文件新鲜度哈希。
+  // 生成与安装消费同一份 patchedDependencies，不保留第二条配置路径。
+  for (const [name, file] of Object.entries(workspacePolicy.patchedDependencies ?? {})) {
     patches.push({ package: name, file, sha256: hashBytes(await readInput(file)) });
   }
   const native = await readNativeSearchNotices(root, { verify: true });
