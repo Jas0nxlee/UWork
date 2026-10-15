@@ -1,0 +1,493 @@
+#!/usr/bin/env python3
+"""office-editor 冒烟测试：造样本（小样本 + 大文档），走 stdio JSON-RPC 驱动服务器。
+
+覆盖：initialize / tools/list / tools/call（列修订、分页、批注、自举兜底、接受、拒绝）/ resources/*。
+大文档部分同时验证"单次返回体必须在宿主的字节上限内"（content 32 KiB / structuredContent 64 KiB）。
+只依赖标准库；样本写在临时目录，跑完即删。
+"""
+
+from __future__ import annotations
+
+import atexit
+import base64
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+import sample_fixture as fixture  # noqa: E402
+
+PLUGIN_ROOT = os.path.dirname(HERE)
+SERVER = os.path.join(PLUGIN_ROOT, "server", "server.py")
+PAGE_URI = "ui://office-editor/editor.html"
+DOCX_RESOURCE = "office://docx"
+CHUNK_MAX_BYTES = 4 * 1024 * 1024
+HOST_CONTENT_LIMIT_BYTES = 32 * 1024  # 宿主 tools/call content 上限
+STDIO_FRAME_LIMIT_BYTES = 10 * 1024 * 1024  # vendored MCP SDK 的单帧上限（base64 膨胀后）
+SAFETY_LIMIT_BYTES = 28 * 1024  # 我们自己的安全线
+
+
+def build_sample(directory: str) -> str:
+    return fixture.build_sample(directory)
+
+
+def document_xml(path: str) -> str:
+    return fixture.document_xml(path)
+
+
+def unrelated_part(path: str) -> bytes:
+    return fixture.unrelated_part(path)
+
+
+class Server:
+    def __init__(self) -> None:
+        self.process = subprocess.Popen(
+            [sys.executable, SERVER],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=PLUGIN_ROOT,
+        )
+        self.next_id = 1
+
+    def rpc(self, method: str, params: dict | None = None) -> dict:
+        request_id = self.next_id
+        self.next_id += 1
+        frame = {"jsonrpc": "2.0", "id": request_id, "method": method}
+        if params is not None:
+            frame["params"] = params
+        assert self.process.stdin and self.process.stdout
+        self.process.stdin.write(json.dumps(frame) + "\n")
+        self.process.stdin.flush()
+        while True:
+            line = self.process.stdout.readline()
+            if not line:
+                stderr = self.process.stderr.read() if self.process.stderr else ""
+                raise AssertionError(f"服务器提前退出，stderr:\n{stderr}")
+            message = json.loads(line)
+            if message.get("id") == request_id:
+                if "error" in message:
+                    raise AssertionError(f"{method} 返回错误: {message['error']}")
+                return message["result"]
+
+    def notify(self, method: str, params: dict | None = None) -> None:
+        frame = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            frame["params"] = params
+        assert self.process.stdin
+        self.process.stdin.write(json.dumps(frame) + "\n")
+        self.process.stdin.flush()
+
+    def call(self, name: str, **arguments: object) -> dict:
+        return self.rpc("tools/call", {"name": name, "arguments": arguments})
+
+    def close(self) -> None:
+        if self.process.stdin:
+            self.process.stdin.close()
+        self.process.wait(timeout=10)
+
+
+def payload(result: dict) -> dict:
+    if "structuredContent" in result:
+        return result["structuredContent"]
+    return json.loads(result["content"][0]["text"])
+
+
+def check(label: str, condition: bool, detail: str = "") -> None:
+    print(f"  {'PASS' if condition else 'FAIL'}  {label}{'' if condition else f' — {detail}'}")
+    if not condition:
+        raise SystemExit(1)
+
+
+def check_payload_size(label: str, value: dict) -> None:
+    size = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+    check(
+        f"{label}（{size / 1024:.1f} KiB 在 {SAFETY_LIMIT_BYTES // 1024} KiB 安全线内）",
+        size < SAFETY_LIMIT_BYTES,
+        f"{size} bytes ≥ {HOST_CONTENT_LIMIT_BYTES}",
+    )
+
+
+def small_sample_checks(server: Server, path: str) -> None:
+    print("修订读取（小样本）")
+    listed = payload(server.call("docx_revisions_list", path=path))
+    check(
+        "样本有 1 插入 + 1 删除",
+        listed["counts"] == {"insert": 1, "delete": 1, "comments": 0},
+        str(listed["counts"]),
+    )
+    first, second = listed["items"]
+    check("分页字段完整", listed["total"] == 2 and listed["hasMore"] is False, str(listed))
+    check("修订带作者与文本", first["author"] == "审查员", str(first))
+    # 审阅者要能判断"该不该接受"：位置（段/表）、最近标题、前后文缺一不可。
+    check("修订带段落序号", first["paragraph"] == 2, str(first.get("paragraph")))
+    check(
+        "修订带最近标题",
+        first["nearestHeading"] == {"text": "一、概述", "level": 1},
+        str(first.get("nearestHeading")),
+    )
+    check(
+        "插入的前后文正确",
+        first["context"]["before"] == "第一段：" and first["context"]["after"].startswith("被删掉的旧句子。"),
+        str(first.get("context")),
+    )
+    check(
+        "删除的前后文包含插入文本",
+        second["context"]["before"].endswith("插入的新句子。") and second["context"]["after"] == "尾段。",
+        str(second.get("context")),
+    )
+
+
+def large_sample_checks(server: Server, path: str, counts: dict) -> None:
+    print("大文档分页（" + ", ".join(f"{key}={value}" for key, value in counts.items()) + "）")
+    started = time.time()
+    page1 = payload(server.call("docx_revisions_list", path=path))
+    first_parse_ms = (time.time() - started) * 1000
+    check("总数与分布正确", page1["total"] == counts["insert"] + counts["delete"], str(page1["total"]))
+    check(
+        "总数含插入/删除分布",
+        page1["counts"]
+        == {"insert": counts["insert"], "delete": counts["delete"], "comments": counts["comments"]},
+        str(page1["counts"]),
+    )
+    check("首屏取默认页大小", len(page1["items"]) == 25 and page1["hasMore"], f"{len(page1['items'])} 条")
+    check_payload_size("首页返回体", page1)
+    print(f"  （首次解析 + 首页 {first_parse_ms:.0f} ms）")
+
+    started = time.time()
+    page2 = payload(server.call("docx_revisions_list", path=path, offset=25, limit=25))
+    page2_ms = (time.time() - started) * 1000
+    check("第二页从第 26 条开始", page2["offset"] == 25 and len(page2["items"]) == 25, str(page2["offset"]))
+    check("第二页条目与首页不同", page2["items"][0]["id"] != page1["items"][0]["id"])
+    print(f"  （翻页（命中解析缓存）{page2_ms:.0f} ms）")
+
+    capped = payload(server.call("docx_revisions_list", path=path, limit=100))
+    check("每页上限被钳制", capped["limit"] == 40 and len(capped["items"]) == 40, str(capped["limit"]))
+    check_payload_size("最大页返回体", capped)
+
+    filtered = payload(server.call("docx_revisions_list", path=path, kind="delete", limit=25))
+    check("按类型过滤只回删除", all(item["kind"] == "delete" for item in filtered["items"]), str(filtered["total"]))
+
+    comments = payload(server.call("docx_comments_list", path=path, limit=25))
+    check(
+        "批注分页",
+        comments["total"] == counts["comments"] and len(comments["items"]) == 25,
+        str(comments["total"]),
+    )
+    check_payload_size("批注页返回体", comments)
+
+    targets = [item["id"] for item in page1["items"][:5]]
+    resolved = payload(server.call("docx_revisions_resolve", path=path, action="accept", ids=targets))
+    check(
+        "大文档上按 id 写回",
+        resolved["processed"]["insert"] + resolved["processed"]["delete"] == 5,
+        str(resolved["processed"]),
+    )
+    after = payload(server.call("docx_revisions_list", path=path))
+    check("写回后计数减少", after["total"] == page1["total"] - 5, str(after["total"]))
+    check("写回后有备份", os.path.exists(resolved["backup"]), str(resolved.get("backup")))
+
+
+def main() -> int:
+    directory = tempfile.mkdtemp(prefix="office-editor-smoke-")
+    atexit.register(shutil.rmtree, directory, True)
+    path = build_sample(directory)
+    baseline_styles = unrelated_part(path)
+    large_counts = {"insert": 200, "delete": 200, "comments": 60}
+    large_path = fixture.build_large_sample(
+        directory,
+        paragraphs=600,
+        inserts=large_counts["insert"],
+        deletes=large_counts["delete"],
+        comments=large_counts["comments"],
+    )
+    server = Server()
+    try:
+        print("协议面")
+        init = server.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
+        check("initialize 返回 serverInfo", init["serverInfo"]["name"] == "office-editor", str(init))
+        check("回显受支持的协议版本", init["protocolVersion"] == "2025-06-18", init["protocolVersion"])
+        server.notify("notifications/initialized")
+        tools = server.rpc("tools/list")["tools"]
+        names = {tool["name"] for tool in tools}
+        check(
+            "tools/list 暴露九个工具（审阅 4 + 编辑 2 + 兜底 2 + 写回 1）",
+            names
+            == {
+                "docx_revisions_list",
+                "docx_comments_list",
+                "docx_revisions_resolve",
+                "docx_open_editor",
+                "docx_current_target",
+                "docx_export_pdf",
+                "docx_edit_paragraph",
+                "docx_set_paragraph_format",
+                "docx_write_back",
+            },
+            str(names),
+        )
+        # 宿主只从 tools/list 的 _meta 读页面描述（adapters/src/mcp/descriptor.ts），
+        # 放在调用结果上不会被识别——这条断言就是那次真机踩坑的回归。
+        open_tool = next(tool for tool in tools if tool["name"] == "docx_open_editor")
+        check(
+            "docx_open_editor 的工具描述带 _meta.ui.resourceUri",
+            open_tool.get("_meta", {}).get("ui", {}).get("resourceUri") == PAGE_URI,
+            json.dumps(open_tool.get("_meta")),
+        )
+
+        small_sample_checks(server, path)
+        large_sample_checks(server, large_path, large_counts)
+
+        print("接受 / 拒绝（小样本语义）")
+        accepted = payload(server.call("docx_revisions_resolve", path=path, action="accept", ids=["101"]))
+        check("处理 1 条插入", accepted["processed"]["insert"] == 1, str(accepted))
+        xml = document_xml(path)
+        check("插入文字仍保留", "插入的新句子。" in xml and "w:ins" not in xml, xml[:200])
+        check("删除文字尚未处理", "被删掉的旧句子。" in xml, xml[:200])
+        check("无关部件逐字节保留", unrelated_part(path) == baseline_styles)
+        rejected = payload(server.call("docx_revisions_resolve", path=path, action="reject"))
+        check("处理 1 条删除", rejected["processed"]["delete"] == 1, str(rejected))
+        xml = document_xml(path)
+        check(
+            "删除文字已恢复为正文",
+            "<w:t>被删掉的旧句子。</w:t>" in xml and "w:delText" not in xml,
+            xml[:300],
+        )
+        remaining = payload(server.call("docx_revisions_list", path=path))
+        check(
+            "修订清空",
+            remaining["total"] == 0 and remaining["counts"] == {"insert": 0, "delete": 0, "comments": 0},
+            str(remaining["counts"]),
+        )
+
+        print("编辑：段落文本（修订模式 / 直改）与段落格式")
+        sys.path.insert(0, os.path.join(PLUGIN_ROOT, "server"))
+        import docx_revisions as engine  # noqa: E402
+
+        edit_dir = tempfile.mkdtemp(prefix="office-edit-")
+        atexit.register(shutil.rmtree, edit_dir, ignore_errors=True)
+        edit_path = fixture.build_sample(edit_dir)
+        before_text = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        before_counts = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+
+        edited = payload(
+            server.call(
+                "docx_edit_paragraph",
+                path=edit_path,
+                paragraph=1,
+                text="改写后的第一段，含新增内容。",
+                author="自检",
+            )
+        )
+        check("编辑返回 changed", edited.get("changed") is True, json.dumps(edited, ensure_ascii=False)[:160])
+        check("编辑落了备份", os.path.exists(edited.get("backup") or ""), str(edited.get("backup")))
+        after = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+        check(
+            "修订模式：插入与删除各增一条",
+            after["insert"] == before_counts["insert"] + 1 and after["delete"] == before_counts["delete"] + 1,
+            f"{before_counts} -> {after}",
+        )
+        marks = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}/marks?path={edit_path}"})["contents"][0]["text"]
+        )
+        check(
+            "新修订带上作者",
+            any(mark["kind"] == "insert" for mark in marks["marks"]),
+            json.dumps(marks["marks"][-3:], ensure_ascii=False)[:200],
+        )
+        # 拒绝全部 → 段落文本回到原样（证明 del/ins 都落在正确位置）
+        server.call("docx_revisions_resolve", path=edit_path, action="reject")
+        restored = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        check("拒绝后段落文本回到原文", restored == before_text, f"{before_text!r} -> {restored!r}")
+        # 再改成直改模式：立即生效、不留修订
+        server.call("docx_edit_paragraph", path=edit_path, paragraph=1, text="直改文本", tracked=False)
+        direct = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        check("直改立即生效", direct == "直改文本", repr(direct))
+        direct_counts = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+        check(
+            "直改不留修订",
+            direct_counts["insert"] == 0 and direct_counts["delete"] == 0,
+            json.dumps(direct_counts),
+        )
+        formatted = payload(
+            server.call(
+                "docx_set_paragraph_format",
+                path=edit_path,
+                paragraph=2,
+                bold=True,
+                italic=True,
+                align="center",
+            )
+        )
+        check("格式返回参数回显", formatted.get("align") == "center", json.dumps(formatted, ensure_ascii=False)[:160])
+        xml_text = engine._load(edit_path)[0].read("word/document.xml").decode("utf-8")
+        check("段落格式落到 w:rPr/w:pPr", "<w:b" in xml_text and "<w:i" in xml_text and 'w:val="center"' in xml_text, "缺少格式标记")
+        # 内置编辑器（SuperDoc）保存路径：整份 docx 写回
+        with open(edit_path, "rb") as handle:
+            original_bytes = handle.read()
+        written = payload(
+            server.call(
+                "docx_write_back",
+                path=edit_path,
+                data=base64.b64encode(original_bytes).decode("ascii"),
+            )
+        )
+        check("写回返回字节数与备份", written.get("bytes") == len(original_bytes) and os.path.exists(written.get("backup") or ""), json.dumps(written, ensure_ascii=False)[:160])
+        with open(edit_path, "rb") as handle:
+            check("写回后文件逐字节一致", handle.read() == original_bytes, "内容不一致")
+        # 工具级拒绝走 isError（不是 JSON-RPC 错误）
+        bad_docx = server.call(
+            "docx_write_back", path=edit_path, data=base64.b64encode(b"not-a-docx").decode("ascii")
+        )
+        check("非 docx 写回被拒", bad_docx.get("isError") is True, str(bad_docx)[:160])
+        bad_b64 = server.call("docx_write_back", path=edit_path, data="!!!!")
+        check("非法 base64 被拒", bad_b64.get("isError") is True, str(bad_b64)[:160])
+        server.call("docx_revisions_list", path=path, limit=1)  # 把"当前目标"还给主样本
+
+        print("未实现工具必须明确失败")
+        exported = server.call("docx_export_pdf", path=path)
+        check("export_pdf 返回 isError", exported.get("isError") is True, str(exported))
+
+        print("页面自举兜底")
+        current = payload(server.call("docx_current_target"))
+        check("docx_current_target 返回最近目标", current.get("path") == path, json.dumps(current)[:160])
+
+        print("页面资源")
+        resources = server.rpc("resources/list")["resources"]
+        check("暴露 editor 页面", resources[0]["uri"] == PAGE_URI, str(resources))
+        check(
+            "mime 带 mcp-app profile",
+            resources[0]["mimeType"] == "text/html;profile=mcp-app",
+            resources[0]["mimeType"],
+        )
+        page = server.rpc("resources/read", {"uri": PAGE_URI})["contents"][0]
+        html = page["text"]
+        check("页面含标题", "Word 修订审阅" in html, html[:120])
+        check(
+            "页面含分页与批注控件",
+            all(marker in html for marker in ('id="pager"', 'id="comments"', 'id="totals"')),
+            html[:200],
+        )
+        check(
+            "页面内联了 App 桥与渲染器（各自 IIFE 隔离、裸导入已改写）",
+            all(marker in html for marker in ("App:", "renderAsync:", "JSZip"))
+            and 'from"jszip"' not in html,
+            html[:200],
+        )
+        check("页面体积在宿主 HTML 上限内", len(html.encode("utf-8")) < 16 * 1024 * 1024, str(len(html)))
+        check(
+            "页面体积在 stdio 帧上限内（base64 后再乘以 4/3 的余量）",
+            len(html.encode("utf-8")) < STDIO_FRAME_LIMIT_BYTES // 2,
+            str(len(html.encode("utf-8"))),
+        )
+        # 语法闸门：多个 minified bundle 内联进同一作用域曾撞名导致整段脚本 SyntaxError，
+        # 真机表现是页面能加载但 ui/initialize 永远握不上手——必须在这里拦住。
+        script_body = html.split('<script type="module">', 1)[-1].rsplit("</script>", 1)[0]
+        script_file = os.path.join(tempfile.gettempdir(), "office-editor-page-check.mjs")
+        with open(script_file, "w", encoding="utf-8") as handle:
+            handle.write(script_body)
+        checked = subprocess.run(
+            ["node", "--check", script_file], capture_output=True, text=True, timeout=120
+        )
+        check(
+            "内联脚本能通过语法检查（node --check）",
+            checked.returncode == 0,
+            (checked.stderr or "").strip().splitlines()[-1:] and checked.stderr.strip()[-200:]
+            or "node 不可用",
+        )
+        print(f"  页面大小 {len(html.encode('utf-8')) / 1024:.0f} KiB")
+
+        print("SuperDoc 引擎配置")
+        config = json.loads(
+            server.rpc("resources/read", {"uri": "office://superdoc/config"})["contents"][0]["text"]
+        )
+        check("config 资源暴露 baseUrl/version", "baseUrl" in config and "engineVersion" in config, json.dumps(config, ensure_ascii=False)[:160])
+        check("未配置镜像时 baseUrl 为空（页面据此回落）", config["baseUrl"] == "", str(config["baseUrl"]))
+        open_meta = None
+        for tool in server.rpc("tools/list")["tools"]:
+            if tool["name"] == "docx_open_editor":
+                open_meta = tool.get("_meta") or {}
+        ui_meta = (open_meta or {}).get("ui") or {}
+        check("未配置镜像时不放行额外域名", "connectDomains" not in (ui_meta.get("csp") or {}), json.dumps(ui_meta, ensure_ascii=False)[:200])
+        check("声明了 unsafeEval（SuperDoc 需要）", (ui_meta.get("csp") or {}).get("unsafeEval") is True, json.dumps(ui_meta, ensure_ascii=False)[:200])
+
+        print("文档字节通道（office://docx）")
+        templates = server.rpc("resources/templates/list")["resourceTemplates"]
+        check(
+            "声明字节/标记/段落三个模板",
+            len(templates) == 3,
+            str([t["uriTemplate"] for t in templates]),
+        )
+        meta = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&meta=1"})["contents"][0][
+                "text"
+            ]
+        )
+        size = os.path.getsize(path)
+        check("meta 大小与磁盘一致", meta["size"] == size, f'{meta["size"]} != {size}')
+        check(
+            "meta 分块数自洽",
+            meta["chunks"] == max(1, -(-size // meta["chunkBytes"])),
+            json.dumps(meta),
+        )
+        with open(path, "rb") as handle:
+            on_disk = handle.read()
+        first = server.rpc(
+            "resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&offset=0&length=2048"}
+        )["contents"][0]
+        second = server.rpc(
+            "resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&offset=2048&length=2048"}
+        )["contents"][0]
+        check(
+            "分块 mime 是 octet-stream",
+            first["mimeType"] == "application/octet-stream",
+            first["mimeType"],
+        )
+        merged = base64.b64decode(first["blob"]) + base64.b64decode(second["blob"])
+        check("分块重组与磁盘字节逐字一致", merged == on_disk[:4096], f"len={len(merged)}")
+        clamped = server.rpc(
+            "resources/read",
+            {"uri": f"{DOCX_RESOURCE}?path={path}&offset=0&length={64 * 1024 * 1024}"},
+        )["contents"][0]
+        clamped_len = len(base64.b64decode(clamped["blob"]))
+        check(
+            "超限长度被夹到 4 MiB",
+            clamped_len == min(size, CHUNK_MAX_BYTES),
+            f"{clamped_len} vs min({size}, {CHUNK_MAX_BYTES})",
+        )
+        marks = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}/marks?path={path}"})["contents"][0][
+                "text"
+            ]
+        )
+        wire_counts = payload(server.call("docx_revisions_list", path=path, limit=1))["counts"]
+        check(
+            "标记条数与引擎计数一致",
+            len(marks["marks"]) == wire_counts["insert"] + wire_counts["delete"],
+            f'{len(marks["marks"])} vs {wire_counts}',
+        )
+        check(
+            "标记 kind 分布一致",
+            sum(1 for mark in marks["marks"] if mark["kind"] == "insert") == wire_counts["insert"],
+            json.dumps(wire_counts),
+        )
+        try:
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}?path=/etc/hosts&meta=1"})
+            check("非 docx 路径被拒", False, "竟然读到了 /etc/hosts")
+        except AssertionError as error:
+            check("非 docx 路径被拒", "只允许读" in str(error), str(error)[:160])
+    finally:
+        server.close()
+    print("\n全部通过 ✅")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

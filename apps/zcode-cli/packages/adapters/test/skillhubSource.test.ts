@@ -273,7 +273,7 @@ test("安装：取指纹 → 下载 → 复算校验 → 包装成插件（含�
     assert.match(requested[0] ?? "", /\/skills\/global\/kb-search\/resolve\?version=1$/u);
     assert.deepEqual(downloadUrls, [`${API_BASE}/skills/global/kb-search/versions/1/download`]);
     const manifest = JSON.parse(
-      await readFile(join(resolved.path, ".zcode-plugin", "plugin.json"), "utf8"),
+      await readFile(join(resolved.path, ".uwork-plugin", "plugin.json"), "utf8"),
     ) as Record<string, unknown>;
     assert.deepEqual(manifest, { name: "kb-search", skills: ["./skills"], version: "1" });
     assert.equal(
@@ -283,7 +283,7 @@ test("安装：取指纹 → 下载 → 复算校验 → 包装成插件（含�
 
     await resolved.cleanup();
     assert.equal(zipCleanupCalls, 1);
-    await assert.rejects(() => readFile(join(resolved.path, ".zcode-plugin", "plugin.json")));
+    await assert.rejects(() => readFile(join(resolved.path, ".uwork-plugin", "plugin.json")));
   });
 });
 
