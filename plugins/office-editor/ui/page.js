@@ -19,6 +19,7 @@ const state = {
   commentOffset: 0,
   preview: { shown: false, etag: null },
   editorInstance: null,
+  editorUnavailable: false,
 };
 
 // 模块级持有：refresh/resolve 与宿主回调都要用它。放进 else 块里会让模块级函数取不到（真机踩坑）。
@@ -71,9 +72,16 @@ function applyLayout() {
   dom.editorBar.hidden = !wide;
   // 侧栏＝Office 式编辑页：打开就把文档渲染出来并让段落可编辑；卡片里仍按需展开（只做接受/拒绝）。
   if (wide) {
-    dom.preview.hidden = true;
-    dom.superdocHost.hidden = false;
-    void mountEditor();
+    if (state.editorUnavailable) {
+      // 引擎不可用（如无外网/未配置内网镜像）：侧栏回落到我们自己渲染的只读预览，绝不留白屏。
+      dom.superdocHost.hidden = true;
+      dom.preview.hidden = false;
+      if (!state.preview.shown && !state.busy) void renderDocument();
+    } else {
+      dom.preview.hidden = true;
+      dom.superdocHost.hidden = false;
+      void mountEditor();
+    }
   } else {
     dom.superdocHost.hidden = true;
   }
@@ -538,23 +546,13 @@ async function loadDocxBytes() {
   return { bytes: concatBytes(parts), meta };
 }
 
-async function waitForEditorReady(instance, timeoutMs = 30000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (dom.superdocHost.querySelector(".superdoc, [class*='superdoc'], .ProseMirror, [contenteditable]")) {
-      return true;
-    }
-    if (instance?.isReady === true) return true;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return false;
-}
-
 async function mountEditor(options = {}) {
   if (state.editorInstance && !options.force) return;
   if (!state.path) return;
   if (typeof SuperDoc === "undefined") {
-    setEditorStatus("编辑器未加载：内联的 SuperDoc 不可用（改用卡片里的只读预览）。");
+    state.editorUnavailable = true;
+    setEditorStatus("Office 编辑器未加载：内联包不可用，已回落到只读预览。");
+    applyLayout();
     return;
   }
   try {
@@ -565,24 +563,59 @@ async function mountEditor(options = {}) {
     }
     const { bytes, meta } = await loadDocxBytes();
     setEditorStatus("启动 Office 编辑器…");
-    const file = new File([bytes], fileNameOf(state.path), { type: DOCX_MIME });
-    state.editorInstance = new SuperDoc({
-      selector: "#superdoc-host",
-      document: file,
-      // 默认按修订记录改动：编辑结果在 Word 里仍是"未接受的修订"，可回到卡片逐条接受/拒绝。
-      modules: { trackChanges: true },
+    // 官方就绪信号是 onReady 回调；错误走 onContentError/onException（不接这两个回调，
+    // 页面表现就是"状态说就绪、画布全白"——真机踩过，测了半轮才发现错误被回调吃掉了）。
+    const ready = { done: false, error: "" };
+    let settled;
+    const readyPromise = new Promise((resolve) => {
+      settled = resolve;
     });
-    // 调试/兼容句柄：SuperDoc 各版本的实例方法名不完全一致（exportDocx/save/export…），
-    // 暴露实例便于页内排查，也让下面的保存逻辑按候选逐个试。
+    const buildInstance = (payload) =>
+      new SuperDoc({
+        selector: "#superdoc-host",
+        document: payload,
+        // 默认按修订记录改动：编辑结果在 Word 里仍是"未接受的修订"，可回到卡片逐条接受/拒绝。
+        modules: { trackChanges: true },
+        onReady: () => {
+          ready.done = true;
+          settled();
+        },
+        onContentError: ({ error }) => {
+          ready.error = `内容错误：${error?.message ?? String(error)}`;
+          settled();
+        },
+        onException: ({ error }) => {
+          ready.error = `异常：${error?.message ?? String(error)}`;
+          settled();
+        },
+      });
+    state.editorInstance = buildInstance(new File([bytes], fileNameOf(state.path), { type: DOCX_MIME }));
     globalThis.__officeEditor = state.editorInstance;
-    const ready = await waitForEditorReady(state.editorInstance);
+    await Promise.race([readyPromise, new Promise((resolve) => setTimeout(resolve, 15000))]);
+    if (!ready.done && !ready.error) {
+      // v2 对 File 的支持随版本变化：超时无错无就绪时，用 ArrayBuffer 重试一次。
+      setEditorStatus("首次加载无响应，改用 ArrayBuffer 重试…");
+      try { state.editorInstance?.destroy?.(); } catch { /* 重试前销毁失败可忽略 */ }
+      dom.superdocHost.replaceChildren();
+      state.editorInstance = buildInstance(bytes.buffer);
+      globalThis.__officeEditor = state.editorInstance;
+      await Promise.race([readyPromise, new Promise((resolve) => setTimeout(resolve, 15000))]);
+    }
+    if (ready.error) throw new Error(ready.error);
     setEditorStatus(
       ready
         ? `编辑器就绪 · ${Math.round(meta.size / 1024)} KiB · 改动默认记为修订；点「保存到文件」写回原文件`
         : "编辑器启动超时：可以重试或回到卡片用只读预览审阅。",
     );
   } catch (error) {
-    setEditorStatus(`编辑器启动失败：${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    // 引擎不可用（无外网/未配置内网镜像）不是白屏：标记后回落到只读预览，并把原因写清楚。
+    state.editorUnavailable = true;
+    setEditorStatus(`Office 编辑器不可用：${message}`);
+    showNotice(
+      `Office 编辑器引擎不可用：${message}。当前在侧栏回落到只读预览；审阅请回到对话卡片逐条接受或拒绝。`,
+    );
+    applyLayout();
   }
 }
 
