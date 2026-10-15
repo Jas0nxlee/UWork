@@ -49,7 +49,8 @@ import { normalizeCodeViewerSource } from "@/lib/codeViewerSource.js";
 import { FileDisplayIcon, resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
 import { getPathLeaf, isAbsoluteFilePath } from "@/lib/path.js";
 import { decodeBase64ToArrayBuffer, getOfficeFilePreviewKind } from "@/lib/officeFilePreview.js";
-import { OfficeEditorPane } from "@/officeEditor/OfficeEditorPane.js";
+// 引擎可替换：SuperDoc 版保留在 officeEditor/OfficeEditorPane.tsx（对照用），默认走 canvas-editor。
+import { CanvasOfficeEditorPane } from "@/officeEditor/CanvasOfficeEditorPane.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
@@ -1748,7 +1749,7 @@ export function PreviewPane({
       </div>
       <div className="min-h-0 flex-1">
         {officeEditing && officePreviewKind === "docx" && source?.type === "file" ? (
-          <OfficeEditorPane
+          <CanvasOfficeEditorPane
             fileService={fileService}
             path={source.path}
             onExit={() => setOfficeEditing(false)}

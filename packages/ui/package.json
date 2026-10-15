@@ -87,6 +87,8 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@hufe921/canvas-editor": "^1.0.5",
+    "@hufe921/canvas-editor-plugin-docx": "^1.0.0",
     "@superdoc/docx-engine": "0.22.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-virtual": "^3.13.23",
