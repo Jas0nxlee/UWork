@@ -254,6 +254,23 @@ def revision_counts(path: str) -> dict:
     }
 
 
+def revision_marks(path: str) -> dict:
+    """紧凑标记（id/kind/文本前缀，文档序），供页面把 docx-preview 的 ``<ins>/<del>`` 与引擎条目对齐。
+
+    只带对齐必需的最小字段：整页渲染时 DOM 里的 ins/del 节点顺序与引擎的文档序遍历一致，
+    数量一致就按序贴 id；不一致再退化为按文本前缀匹配。6000 条量级约数百 KB，走资源读（免审批）。
+    """
+    revisions, _ = _parse(path)
+    stat = os.stat(path)
+    return {
+        "path": path,
+        "etag": f"{stat.st_size}-{stat.st_mtime_ns}",
+        "marks": [
+            {"id": item["id"], "kind": item["kind"], "text": item["text"]} for item in revisions
+        ],
+    }
+
+
 def _replace_with_children(parent: ET.Element, element: ET.Element) -> None:
     """把 element 解包成它的子节点（保留尾文本），用于“接受插入 / 拒绝删除”。"""
     index = list(parent).index(element)

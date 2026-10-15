@@ -2,20 +2,27 @@
 """office-editor 插件的 MCP stdio 服务器（纯标准库，无第三方依赖）。
 
 协议面：``initialize`` / ``notifications/initialized`` / ``ping`` / ``tools/list`` / ``tools/call`` /
-``resources/list`` / ``resources/read``。stdout 只输出 JSON-RPC 帧，日志一律走 stderr。
+``resources/list`` / ``resources/templates/list`` / ``resources/read``。stdout 只输出 JSON-RPC 帧，日志一律走 stderr。
 
-页面装配：``resources/read`` 时把官方 ext-apps 浏览器 bundle 与 ``ui/page.js`` 内联进
-``ui/editor.html``（单文件页面，宿主按 ``ui://`` 资源承载）。bundle 是 ESM，末尾形如
-``export{X as App,...};`` —— 内联前把该语句改写成 ``const App = X;`` 形式的别名，页面代码即可直接用 ``App``。
+页面装配：``resources/read`` 时把官方 ext-apps 浏览器 bundle、docx-preview（Apache-2.0）、JSZip 与
+``ui/page.js`` 内联进 ``ui/editor.html``（单文件页面，宿主按 ``ui://`` 资源承载）。两个 bundle 都是 ESM，
+末尾形如 ``export{X as App,...};``、``import e from"jszip"`` —— 内联前把导出改写成 ``const App = X;`` 别名、
+把 jszip 的裸导入改写成对全局 ``JSZip`` 的引用，页面代码即可直接用 ``App`` / ``renderAsync``。
+
+文档字节通道（页面无文件系统原语）：``office://docx?path=…`` 分块读。宿主对页面读资源的单次上限是
+8 MiB 解码，但真正的天花板是 vendored MCP SDK 的 stdio 帧 10 MiB（base64 膨胀 4/3），所以按 4 MiB 分块；
+``meta=1`` 返回 ``{size, mtimeNs, etag, chunkBytes, chunks}`` 供页面决定读几块与是否需要重读。
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import sys
 import traceback
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,12 +31,22 @@ from docx_revisions import (  # noqa: E402
     list_comments,
     list_revisions,
     revision_counts,
+    revision_marks,
     resolve_revisions,
 )
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(PLUGIN_ROOT, "ui")
 VENDOR_BUNDLE = os.path.join(UI_DIR, "vendor", "mcp-apps-app.js")
+VENDOR_RENDERERS = (
+    os.path.join(UI_DIR, "vendor", "jszip.min.js"),
+    os.path.join(UI_DIR, "vendor", "docx-preview.js"),
+)
+DOCX_RESOURCE_URI = "office://docx"
+BLOB_MIME = "application/octet-stream"
+META_MIME = "application/json"
+# 解码后 4 MiB：base64 膨胀到 ≈5.33 MiB，距宿主 8 MiB 与 SDK stdio 帧 10 MiB 都有余量。
+CHUNK_MAX_BYTES = 4 * 1024 * 1024
 PAGE_URI = "ui://office-editor/editor.html"
 PAGE_MIME = "text/html;profile=mcp-app"
 SERVER_INFO = {"name": "office-editor", "version": "0.1.0"}
@@ -154,15 +171,89 @@ def _inline_module_aliases(bundle: str) -> str:
     return bundle[: match.start()] + "\n".join(aliases) + "\n"
 
 
+def _inline_bare_imports(bundle: str, mapping: dict) -> str:
+    """把 ``import e from"jszip";`` 这类裸导入改写成对已内联全局的引用（内联后没有模块解析器）。"""
+    for specifier, global_name in mapping.items():
+        pattern = re.compile(
+            r"import\s+([A-Za-z_$][\w$]*)\s+from\s*[\"']" + re.escape(specifier) + r"[\"'];?"
+        )
+        bundle, count = pattern.subn(rf"const \1 = {global_name};", bundle)
+        if count == 0:
+            raise ValueError(f"内联失败：{specifier} 的裸导入未找到（库版本变了？）")
+    return bundle
+
+
 def read_page() -> bytes:
     with open(os.path.join(UI_DIR, "editor.html"), encoding="utf-8") as handle:
         template = handle.read()
+    chunks: list[str] = []
+    for path in VENDOR_RENDERERS:
+        with open(path, encoding="utf-8") as handle:
+            bundle = handle.read()
+        if path.endswith("docx-preview.js"):
+            chunks.append(_inline_bare_imports(_inline_module_aliases(bundle), {"jszip": "JSZip"}))
+        else:
+            chunks.append(_inline_module_aliases(bundle))
     with open(VENDOR_BUNDLE, encoding="utf-8") as handle:
-        vendor = _inline_module_aliases(handle.read())
+        chunks.append(_inline_module_aliases(handle.read()))
     with open(os.path.join(UI_DIR, "page.js"), encoding="utf-8") as handle:
-        page = handle.read()
-    script = f'<script type="module">\n{vendor}\n{page}\n</script>'
+        chunks.append(handle.read())
+    script = '<script type="module">\n' + "\n".join(chunks) + "\n</script>"
     return template.replace("<!--__SCRIPT__-->", script).encode("utf-8")
+
+
+def _readable_docx(raw_path: str) -> str:
+    """把页面给的路径收成可读绝对路径：必须是已存在文件，且是 .docx/.docm 或当前会话目标。"""
+    resolved = os.path.abspath(os.path.expanduser(raw_path or ""))
+    if not os.path.isfile(resolved):
+        raise ValueError(f"不是可读文件: {raw_path}")
+    target = (_last_target or {}).get("path")
+    if target and os.path.abspath(target) == resolved:
+        return resolved
+    if os.path.splitext(resolved)[1].lower() not in (".docx", ".docm"):
+        raise ValueError(f"只允许读 .docx/.docm 或当前会话目标: {raw_path}")
+    return resolved
+
+
+def docx_resource_meta(path: str) -> dict:
+    stat = os.stat(path)
+    return {
+        "path": path,
+        "size": stat.st_size,
+        "mtimeNs": stat.st_mtime_ns,
+        "etag": f"{stat.st_size}-{stat.st_mtime_ns}",
+        "chunkBytes": CHUNK_MAX_BYTES,
+        "chunks": max(1, -(-stat.st_size // CHUNK_MAX_BYTES)),
+    }
+
+
+def read_docx_resource(uri: str) -> dict:
+    """``office://docx?path=…``：``meta=1`` 给元信息；``offset``/``length`` 给该段原始字节（base64 blob）。
+
+    ``office://docx/marks?path=…`` 给紧凑修订标记（id/kind/文本前缀），供页面把渲染出的
+    ``<ins>/<del>`` 与引擎条目对齐——渲染路径全程只走资源读，不触发工具审批。
+    """
+    parsed = urllib.parse.urlsplit(uri)
+    query = urllib.parse.parse_qs(parsed.query)
+    path = _readable_docx((query.get("path") or [""])[0])
+    if parsed.path == "/marks":
+        payload = json.dumps(revision_marks(path), ensure_ascii=False)
+        return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
+    if (query.get("meta") or ["0"])[0] not in ("", "0"):
+        payload = json.dumps(docx_resource_meta(path), ensure_ascii=False)
+        return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
+    offset = max(0, int((query.get("offset") or ["0"])[0] or 0))
+    length = int((query.get("length") or [str(CHUNK_MAX_BYTES)])[0] or CHUNK_MAX_BYTES)
+    length = max(1, min(length, CHUNK_MAX_BYTES))
+    with open(path, "rb") as handle:
+        handle.seek(offset)
+        data = handle.read(length)
+    log(f"docx chunk: path={path} offset={offset} bytes={len(data)}")
+    return {
+        "contents": [
+            {"uri": uri, "mimeType": BLOB_MIME, "blob": base64.b64encode(data).decode("ascii")}
+        ]
+    }
 
 
 def _text(payload) -> list[dict]:
@@ -261,8 +352,25 @@ def handle_request(message: dict):
                 }
             ]
         }
+    if method == "resources/templates/list":
+        return {
+            "resourceTemplates": [
+                {
+                    "uriTemplate": f"{DOCX_RESOURCE_URI}{{?path,offset,length,meta}}",
+                    "name": "DOCX 分块字节（页面渲染用）",
+                    "mimeType": BLOB_MIME,
+                },
+                {
+                    "uriTemplate": f"{DOCX_RESOURCE_URI}/marks{{?path}}",
+                    "name": "DOCX 修订标记（id/kind/文本，文档序）",
+                    "mimeType": META_MIME,
+                },
+            ]
+        }
     if method == "resources/read":
-        uri = params.get("uri")
+        uri = params.get("uri") or ""
+        if uri.startswith(DOCX_RESOURCE_URI):
+            return read_docx_resource(uri)
         if uri != PAGE_URI:
             raise ValueError(f"未知资源: {uri}")
         html = read_page()

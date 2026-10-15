@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import atexit
+import base64
 import json
 import os
 import shutil
@@ -25,7 +26,10 @@ import sample_fixture as fixture  # noqa: E402
 PLUGIN_ROOT = os.path.dirname(HERE)
 SERVER = os.path.join(PLUGIN_ROOT, "server", "server.py")
 PAGE_URI = "ui://office-editor/editor.html"
+DOCX_RESOURCE = "office://docx"
+CHUNK_MAX_BYTES = 4 * 1024 * 1024
 HOST_CONTENT_LIMIT_BYTES = 32 * 1024  # 宿主 tools/call content 上限
+STDIO_FRAME_LIMIT_BYTES = 10 * 1024 * 1024  # vendored MCP SDK 的单帧上限（base64 膨胀后）
 SAFETY_LIMIT_BYTES = 28 * 1024  # 我们自己的安全线
 
 
@@ -286,7 +290,79 @@ def main() -> int:
         )
         check("页面内联了 App 桥", "const App =" in html or "const App=" in html, html[:200])
         check("页面体积在宿主上限内", len(html.encode("utf-8")) < 16 * 1024 * 1024, str(len(html)))
+        check(
+            "页面内联了渲染器与 JSZip（裸导入已改写）",
+            "renderAsync" in html and "JSZip" in html and 'from"jszip"' not in html,
+            html[:200],
+        )
+        check(
+            "页面体积在 stdio 帧上限内（base64 后再乘以 4/3 的余量）",
+            len(html.encode("utf-8")) < STDIO_FRAME_LIMIT_BYTES // 2,
+            str(len(html.encode("utf-8"))),
+        )
         print(f"  页面大小 {len(html.encode('utf-8')) / 1024:.0f} KiB")
+
+        print("文档字节通道（office://docx）")
+        templates = server.rpc("resources/templates/list")["resourceTemplates"]
+        check("声明字节与标记两个模板", len(templates) == 2, str([t["uriTemplate"] for t in templates]))
+        meta = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&meta=1"})["contents"][0][
+                "text"
+            ]
+        )
+        size = os.path.getsize(path)
+        check("meta 大小与磁盘一致", meta["size"] == size, f'{meta["size"]} != {size}')
+        check(
+            "meta 分块数自洽",
+            meta["chunks"] == max(1, -(-size // meta["chunkBytes"])),
+            json.dumps(meta),
+        )
+        with open(path, "rb") as handle:
+            on_disk = handle.read()
+        first = server.rpc(
+            "resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&offset=0&length=2048"}
+        )["contents"][0]
+        second = server.rpc(
+            "resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&offset=2048&length=2048"}
+        )["contents"][0]
+        check(
+            "分块 mime 是 octet-stream",
+            first["mimeType"] == "application/octet-stream",
+            first["mimeType"],
+        )
+        merged = base64.b64decode(first["blob"]) + base64.b64decode(second["blob"])
+        check("分块重组与磁盘字节逐字一致", merged == on_disk[:4096], f"len={len(merged)}")
+        clamped = server.rpc(
+            "resources/read",
+            {"uri": f"{DOCX_RESOURCE}?path={path}&offset=0&length={64 * 1024 * 1024}"},
+        )["contents"][0]
+        clamped_len = len(base64.b64decode(clamped["blob"]))
+        check(
+            "超限长度被夹到 4 MiB",
+            clamped_len == min(size, CHUNK_MAX_BYTES),
+            f"{clamped_len} vs min({size}, {CHUNK_MAX_BYTES})",
+        )
+        marks = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}/marks?path={path}"})["contents"][0][
+                "text"
+            ]
+        )
+        wire_counts = payload(server.call("docx_revisions_list", path=path, limit=1))["counts"]
+        check(
+            "标记条数与引擎计数一致",
+            len(marks["marks"]) == wire_counts["insert"] + wire_counts["delete"],
+            f'{len(marks["marks"])} vs {wire_counts}',
+        )
+        check(
+            "标记 kind 分布一致",
+            sum(1 for mark in marks["marks"] if mark["kind"] == "insert") == wire_counts["insert"],
+            json.dumps(wire_counts),
+        )
+        try:
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}?path=/etc/hosts&meta=1"})
+            check("非 docx 路径被拒", False, "竟然读到了 /etc/hosts")
+        except AssertionError as error:
+            check("非 docx 路径被拒", "只允许读" in str(error), str(error)[:160])
     finally:
         server.close()
     print("\n全部通过 ✅")

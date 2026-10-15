@@ -1,6 +1,6 @@
 {
   "name": "office-editor",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "In-app Office (DOCX first) revision review and editing: list/accept/reject tracked changes from a sandboxed plugin page.",
   "description_i18n": {
     "en": "Review and resolve Word tracked changes inside the app, with a sandboxed plugin page.",
@@ -15,7 +15,9 @@
     "office": {
       "type": "stdio",
       "command": "python3",
-      "args": ["${UWORK_PLUGIN_ROOT}/server/server.py"]
+      "args": [
+        "${UWORK_PLUGIN_ROOT}/server/server.py"
+      ]
     }
   }
 }
