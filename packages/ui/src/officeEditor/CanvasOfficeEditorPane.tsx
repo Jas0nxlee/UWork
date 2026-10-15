@@ -231,6 +231,11 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
             commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
             return;
           }
+          case "executePainter": {
+            // 引擎的 executePainter 读 payload.isDblclick；无参会直接抛错（回归检查发现的真 bug）。
+            commands.executePainter?.({ isDblclick: false });
+            return;
+          }
           case "executeSeparator": {
             commands.executeSeparator?.();
             return;

@@ -15,7 +15,8 @@
   },
   "scripts": {
     "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+    "lint:fix": "oxlint --fix",
+    "check:office-editor": "node scripts/check-office-editor-commands.mjs"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.2.4",

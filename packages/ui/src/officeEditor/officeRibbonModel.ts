@@ -203,9 +203,10 @@ export const RIBBON_TABS: RibbonTab[] = [
             label: "行距",
             title: "行距",
             icon: "TextLineSpacing24Regular",
-            options: [1, 1.15, 1.5, 2, 2.5, 3].map((ratio) => ({
+            // 官方 demo 的 `data-rowmargin` 就是**倍数**（1.25/1.5/1.75/2/2.5/3），不是像素。
+            options: [1.25, 1.5, 1.75, 2, 2.5, 3].map((ratio) => ({
               label: `${ratio} 倍行距`,
-              args: [Math.round(ratio * 24)],
+              args: [ratio],
             })),
           },
           button("无序列表", "项目符号", "executeList", { args: ["ul"], icon: "TextBulletListLtr24Regular" }),
@@ -264,20 +265,12 @@ export const RIBBON_TABS: RibbonTab[] = [
             ],
           },
           button("日期", "插入当前日期", "executeInsertElementList", {
-            args: [{ type: "date", value: "", dateFormat: "yyyy-MM-dd" }],
+            args: [{ type: "date", value: "", dateFormat: "yyyy-MM-dd", valueList: [{ value: "日期" }] }],
             icon: "CalendarLtr24Regular",
           }),
           button("复选框", "插入复选框", "executeInsertElementList", {
-            args: [{ type: "checkbox", value: false, checkbox: { value: false } }],
+            args: [{ type: "checkbox", checkbox: { value: false }, value: "" }],
             icon: "CheckboxChecked24Regular",
-          }),
-          button("代码块", "插入代码块", "executeInsertElementList", {
-            args: [{ type: "codeblock", value: "", codeBlock: { language: "javascript" } }],
-            icon: "Code24Regular",
-          }),
-          button("引用块", "插入引用块", "executeInsertElementList", {
-            args: [{ type: "blockquote", value: "", blockquote: { showLine: true } }],
-            icon: "TextQuote24Regular",
           }),
         ],
       },
