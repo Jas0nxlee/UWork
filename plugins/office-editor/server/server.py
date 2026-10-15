@@ -46,6 +46,8 @@ UI_DIR = os.path.join(PLUGIN_ROOT, "ui")
 VENDOR_BUNDLE = os.path.join(UI_DIR, "vendor", "mcp-apps-app.js")
 SUPERDOC_JS = os.path.join(UI_DIR, "vendor", "superdoc", "superdoc.min.js")
 SUPERDOC_CSS = os.path.join(UI_DIR, "vendor", "superdoc", "superdoc.min.css")
+ENGINE_CONFIG_PATH = os.path.join(PLUGIN_ROOT, "engine.json")
+SUPERDOC_CONFIG_URI = "office://superdoc/config"
 DOCX_RESOURCE_URI = "office://docx"
 BLOB_MIME = "application/octet-stream"
 META_MIME = "application/json"
@@ -58,6 +60,37 @@ PAGE_MIME = "text/html;profile=mcp-app"
 SERVER_INFO = {"name": "office-editor", "version": "0.1.0"}
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
+
+def engine_config() -> dict:
+    """内网引擎镜像配置（engine.json）。留空 baseUrl 时编辑器不可用，页面回落只读预览。"""
+    try:
+        with open(ENGINE_CONFIG_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError) as error:
+        log(f"engine.json 读取失败：{error}")
+        return {"baseUrl": "", "engineVersion": ""}
+    base = str(data.get("baseUrl") or "").strip().rstrip("/")
+    return {"baseUrl": base, "engineVersion": str(data.get("engineVersion") or "")}
+
+
+def _open_editor_ui_marshal() -> dict:
+    """docx_open_editor 的 _meta.ui：SuperDoc 需要 unsafeEval；配置了内网引擎镜像时再放行该域名。
+
+    工具描述是每次 tools/list 现算的，所以改 engine.json 后冷启动即可生效（无需改代码）。
+    """
+    ui = {
+        "resourceUri": PAGE_URI,
+        "preferredDisplayMode": "fullscreen",
+        # SuperDoc 包内有一处 new Function：不声明这条，页面在沙箱里会直接抛错。
+        "csp": {"unsafeEval": True},
+    }
+    base = engine_config()["baseUrl"]
+    if base.startswith("http://") or base.startswith("https://"):
+        origin = "/".join(base.split("/")[:3])
+        ui["csp"]["connectDomains"] = [origin]
+        ui["csp"]["resourceDomains"] = [origin]
+    return ui
+
 
 TOOLS = [
     {
@@ -115,14 +148,7 @@ TOOLS = [
         # 放在调用结果上不会被识别——真机启动实测踩过这个坑。
         # preferredDisplayMode=fullscreen：卡片出现时自动把侧栏打开一次——审阅动作在卡片里做，
         # 真正的文档预览与编辑在侧边大窗口做（产品规则，见 specs/office-editor-plugin.md 二期）。
-        "_meta": {
-            "ui": {
-                "resourceUri": PAGE_URI,
-                "preferredDisplayMode": "fullscreen",
-                # SuperDoc 包内有一处 new Function：不声明这条，页面在沙箱里会直接抛错。
-                "csp": {"unsafeEval": True},
-            }
-        },
+        "_meta": {"ui": _open_editor_ui_marshal()},
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
@@ -504,6 +530,9 @@ def handle_request(message: dict):
         }
     if method == "resources/read":
         uri = params.get("uri") or ""
+        if uri == SUPERDOC_CONFIG_URI:
+            payload = json.dumps(engine_config(), ensure_ascii=False)
+            return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
         if uri.startswith(DOCX_RESOURCE_URI):
             return read_docx_resource(uri)
         if uri != PAGE_URI:

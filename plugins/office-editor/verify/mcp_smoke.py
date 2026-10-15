@@ -404,6 +404,20 @@ def main() -> int:
         )
         print(f"  页面大小 {len(html.encode('utf-8')) / 1024:.0f} KiB")
 
+        print("SuperDoc 引擎配置")
+        config = json.loads(
+            server.rpc("resources/read", {"uri": "office://superdoc/config"})["contents"][0]["text"]
+        )
+        check("config 资源暴露 baseUrl/version", "baseUrl" in config and "engineVersion" in config, json.dumps(config, ensure_ascii=False)[:160])
+        check("未配置镜像时 baseUrl 为空（页面据此回落）", config["baseUrl"] == "", str(config["baseUrl"]))
+        open_meta = None
+        for tool in server.rpc("tools/list")["tools"]:
+            if tool["name"] == "docx_open_editor":
+                open_meta = tool.get("_meta") or {}
+        ui_meta = (open_meta or {}).get("ui") or {}
+        check("未配置镜像时不放行额外域名", "connectDomains" not in (ui_meta.get("csp") or {}), json.dumps(ui_meta, ensure_ascii=False)[:200])
+        check("声明了 unsafeEval（SuperDoc 需要）", (ui_meta.get("csp") or {}).get("unsafeEval") is True, json.dumps(ui_meta, ensure_ascii=False)[:200])
+
         print("文档字节通道（office://docx）")
         templates = server.rpc("resources/templates/list")["resourceTemplates"]
         check(

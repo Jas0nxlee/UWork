@@ -90,6 +90,9 @@ iframe/webview/沙箱目标，日志里也没有 `plugin-ui-bridge` 行（是"�
   - 它自带完整编辑 UI（工具栏/评论/修订视图），比我们自研的"段落级编辑"完善得多。
   - **许可闸门（需公司决策）**：SuperDoc 是 **AGPL-3.0**（商业许可见 superdoc.dev）。内部/评估可用；作为商业产品分发需购买商业许可，或改选自托管的 ONLYOFFICE（AGPL，几百 MB）/ Collabora（MPL-2.0，同样重）。
   - CSP：SuperDoc 包内有一处 `new Function`，工具描述已声明 `_meta.ui.csp = {"unsafeEval": true}`（不声明则沙箱内直接抛错）。
+  - **引擎必须从真实 http(s) 地址加载（2026-10-15 实测结论）**：CDN 单文件只是加载器，运行时 `import("https://cdn.jsdelivr.net/npm/@superdoc/docx-engine@0.22.0/dist-cdn/docx-engine.es.js")`；引擎自身还会 `new Worker(new URL("./assets/browser-worker-entry-*.js", import.meta.url))`，壳对引擎地址做 http(s) 白名单并硬拼路径——**离线自包含＝同时维护两份被改过的压缩 vendor**（不采纳）。
+    因此引擎地址做成**配置**：`engine.json` 的 `baseUrl`（内网静态镜像，需镜像 `@superdoc/docx-engine@0.22.0/dist-cdn/` 整个目录含 `assets/*worker*` 与 `style.css`）。配置后：工具描述自动把该域名加进 `connectDomains`/`resourceDomains`，页面经 `office://superdoc/config` 读取并设置 `globalThis.SUPERDOC_ENGINE_CDN_BASE_URL`（客户端不背 13 MB，页面仍 ~2 MB，引擎首次进编辑页拉取一次）。
+    **留空 baseUrl** 时编辑器不可用——侧栏**回落只读预览**并显示原因（绝不留白屏）。
 - 写回一律经插件工具（页面没有文件系统原语）：编辑器保存走 `docx_write_back(path, base64)`——校验 zip/`document.xml`（宁可不写，也不把坏文件盖到用户文档上）→ 备份 → 原子替换 → 回读计数。真正的**修订标记**来自编辑器自身（`modules.trackChanges`），Word 打开仍是未接受的修订，回到对话卡片用我们引擎逐条接受/拒绝。
 
 ## 插件命名契约（UWork 命名 + 既有生态兼容）

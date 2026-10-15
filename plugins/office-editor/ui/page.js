@@ -549,6 +549,22 @@ async function loadDocxBytes() {
 async function mountEditor(options = {}) {
   if (state.editorInstance && !options.force) return;
   if (!state.path) return;
+  // 引擎地址来自插件配置（office://superdoc/config）：内网镜像时由它设置全局，
+  // 未配置则直接给出可执行的结论，而不是让它去联网失败后再白屏。
+  try {
+    const config = await readResourceJson("office://superdoc/config");
+    if (config?.baseUrl) {
+      globalThis.SUPERDOC_ENGINE_CDN_BASE_URL = config.baseUrl;
+      setEditorStatus(`使用内网引擎镜像：${config.baseUrl}`);
+    } else {
+      state.editorUnavailable = true;
+      setEditorStatus("Office 编辑器未配置引擎镜像（engine.json 的 baseUrl 为空），已回落到只读预览。");
+      applyLayout();
+      return;
+    }
+  } catch (error) {
+    setEditorStatus(`读取引擎配置失败：${error instanceof Error ? error.message : String(error)}`);
+  }
   if (typeof SuperDoc === "undefined") {
     state.editorUnavailable = true;
     setEditorStatus("Office 编辑器未加载：内联包不可用，已回落到只读预览。");
