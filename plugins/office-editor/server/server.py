@@ -18,6 +18,7 @@ docx-preview 的裸导入 ``import e from"jszip"`` 内联前改写成对上面 I
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import re
@@ -37,16 +38,21 @@ from docx_revisions import (  # noqa: E402
     revision_marks,
     resolve_revisions,
     set_paragraph_format,
+    write_back,
 )
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(PLUGIN_ROOT, "ui")
 VENDOR_BUNDLE = os.path.join(UI_DIR, "vendor", "mcp-apps-app.js")
+SUPERDOC_JS = os.path.join(UI_DIR, "vendor", "superdoc", "superdoc.min.js")
+SUPERDOC_CSS = os.path.join(UI_DIR, "vendor", "superdoc", "superdoc.min.css")
 DOCX_RESOURCE_URI = "office://docx"
 BLOB_MIME = "application/octet-stream"
 META_MIME = "application/json"
 # 解码后 4 MiB：base64 膨胀到 ≈5.33 MiB，距宿主 8 MiB 与 SDK stdio 帧 10 MiB 都有余量。
 CHUNK_MAX_BYTES = 4 * 1024 * 1024
+# 编辑器整份写回的上限（base64 计）：12 MiB ≈ 9 MB 文档，超过要求分块保存。
+MAX_WRITE_BACK_BASE64_BYTES = 12 * 1024 * 1024
 PAGE_URI = "ui://office-editor/editor.html"
 PAGE_MIME = "text/html;profile=mcp-app"
 SERVER_INFO = {"name": "office-editor", "version": "0.1.0"}
@@ -109,7 +115,14 @@ TOOLS = [
         # 放在调用结果上不会被识别——真机启动实测踩过这个坑。
         # preferredDisplayMode=fullscreen：卡片出现时自动把侧栏打开一次——审阅动作在卡片里做，
         # 真正的文档预览与编辑在侧边大窗口做（产品规则，见 specs/office-editor-plugin.md 二期）。
-        "_meta": {"ui": {"resourceUri": PAGE_URI, "preferredDisplayMode": "fullscreen"}},
+        "_meta": {
+            "ui": {
+                "resourceUri": PAGE_URI,
+                "preferredDisplayMode": "fullscreen",
+                # SuperDoc 包内有一处 new Function：不声明这条，页面在沙箱里会直接抛错。
+                "csp": {"unsafeEval": True},
+            }
+        },
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
@@ -154,6 +167,19 @@ TOOLS = [
         "title": "当前审阅目标",
         "description": "返回本会话最近一次打开/列出的 Word 文件（页面挂载晚于工具结果时用它兜底）。",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "docx_write_back",
+        "title": "写回整份 DOCX（编辑器保存）",
+        "description": "把编辑器（侧栏的 Office 式编辑页）产出的整份 docx 覆盖原文件：校验 zip/document.xml、落备份、原子替换。data 是 base64。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "data": {"type": "string", "description": "整份 docx 的 base64"},
+            },
+            "required": ["path", "data"],
+        },
     },
     {
         "name": "docx_export_pdf",
@@ -249,15 +275,23 @@ def _inline_umd(bundle: str, global_name: str) -> str:
 def read_page() -> bytes:
     with open(os.path.join(UI_DIR, "editor.html"), encoding="utf-8") as handle:
         template = handle.read()
+    with open(SUPERDOC_CSS, encoding="utf-8") as handle:
+        template = template.replace("<!--__STYLE__-->", f"<style>\n{handle.read()}\n</style>")
     with open(os.path.join(UI_DIR, "vendor", "jszip.min.js"), encoding="utf-8") as handle:
         jszip = _inline_umd(handle.read(), "JSZip")
     with open(os.path.join(UI_DIR, "vendor", "docx-preview.js"), encoding="utf-8") as handle:
         renderer = _inline_esm(handle.read(), {"jszip": "JSZip"}, only={"renderAsync"})
     with open(VENDOR_BUNDLE, encoding="utf-8") as handle:
         bridge = _inline_esm(handle.read(), only={"App"})
+    with open(SUPERDOC_JS, encoding="utf-8") as handle:
+        superdoc = handle.read()  # UMD：`var SuperDoc = …`，与控制台脚本同作用域即可直接用
     with open(os.path.join(UI_DIR, "page.js"), encoding="utf-8") as handle:
         page = handle.read()
-    script = '<script type="module">\n' + "\n".join([jszip, renderer, bridge, page]) + "\n</script>"
+    script = (
+        '<script type="module">\n'
+        + "\n".join([jszip, renderer, bridge, superdoc, page])
+        + "\n</script>"
+    )
     return template.replace("<!--__SCRIPT__-->", script).encode("utf-8")
 
 
@@ -374,6 +408,19 @@ def call_tool(name: str, arguments: dict) -> dict:
             "structuredContent": payload,
             "_meta": {"ui": {"resourceUri": PAGE_URI}},
         }
+    if name == "docx_write_back":
+        remember_target(arguments["path"])
+        raw = str(arguments.get("data") or "")
+        if len(raw) > MAX_WRITE_BACK_BASE64_BYTES:
+            raise ValueError(
+                f"整份写回上限 {MAX_WRITE_BACK_BASE64_BYTES} base64 字节（≈9 MB 文档）；更大的文件请分块保存"
+            )
+        try:
+            data = base64.b64decode(raw, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError(f"data 不是合法 base64: {error}") from error
+        result = write_back(arguments["path"], data)
+        return {"content": _text(result), "structuredContent": result}
     if name == "docx_current_target":
         if _last_target is None:
             return {

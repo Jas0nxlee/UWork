@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import copy
+import io
 import os
 import re
 import shutil
@@ -633,3 +634,34 @@ def resolve_revisions(path: str, action: str, ids: list[str] | None = None) -> d
         "written": True,
         "remaining": remaining["counts"],
     }
+
+# 编辑器（SuperDoc）写回：整份 docx 覆盖原路径。上限 12 MiB base64（≈9 MB 文档），
+# 超过就分块上传（后续需要时再加），先给出明确错误而不是静默截断。
+MAX_WRITE_BACK_BASE64_BYTES = 12 * 1024 * 1024
+
+
+def write_back(path: str, data: bytes) -> dict:
+    """把编辑器产出的整份 docx 写回原路径：校验 zip 与 document.xml、落备份、原子替换。
+
+    校验的意义是"宁可不写，也不要把坏文件盖到用户文档上"。
+    """
+    if len(data) < 4 or data[:2] != b"PK":
+        raise ValueError("不是有效的 docx（缺少 zip 头）")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if DOCUMENT_PART not in archive.namelist():
+                raise ValueError(f"不是有效的 docx（缺少 {DOCUMENT_PART}）")
+            xml_text = archive.read(DOCUMENT_PART).decode("utf-8")
+            _register_namespaces(xml_text)
+            ET.fromstring(xml_text)  # 解析一次：XML 坏了同样不能覆盖
+    except zipfile.BadZipFile as error:
+        raise ValueError(f"不是有效的 zip/docx: {error}") from error
+    backup = _unique_backup_path(path)
+    shutil.copy2(path, backup)
+    directory = os.path.dirname(os.path.abspath(path))
+    temporary = os.path.join(directory, f".{os.path.basename(path)}.{int(time.time() * 1000)}.tmp")
+    with open(temporary, "wb") as handle:
+        handle.write(data)
+    os.replace(temporary, path)
+    _invalidate_cache(path)
+    return {"path": path, "bytes": len(data), "backup": backup, "counts": revision_counts(path)}

@@ -18,7 +18,7 @@ const state = {
   comments: null, // null = 未加载（按需加载，少一次页面发起的工具调用）
   commentOffset: 0,
   preview: { shown: false, etag: null },
-  editor: { active: null },
+  editorInstance: null,
 };
 
 // 模块级持有：refresh/resolve 与宿主回调都要用它。放进 else 块里会让模块级函数取不到（真机踩坑）。
@@ -42,6 +42,10 @@ const dom = {
   previewToggle: document.getElementById("preview-toggle"),
   openSide: document.getElementById("open-side"),
   editorBar: document.getElementById("editor-bar"),
+  editorSave: document.getElementById("editor-save"),
+  editorReload: document.getElementById("editor-reload"),
+  editorStatus: document.getElementById("editor-status"),
+  superdocHost: document.getElementById("superdoc-host"),
   previewStatus: document.getElementById("preview-status"),
   preview: document.getElementById("doc-preview"),
   docBody: document.getElementById("doc-body"),
@@ -66,7 +70,13 @@ function applyLayout() {
   dom.openSide.hidden = wide;
   dom.editorBar.hidden = !wide;
   // 侧栏＝Office 式编辑页：打开就把文档渲染出来并让段落可编辑；卡片里仍按需展开（只做接受/拒绝）。
-  if (wide && state.path && !state.preview.shown && !state.busy) void renderDocument();
+  if (wide) {
+    dom.preview.hidden = true;
+    dom.superdocHost.hidden = false;
+    void mountEditor();
+  } else {
+    dom.superdocHost.hidden = true;
+  }
 }
 
 function showNotice(message) {
@@ -462,8 +472,6 @@ async function renderDocument() {
     setPreviewStatus(
       `已渲染 ${meta.chunks} 块 / ${Math.round(meta.size / 1024)} KiB · 修订 ${aligned.total} 处（对齐 ${aligned.matched}，${aligned.mode === "order" ? "按文档序" : "按文本"}）`,
     );
-    // 侧栏＝编辑位：渲染完就把段落变成可编辑区（卡片里不做编辑，只做接受/拒绝）。
-    if (document.body.classList.contains("wide")) await enableEditing();
   } catch (error) {
     setPreviewStatus("");
     showNotice(`渲染文档失败：${error instanceof Error ? error.message : String(error)}`);
@@ -497,114 +505,137 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(fitPreview, 150);
 });
 
-// —— 编辑（侧栏＝Office 式编辑页；卡片里不做编辑）——
-// 段落与引擎段号按文档序对齐，但**文本必须对得上**才允许编辑：对不上就不动它（宁可不给编辑，也不改错段落）。
+// —— 侧栏＝内嵌的 Office 编辑器（SuperDoc，UMD 全局 `SuperDoc`，随页面内联）——
+// 分工：卡片做接受/拒绝（我们的引擎），侧栏做真正的文档编辑（成熟引擎），保存整份写回原文件。
 
-async function enableEditing() {
-  if (!state.path) return;
-  const payload = await readResourceJson(
-    `${DOCX_RESOURCE}/paragraphs?path=${encodeURIComponent(state.path)}`,
-  );
-  const paragraphs = Array.isArray(payload?.paragraphs) ? payload.paragraphs : [];
-  const nodes = [...dom.docBody.querySelectorAll("p")].filter((node) => !node.closest("header, footer"));
-  let editable = 0;
-  let skipped = 0;
-  nodes.forEach((node, position) => {
-    const item = paragraphs[position];
-    const domText = normalizeMarkText(node.textContent).slice(0, 60);
-    const engineText = normalizeMarkText(item?.text ?? "").slice(0, 60);
-    const aligned =
-      Boolean(item) &&
-      (domText.startsWith(engineText.slice(0, 20)) || engineText.startsWith(domText.slice(0, 20)));
-    if (!aligned) {
-      skipped += 1;
-      return;
-    }
-    node.dataset.paragraph = String(item.index);
-    node.dataset.originalText = node.textContent ?? "";
-    node.setAttribute("contenteditable", "plaintext-only");
-    node.addEventListener("focus", () => {
-      state.editor.active = node;
-    });
-    node.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        node.blur();
-      }
-      if (event.key === "Escape") {
-        node.textContent = node.dataset.originalText ?? "";
-        node.blur();
-      }
-    });
-    node.addEventListener("blur", () => void commitParagraph(node));
-    editable += 1;
-  });
-  setPreviewStatus(
-    `编辑就绪：${editable} 段可编辑${skipped ? ` · ${skipped} 段未对齐（不在编辑范围）` : ""}；点段落改字，⌘↵ 保存，Esc 放弃`,
-  );
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function setEditorStatus(text) {
+  if (dom.editorStatus) dom.editorStatus.textContent = text || "";
 }
 
-async function commitParagraph(node) {
-  const paragraph = Number(node.dataset.paragraph);
-  const text = node.textContent ?? "";
-  const original = node.dataset.originalText ?? "";
-  if (!Number.isFinite(paragraph) || text === original) return;
-  setPreviewStatus(`写入第 ${paragraph} 段…`);
-  try {
-    const result = await app.callServerTool({
-      name: "docx_edit_paragraph",
-      arguments: { path: state.path, paragraph, text },
-    });
-    const output = parseToolPayload(result);
-    if (result?.isError) throw new Error(output ? JSON.stringify(output) : "工具返回错误");
-    const backupName = output?.backup ? String(output.backup).split("/").pop() : "";
-    setPreviewStatus(
-      `第 ${paragraph} 段已写入${output?.tracked === false ? "（直接改写）" : "（记为修订，可在对话卡片里接受/拒绝）"}${backupName ? ` · 备份 ${backupName}` : ""}`,
-    );
-    await renderDocument(); // 重读重渲染：修订标记与段落文本都跟着更新
-  } catch (error) {
-    node.textContent = original;
-    showNotice(`写入失败：${error instanceof Error ? error.message : String(error)}`);
+function fileNameOf(path) {
+  const parts = String(path || "").split("/");
+  return parts[parts.length - 1] || "document.docx";
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const step = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += step) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + step));
   }
+  return btoa(binary);
 }
 
-async function applyParagraphFormat(patch) {
-  const node = state.editor.active;
-  const paragraph = Number(node?.dataset?.paragraph);
-  if (!Number.isFinite(paragraph)) {
-    showNotice("先点一下要设置格式的段落。");
+async function loadDocxBytes() {
+  const meta = await readResourceJson(docxUri({ path: state.path, meta: "1" }));
+  const parts = [];
+  for (let offset = 0; offset < meta.size; offset += meta.chunkBytes) {
+    setEditorStatus(`读取文档 ${Math.floor(offset / meta.chunkBytes) + 1}/${meta.chunks}…`);
+    parts.push(await readResourceBytes(docxUri({ path: state.path, offset, length: meta.chunkBytes })));
+  }
+  return { bytes: concatBytes(parts), meta };
+}
+
+async function waitForEditorReady(instance, timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (dom.superdocHost.querySelector(".superdoc, [class*='superdoc'], .ProseMirror, [contenteditable]")) {
+      return true;
+    }
+    if (instance?.isReady === true) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+async function mountEditor(options = {}) {
+  if (state.editorInstance && !options.force) return;
+  if (!state.path) return;
+  if (typeof SuperDoc === "undefined") {
+    setEditorStatus("编辑器未加载：内联的 SuperDoc 不可用（改用卡片里的只读预览）。");
     return;
   }
-  setPreviewStatus(`设置第 ${paragraph} 段格式…`);
   try {
-    const result = await app.callServerTool({
-      name: "docx_set_paragraph_format",
-      arguments: { path: state.path, paragraph, ...patch },
+    if (options.force) {
+      try { state.editorInstance?.destroy?.(); } catch { /* 重载：销毁失败不阻塞 */ }
+      state.editorInstance = null;
+      dom.superdocHost.replaceChildren();
+    }
+    const { bytes, meta } = await loadDocxBytes();
+    setEditorStatus("启动 Office 编辑器…");
+    const file = new File([bytes], fileNameOf(state.path), { type: DOCX_MIME });
+    state.editorInstance = new SuperDoc({
+      selector: "#superdoc-host",
+      document: file,
+      // 默认按修订记录改动：编辑结果在 Word 里仍是"未接受的修订"，可回到卡片逐条接受/拒绝。
+      modules: { trackChanges: true },
     });
-    const output = parseToolPayload(result);
-    if (result?.isError) throw new Error(output ? JSON.stringify(output) : "工具返回错误");
-    setPreviewStatus(`第 ${paragraph} 段格式已更新`);
-    await renderDocument();
+    // 调试/兼容句柄：SuperDoc 各版本的实例方法名不完全一致（exportDocx/save/export…），
+    // 暴露实例便于页内排查，也让下面的保存逻辑按候选逐个试。
+    globalThis.__officeEditor = state.editorInstance;
+    const ready = await waitForEditorReady(state.editorInstance);
+    setEditorStatus(
+      ready
+        ? `编辑器就绪 · ${Math.round(meta.size / 1024)} KiB · 改动默认记为修订；点「保存到文件」写回原文件`
+        : "编辑器启动超时：可以重试或回到卡片用只读预览审阅。",
+    );
   } catch (error) {
-    showNotice(`设置格式失败：${error instanceof Error ? error.message : String(error)}`);
+    setEditorStatus(`编辑器启动失败：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-for (const button of document.querySelectorAll("#editor-bar [data-fmt]")) {
-  const flag = button.dataset.fmt;
-  button.addEventListener("click", () => {
-    const node = state.editor.active;
-    // 文档里的真实格式尚未回读，这里按点击次数在 true/false 间切换（v1 近似）。
-    const next = node?.dataset[`fmt${flag}`] !== "1";
-    if (node) node.dataset[`fmt${flag}`] = next ? "1" : "0";
-    void applyParagraphFormat({ [flag]: next });
-  });
+/** 从编辑器实例导出 docx：方法名在不同版本间有差异，逐个试并把结果归一成 Blob。 */
+async function exportDocxBlob(instance) {
+  for (const name of ["exportDocx", "export", "getFile", "save", "getDocument"]) {
+    const fn = instance?.[name];
+    if (typeof fn !== "function") continue;
+    try {
+      const value = await fn.call(instance, name === "save" ? { format: "docx" } : undefined);
+      if (value instanceof Blob) return value;
+      if (value?.blob instanceof Blob) return value.blob;
+      if (value?.file instanceof Blob) return value.file;
+      if (value instanceof ArrayBuffer) return new Blob([value], { type: DOCX_MIME });
+      if (value instanceof Uint8Array) return new Blob([value], { type: DOCX_MIME });
+    } catch {
+      // 该名字不是导出 API：继续试下一个
+    }
+  }
+  return null;
 }
 
-for (const button of document.querySelectorAll("#editor-bar [data-align]")) {
-  const align = button.dataset.align;
-  button.addEventListener("click", () => void applyParagraphFormat({ align }));
+async function saveEditor() {
+  const instance = state.editorInstance;
+  if (!instance || !state.path) return;
+  try {
+    setEditorStatus("导出 docx…");
+    const blob = await exportDocxBlob(instance);
+    if (!blob) {
+      const methods = Object.keys(instance).filter((key) => typeof instance[key] === "function");
+      throw new Error(`编辑器没有返回文档内容（可用方法：${methods.slice(0, 12).join(", ") || "无"}）`);
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    setEditorStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
+    const result = await app.callServerTool({
+      name: "docx_write_back",
+      arguments: { path: state.path, data: bytesToBase64(bytes) },
+    });
+    const output = parseToolPayload(result);
+    if (result?.isError) throw new Error(output ? JSON.stringify(output) : "写回失败");
+    const backupName = output?.backup ? String(output.backup).split("/").pop() : "";
+    const counts = output?.counts ?? {};
+    setEditorStatus(
+      `已保存到 ${state.path}${backupName ? ` · 备份 ${backupName}` : ""} · 剩余修订：插入 ${counts.insert ?? 0} / 删除 ${counts.delete ?? 0}`,
+    );
+    void loadPage(state.offset); // 卡片里的审阅列表跟着刷新
+  } catch (error) {
+    setEditorStatus(`保存失败：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
+
+dom.editorSave?.addEventListener("click", () => void saveEditor());
+dom.editorReload?.addEventListener("click", () => void mountEditor({ force: true }));
 
 dom.refresh.addEventListener("click", () => void loadPage(state.offset));
 dom.prev.addEventListener("click", () => void loadPage(Math.max(state.offset - state.limit, 0)));

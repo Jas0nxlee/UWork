@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>office-editor 修订审阅</title>
+    <title>office-editor 修订审阅 / 编辑</title>
+    <!--__STYLE__-->
     <style>
       :root {
         color-scheme: light dark;
@@ -222,8 +223,17 @@
         color: var(--border);
       }
       body.wide #doc-preview {
-        max-height: none;
-        height: 78vh;
+        display: none;
+      }
+      body.wide #superdoc-host {
+        display: block;
+        min-height: 78vh;
+      }
+      #superdoc-host {
+        background: #eef1f4;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: auto;
       }
       /* 编辑态：段落悬停有边界提示，正在编辑的段落有焦点环（像编辑器的编辑区）。 */
       #doc-body p[contenteditable] {
@@ -294,15 +304,10 @@
       <button id="refresh" disabled>刷新</button>
     </div>
     <div id="editor-bar" hidden>
-      <button id="fmt-bold" data-fmt="bold">加粗</button>
-      <button id="fmt-italic" data-fmt="italic">斜体</button>
-      <button id="fmt-underline" data-fmt="underline">下划线</button>
+      <button id="editor-save">保存到文件</button>
+      <button id="editor-reload">重新加载</button>
       <span class="sep">|</span>
-      <button id="fmt-left" data-align="left">左</button>
-      <button id="fmt-center" data-align="center">中</button>
-      <button id="fmt-right" data-align="right">右</button>
-      <span class="sep">|</span>
-      <span class="meta">点段落即可改文字（Enter 换行 / ⌘↵ 保存 / Esc 放弃）；改动默认记成修订，可在对话卡片里逐条接受或拒绝</span>
+      <span class="meta" id="editor-status">正在加载 Office 编辑器…</span>
     </div>
     <div id="preview-bar"><span id="preview-status"></span></div>
     <div id="grid">
@@ -310,6 +315,7 @@
         <div id="notice" hidden>
           宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
         </div>
+        <div id="superdoc-host" hidden></div>
         <div id="doc-preview" hidden>
           <div id="doc-styles"></div>
           <div id="doc-body"></div>

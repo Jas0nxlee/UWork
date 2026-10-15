@@ -218,7 +218,7 @@ def main() -> int:
         tools = server.rpc("tools/list")["tools"]
         names = {tool["name"] for tool in tools}
         check(
-            "tools/list 暴露八个工具（审阅 4 + 编辑 2 + 兜底 2）",
+            "tools/list 暴露九个工具（审阅 4 + 编辑 2 + 兜底 2 + 写回 1）",
             names
             == {
                 "docx_revisions_list",
@@ -229,6 +229,7 @@ def main() -> int:
                 "docx_export_pdf",
                 "docx_edit_paragraph",
                 "docx_set_paragraph_format",
+                "docx_write_back",
             },
             str(names),
         )
@@ -328,6 +329,26 @@ def main() -> int:
         check("格式返回参数回显", formatted.get("align") == "center", json.dumps(formatted, ensure_ascii=False)[:160])
         xml_text = engine._load(edit_path)[0].read("word/document.xml").decode("utf-8")
         check("段落格式落到 w:rPr/w:pPr", "<w:b" in xml_text and "<w:i" in xml_text and 'w:val="center"' in xml_text, "缺少格式标记")
+        # 内置编辑器（SuperDoc）保存路径：整份 docx 写回
+        with open(edit_path, "rb") as handle:
+            original_bytes = handle.read()
+        written = payload(
+            server.call(
+                "docx_write_back",
+                path=edit_path,
+                data=base64.b64encode(original_bytes).decode("ascii"),
+            )
+        )
+        check("写回返回字节数与备份", written.get("bytes") == len(original_bytes) and os.path.exists(written.get("backup") or ""), json.dumps(written, ensure_ascii=False)[:160])
+        with open(edit_path, "rb") as handle:
+            check("写回后文件逐字节一致", handle.read() == original_bytes, "内容不一致")
+        # 工具级拒绝走 isError（不是 JSON-RPC 错误）
+        bad_docx = server.call(
+            "docx_write_back", path=edit_path, data=base64.b64encode(b"not-a-docx").decode("ascii")
+        )
+        check("非 docx 写回被拒", bad_docx.get("isError") is True, str(bad_docx)[:160])
+        bad_b64 = server.call("docx_write_back", path=edit_path, data="!!!!")
+        check("非法 base64 被拒", bad_b64.get("isError") is True, str(bad_b64)[:160])
         server.call("docx_revisions_list", path=path, limit=1)  # 把"当前目标"还给主样本
 
         print("未实现工具必须明确失败")

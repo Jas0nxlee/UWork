@@ -136,6 +136,13 @@ ins 节点 2995 · del 节点 2995 · 带 data-rev-id 5990 · 列表页 25 条
 
 未做（按分期）：S2 修订面补齐（格式/表格行/移动）、S3 受控编辑（修订模式）、S4「打开方式」核心接缝。
 
+**S3 转向（2026-10-15 用户裁定）**：自研的"段落级编辑"被判定太简陋 → 改为**嵌入成熟引擎**。
+选型收敛在「功能完善 + 相对轻量化 + 纯客户端」：**SuperDoc**（UMD 单文件 1.3 MB + CSS 103 KB，
+带完整编辑 UI 与修订视图，需 `unsafeEval` CSP 放宽；许可 AGPL-3.0 / 商业许可）。
+真机已验证全链路：侧栏挂载 `class="superdoc"` 编辑 UI → 点「保存到文件」→ 浏览器内 `export()` 出 Blob
+→ base64 → `docx_write_back`（校验 + 备份 + 原子替换）→ 状态「已保存到 … · 备份 huge_backup-2.docx · 剩余修订 插入 2995 / 删除 2995」。
+不选 ONLYOFFICE/Collabora 的原因是要自建几百 MB 服务端（违反"轻量化"）；ONLYOFFICE 更全但插件形态装不下。
+
 ## 附：证据索引
 
 - 取字节链路：`packages/ui/src/plugin-ui/app/pluginUiResourceSubscriptions.ts:87-93`、`packages/services/src/plugin-ui-bridge/pluginUiBridgeService.ts:236-246,283-302`、`apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/handlers.ts:245-319`、`packages/shared/src/mcp-apps/resourceMime.ts:5`
