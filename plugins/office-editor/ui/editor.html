@@ -198,6 +198,22 @@
         margin: -4px 0 8px;
         min-height: 16px;
       }
+      /* 窄（对话卡片）：审阅优先，文档按需展开；宽（侧栏大窗口）：文档为主，列表收进右栏。 */
+      #grid {
+        display: grid;
+        gap: 12px;
+      }
+      body.wide #grid {
+        grid-template-columns: minmax(0, 1fr) 380px;
+        align-items: start;
+      }
+      body.wide #preview-toggle {
+        display: none;
+      }
+      body.wide #doc-preview {
+        max-height: none;
+        height: 74vh;
+      }
       #doc-preview {
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -250,25 +266,32 @@
       <button id="reject-all" disabled>全部拒绝</button>
       <button id="comments-toggle" disabled>加载批注</button>
       <button id="preview-toggle" disabled>显示文档</button>
+      <button id="open-side" disabled>在侧栏打开</button>
       <button id="refresh" disabled>刷新</button>
     </div>
     <div id="preview-bar"><span id="preview-status"></span></div>
-    <div id="doc-preview" hidden>
-      <div id="doc-styles"></div>
-      <div id="doc-body"></div>
+    <div id="grid">
+      <div id="main">
+        <div id="notice" hidden>
+          宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
+        </div>
+        <div id="doc-preview" hidden>
+          <div id="doc-styles"></div>
+          <div id="doc-body"></div>
+        </div>
+      </div>
+      <div id="rail">
+        <div id="totals"></div>
+        <div id="pager" hidden>
+          <button id="prev">上一页</button>
+          <span id="page-label"></span>
+          <button id="next">下一页</button>
+        </div>
+        <ul id="list"></ul>
+        <div id="empty" hidden>没有待处理的修订。</div>
+        <div id="comments"></div>
+      </div>
     </div>
-    <div id="totals"></div>
-    <div id="pager" hidden>
-      <button id="prev">上一页</button>
-      <span id="page-label"></span>
-      <button id="next">下一页</button>
-    </div>
-    <div id="notice" hidden>
-      宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
-    </div>
-    <ul id="list"></ul>
-    <div id="empty" hidden>没有待处理的修订。</div>
-    <div id="comments"></div>
     <!--__SCRIPT__-->
   </body>
 </html>

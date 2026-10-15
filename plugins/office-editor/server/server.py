@@ -5,9 +5,10 @@
 ``resources/list`` / ``resources/templates/list`` / ``resources/read``。stdout 只输出 JSON-RPC 帧，日志一律走 stderr。
 
 页面装配：``resources/read`` 时把官方 ext-apps 浏览器 bundle、docx-preview（Apache-2.0）、JSZip 与
-``ui/page.js`` 内联进 ``ui/editor.html``（单文件页面，宿主按 ``ui://`` 资源承载）。两个 bundle 都是 ESM，
-末尾形如 ``export{X as App,...};``、``import e from"jszip"`` —— 内联前把导出改写成 ``const App = X;`` 别名、
-把 jszip 的裸导入改写成对全局 ``JSZip`` 的引用，页面代码即可直接用 ``App`` / ``renderAsync``。
+``ui/page.js`` 内联进 ``ui/editor.html``（单文件页面，宿主按 ``ui://`` 资源承载）。三个 bundle 各自包进
+IIFE 只解构出导出（``App`` / ``renderAsync`` …）——同一个 module 作用域里内联多个 minified bundle，
+顶层单字母变量会互相冲撞，整段脚本 SyntaxError（真机表现：页面能加载但 ``ui/initialize`` 永远握不上手）。
+docx-preview 的裸导入 ``import e from"jszip"`` 内联前改写成对上面 IIFE 里 ``JSZip`` 的引用。
 
 文档字节通道（页面无文件系统原语）：``office://docx?path=…`` 分块读。宿主对页面读资源的单次上限是
 8 MiB 解码，但真正的天花板是 vendored MCP SDK 的 stdio 帧 10 MiB（base64 膨胀 4/3），所以按 4 MiB 分块；
@@ -38,10 +39,6 @@ from docx_revisions import (  # noqa: E402
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(PLUGIN_ROOT, "ui")
 VENDOR_BUNDLE = os.path.join(UI_DIR, "vendor", "mcp-apps-app.js")
-VENDOR_RENDERERS = (
-    os.path.join(UI_DIR, "vendor", "jszip.min.js"),
-    os.path.join(UI_DIR, "vendor", "docx-preview.js"),
-)
 DOCX_RESOURCE_URI = "office://docx"
 BLOB_MIME = "application/octet-stream"
 META_MIME = "application/json"
@@ -104,10 +101,12 @@ TOOLS = [
     {
         "name": "docx_open_editor",
         "title": "在应用内打开 Word 修订审阅",
-        "description": "在应用内承载插件页面，用于逐条接受/拒绝修订。",
+        "description": "在应用内承载插件页面：卡片里逐条接受/拒绝修订，侧栏大窗口里看文档与编辑。",
         # 宿主只从 tools/list 的 _meta 读取页面描述（apps/zcode-cli/packages/adapters/src/mcp/descriptor.ts），
         # 放在调用结果上不会被识别——真机启动实测踩过这个坑。
-        "_meta": {"ui": {"resourceUri": PAGE_URI}},
+        # preferredDisplayMode=fullscreen：卡片出现时自动把侧栏打开一次——审阅动作在卡片里做，
+        # 真正的文档预览与编辑在侧边大窗口做（产品规则，见 specs/office-editor-plugin.md 二期）。
+        "_meta": {"ui": {"resourceUri": PAGE_URI, "preferredDisplayMode": "fullscreen"}},
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string"}},
@@ -153,12 +152,19 @@ def log(message: str) -> None:
     print(f"[office-editor] {message}", file=sys.stderr, flush=True)
 
 
-def _inline_module_aliases(bundle: str) -> str:
-    """把 ESM 末尾的 ``export{...}`` 改写成 ``const <别名> = <内部名>;``，使内联脚本可直接引用。"""
-    match = re.search(r"export\{([^}]*)\};?\s*$", bundle)
+def _export_pairs(bundle: str) -> tuple[str, list]:
+    """拆出 ESM 末尾的 ``export{a as b,…};``，返回 (去掉导出的正文, [(内部名, 对外名)…])。
+
+    用「最后一个 export{」定位：bundle 末尾可能还跟着 ``//# sourceMappingURL=…`` 注释行
+    （docx-preview 就是这样），用 ``$`` 锚点会漏判，导出语句就会原样留在 IIFE 里变成语法错误。
+    """
+    start = bundle.rfind("export{")
+    if start == -1:
+        return bundle, []
+    match = re.match(r"export\{([^}]*)\};?", bundle[start:])
     if not match:
-        return bundle
-    aliases = []
+        return bundle, []
+    pairs = []
     for item in match.group(1).split(","):
         item = item.strip()
         if not item:
@@ -166,39 +172,56 @@ def _inline_module_aliases(bundle: str) -> str:
         if " as " in item:
             internal, alias = (part.strip() for part in item.split(" as ", 1))
         else:
-            continue  # 未改名的导出本身就在模块作用域内
-        aliases.append(f"const {alias} = {internal};")
-    return bundle[: match.start()] + "\n".join(aliases) + "\n"
+            internal = alias = item
+        pairs.append((internal, alias))
+    return bundle[:start], pairs
 
 
-def _inline_bare_imports(bundle: str, mapping: dict) -> str:
-    """把 ``import e from"jszip";`` 这类裸导入改写成对已内联全局的引用（内联后没有模块解析器）。"""
-    for specifier, global_name in mapping.items():
+def _inline_esm(bundle: str, bare_imports: dict | None = None, only: set | None = None) -> str:
+    """把 ESM bundle 包进 IIFE 并解构出它的导出（``only`` 限定只绑定用到的名字）。
+
+    必须隔离：同一个 ``<script type="module">`` 里内联多个 minified bundle 时，
+    顶层声明（``var t``/``function r`` 这类单字母名）会互相冲撞，整段脚本直接 SyntaxError，
+    表现为页面能加载但永远握不上手（真机踩坑：plugin-ui: ui/initialize handshake timed out）。
+    ``only`` 同时把「bundle 导出名 vs 页面自己的函数名」这类撞车挡在外面（docx-preview 也导出
+    ``renderDocument``，页面里有同名函数就会 SyntaxError）。
+    """
+    body, pairs = _export_pairs(bundle)
+    for specifier, global_name in (bare_imports or {}).items():
         pattern = re.compile(
             r"import\s+([A-Za-z_$][\w$]*)\s+from\s*[\"']" + re.escape(specifier) + r"[\"'];?"
         )
-        bundle, count = pattern.subn(rf"const \1 = {global_name};", bundle)
+        body, count = pattern.subn(rf"const \1 = {global_name};", body)
         if count == 0:
             raise ValueError(f"内联失败：{specifier} 的裸导入未找到（库版本变了？）")
-    return bundle
+    if only is not None:
+        pairs = [(internal, alias) for internal, alias in pairs if alias in only]
+    if not pairs:
+        return f"(() => {{\n{body}\n}})();"
+    returns = ", ".join(f"{alias}: {internal}" for internal, alias in pairs)
+    destructure = ", ".join(alias for _, alias in pairs)
+    return f"const {{{destructure}}} = (() => {{\n{body}\nreturn {{{returns}}};\n}})();"
+
+
+def _inline_umd(bundle: str, global_name: str) -> str:
+    """把 UMD/全局式 bundle 包进 IIFE，并取它挂到 globalThis 上的名字（如 JSZip）。"""
+    return (
+        f"const {global_name} = (() => {{\n{bundle}\nreturn globalThis.{global_name};\n}})();"
+    )
 
 
 def read_page() -> bytes:
     with open(os.path.join(UI_DIR, "editor.html"), encoding="utf-8") as handle:
         template = handle.read()
-    chunks: list[str] = []
-    for path in VENDOR_RENDERERS:
-        with open(path, encoding="utf-8") as handle:
-            bundle = handle.read()
-        if path.endswith("docx-preview.js"):
-            chunks.append(_inline_bare_imports(_inline_module_aliases(bundle), {"jszip": "JSZip"}))
-        else:
-            chunks.append(_inline_module_aliases(bundle))
+    with open(os.path.join(UI_DIR, "vendor", "jszip.min.js"), encoding="utf-8") as handle:
+        jszip = _inline_umd(handle.read(), "JSZip")
+    with open(os.path.join(UI_DIR, "vendor", "docx-preview.js"), encoding="utf-8") as handle:
+        renderer = _inline_esm(handle.read(), {"jszip": "JSZip"}, only={"renderAsync"})
     with open(VENDOR_BUNDLE, encoding="utf-8") as handle:
-        chunks.append(_inline_module_aliases(handle.read()))
+        bridge = _inline_esm(handle.read(), only={"App"})
     with open(os.path.join(UI_DIR, "page.js"), encoding="utf-8") as handle:
-        chunks.append(handle.read())
-    script = '<script type="module">\n' + "\n".join(chunks) + "\n</script>"
+        page = handle.read()
+    script = '<script type="module">\n' + "\n".join([jszip, renderer, bridge, page]) + "\n</script>"
     return template.replace("<!--__SCRIPT__-->", script).encode("utf-8")
 
 

@@ -39,11 +39,32 @@ const dom = {
   rejectAll: document.getElementById("reject-all"),
   refresh: document.getElementById("refresh"),
   previewToggle: document.getElementById("preview-toggle"),
+  openSide: document.getElementById("open-side"),
   previewStatus: document.getElementById("preview-status"),
   preview: document.getElementById("doc-preview"),
   docBody: document.getElementById("doc-body"),
   docStyles: document.getElementById("doc-styles"),
 };
+
+// 产品规则（见 spec 二期）：审阅动作在对话卡片里做，文档预览与编辑在侧边大窗口做。
+// 判据只认宿主上报的 displayMode——卡片所在的对话区本身可能很宽（实测 1010px），
+// 按宽度猜会把卡片误判成大窗口，在卡片里渲染整篇文档。
+function hostContext() {
+  try {
+    return app?.getHostContext?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function applyLayout() {
+  const mode = hostContext()?.displayMode;
+  const wide = mode === "fullscreen";
+  document.body.classList.toggle("wide", wide);
+  dom.openSide.hidden = wide;
+  // 侧栏里打开时文档就是主角：自动渲染一次（卡片里仍按需展开，避免在窄卡片里渲染整篇）。
+  if (wide && state.path && !state.preview.shown && !state.busy) void renderDocument();
+}
 
 function showNotice(message) {
   dom.notice.hidden = false;
@@ -61,6 +82,7 @@ function setBusy(busy) {
   dom.refresh.disabled = busy || !state.path;
   dom.commentsToggle.disabled = busy || !state.path;
   dom.previewToggle.disabled = busy || !state.path;
+  dom.openSide.disabled = busy || !state.path;
   dom.prev.disabled = busy || !state.path || state.offset === 0;
   dom.next.disabled = busy || !state.path || state.offset + state.limit >= state.total;
 }
@@ -84,6 +106,7 @@ function applyTarget(payload) {
   dom.file.textContent = payload.path;
   setBusy(false);
   void loadPage(0);
+  applyLayout(); // 侧栏里打开时自动渲染文档；卡片里等用户点「显示文档」
   return true;
 }
 
@@ -207,6 +230,9 @@ function renderComments(page) {
 function render(page) {
   state.total = page.total;
   state.counts = page.counts;
+  // 标题以"真的读到了哪个文件"为准：目标可能来自 ontoolinput/ontoolresult 或兜底工具，
+  // 任一路径成功都要把标题纠正过来（否则会出现"列表有数据、标题说未收到目标"）。
+  if (state.path) dom.file.textContent = state.path;
   renderTotals(page.counts);
   dom.list.replaceChildren();
   dom.empty.hidden = page.items.length > 0;
@@ -450,8 +476,17 @@ dom.previewToggle.addEventListener("click", () => {
   void renderDocument();
 });
 
+// 卡片里的小按钮：把同一个页面挪到侧边大窗口（页面实例不变，宿主换承载位置）。
+dom.openSide.addEventListener("click", () => {
+  if (!app?.requestDisplayMode) return;
+  void Promise.resolve(app.requestDisplayMode({ mode: "fullscreen" }))
+    .then(() => applyLayout())
+    .catch((error) => showNotice(`打开侧栏失败：${error instanceof Error ? error.message : String(error)}`));
+});
+
 let resizeTimer = null;
 window.addEventListener("resize", () => {
+  applyLayout();
   if (!state.preview.shown) return;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(fitPreview, 150);
@@ -470,7 +505,9 @@ if (typeof App === "undefined") {
   showNotice("宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。");
   dom.file.textContent = "（宿主桥不可用）";
 } else {
-  app = new App({ name: "office-editor", version: "0.1.9" });
+  app = new App({ name: "office-editor", version: "0.2.0" });
+  // 宿主切换承载位置（卡片 ↔ 侧栏/fullscreen）会推 hostcontext：布局跟着切，侧栏里自动渲染。
+  app.onhostcontextchanged = () => applyLayout();
   // 宿主在工具完成后才挂载页面：先是工具输入（参数里就带 path），再是工具结果；
   // 两者都可能在本页面注册之前发生，所以连上之后还有一次"向插件要当前目标"的兜底。
   app.ontoolinput = (params) => {
@@ -490,10 +527,13 @@ if (typeof App === "undefined") {
       ),
     ]);
     setBusy(false);
+    applyLayout();
     if (!state.path) {
       // 兜底：宿主可能已把"打开哪个文件"发完（通知早于本页面注册），直接问插件当前目标。
       const result = await app.callServerTool({ name: "docx_current_target", arguments: {} });
-      if (!applyTarget(parseToolPayload(result))) {
+      // 等待期间迟到的 ontoolinput/ontoolresult 可能已经把目标设好：这时不能再把标题冲回占位文案，
+      // 也不能再报"请从卡片打开"（真机：列表已有 25 条而标题写着"未收到目标文件"）。
+      if (!applyTarget(parseToolPayload(result)) && !state.path) {
         dom.file.textContent = "（未收到目标文件）";
         showNotice("请从对话里的工具卡片打开本页面的审阅视图：页面需要知道要审阅哪份文档。");
       }

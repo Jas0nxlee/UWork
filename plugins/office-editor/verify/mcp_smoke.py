@@ -288,17 +288,32 @@ def main() -> int:
             all(marker in html for marker in ('id="pager"', 'id="comments"', 'id="totals"')),
             html[:200],
         )
-        check("页面内联了 App 桥", "const App =" in html or "const App=" in html, html[:200])
-        check("页面体积在宿主上限内", len(html.encode("utf-8")) < 16 * 1024 * 1024, str(len(html)))
         check(
-            "页面内联了渲染器与 JSZip（裸导入已改写）",
-            "renderAsync" in html and "JSZip" in html and 'from"jszip"' not in html,
+            "页面内联了 App 桥与渲染器（各自 IIFE 隔离、裸导入已改写）",
+            all(marker in html for marker in ("App:", "renderAsync:", "JSZip"))
+            and 'from"jszip"' not in html,
             html[:200],
         )
+        check("页面体积在宿主 HTML 上限内", len(html.encode("utf-8")) < 16 * 1024 * 1024, str(len(html)))
         check(
             "页面体积在 stdio 帧上限内（base64 后再乘以 4/3 的余量）",
             len(html.encode("utf-8")) < STDIO_FRAME_LIMIT_BYTES // 2,
             str(len(html.encode("utf-8"))),
+        )
+        # 语法闸门：多个 minified bundle 内联进同一作用域曾撞名导致整段脚本 SyntaxError，
+        # 真机表现是页面能加载但 ui/initialize 永远握不上手——必须在这里拦住。
+        script_body = html.split('<script type="module">', 1)[-1].rsplit("</script>", 1)[0]
+        script_file = os.path.join(tempfile.gettempdir(), "office-editor-page-check.mjs")
+        with open(script_file, "w", encoding="utf-8") as handle:
+            handle.write(script_body)
+        checked = subprocess.run(
+            ["node", "--check", script_file], capture_output=True, text=True, timeout=120
+        )
+        check(
+            "内联脚本能通过语法检查（node --check）",
+            checked.returncode == 0,
+            (checked.stderr or "").strip().splitlines()[-1:] and checked.stderr.strip()[-200:]
+            or "node 不可用",
         )
         print(f"  页面大小 {len(html.encode('utf-8')) / 1024:.0f} KiB")
 

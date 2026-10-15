@@ -103,6 +103,39 @@
 
 **验收（S1）**：在真机上打开 6000 修订/800 批注的 `huge.docx`：页面渲染出正文与页面分块；插入/删除在**原位**可见（作者/时间/上下文与引擎一致）；点「接受」后重渲染并反映结果；一键全部接受/拒绝仍可用；内置预览作为对照要能看到「删除文字消失」的差异。
 
+## 附：S1 第一刀实现记录（2026-10-15）
+
+已落地（纯插件，零核心改动）：
+
+- 服务端：`office://docx`（meta + 4 MiB 分块字节，base64 blob，夹取上限、路径守卫）、`office://docx/marks`
+  （id/kind/文本前缀，文档序）、`resources/templates/list` 两条模板；页面装配内联 docx-preview + JSZip。
+- 页面：分块读取 → `renderAsync(renderChanges:true)` → 与 marks 对齐（数量一致按文档序贴 id，否则按文本前缀配对）
+  → 点列表条目定位高亮；接受/拒绝后自动重读重渲染；承载位置按产品规则分「卡片=审阅 / 侧栏=预览与编辑」。
+
+真机实测（`/tmp/oe-big/huge.docx`，6000 修订 + 800 批注，187 KiB，1 个分块）：
+
+```
+已渲染 1 块 / 187 KiB · 修订 5990 处（对齐 5990，按文档序）
+ins 节点 2995 · del 节点 2995 · 带 data-rev-id 5990 · 列表页 25 条
+点列表条目 → 文档内高亮 1 处
+```
+
+即：**删除文字在页面里可见**（宿主内置预览 `renderChanges:false` 会直接吞掉），且 5990 处修订全部拿到 `w:id`。
+
+两个「症状像宿主问题、其实出在内联」的真 bug（都已修，并加了 `node --check` 闸门防回归）：
+
+1. 三个 minified bundle 内联进同一个 `<script type="module">` → 顶层单字母变量互相冲撞 → 整段 SyntaxError；
+   真机表现是页面能加载但 `ui/initialize handshake timed out`。修法：每个 bundle 各自包 IIFE，只解构用到的名字
+   （`App`、`renderAsync`）。**自检新增**：装配后的脚本写临时 `.mjs` 跑 `node --check`。
+2. docx-preview 末尾在 `export{…};` 之后还有 `//# sourceMappingURL=…` → 用 `$` 锚点找导出的正则会漏判，
+   导出语句留在 IIFE 里又是 SyntaxError。修法：用「最后一个 `export{`」定位。
+
+开发回路教训（同时写进插件 spec 基线依赖段）：宿主加载的是**安装目录**
+`~/.uwork/cli/plugins/cache/<marketplace>/<plugin>/<version>`（`installed_plugins.json` 的 `installPath`），
+**不是** marketplace 源目录——只改源目录不会改变正在跑的页面；插件版本/页面资源仍按会话绑定，必须冷启动。
+
+未做（按分期）：S2 修订面补齐（格式/表格行/移动）、S3 受控编辑（修订模式）、S4「打开方式」核心接缝。
+
 ## 附：证据索引
 
 - 取字节链路：`packages/ui/src/plugin-ui/app/pluginUiResourceSubscriptions.ts:87-93`、`packages/services/src/plugin-ui-bridge/pluginUiBridgeService.ts:236-246,283-302`、`apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/handlers.ts:245-319`、`packages/shared/src/mcp-apps/resourceMime.ts:5`
