@@ -134,11 +134,18 @@ function isActive(command: string, args: unknown[] | undefined, style: RibbonSty
     executeItalic: style.italic,
     executeUnderline: style.underline,
     executeStrikeout: style.strikeout,
+    // 格式刷是"模式开关"；撤销/重做**不是**（可用/不可用只体现在置灰，不能画成按下态——真机截图反馈）
     executePainter: style.painter,
-    executeUndo: style.undo,
-    executeRedo: style.redo,
   };
   return map[command] === true;
+}
+
+/** 撤销/重做/（未来的只读开关）这类"可用性由引擎给出"的按钮：不可用就置灰。 */
+function isDisabled(command: string, style: RibbonStyle | null): boolean {
+  if (!style) return false;
+  if (command === "executeUndo") return style.undo === false;
+  if (command === "executeRedo") return style.redo === false;
+  return false;
 }
 
 function optionsCommand(title: string): string {
@@ -185,16 +192,20 @@ function IconButton({
 }) {
   const Icon = item.icon ? ICONS[item.icon] : undefined;
   const active = isActive(item.command, item.args, style);
+  const disabled = isDisabled(item.command, style);
   return (
     <button
       type="button"
       title={item.title}
       aria-label={item.title}
-      aria-pressed={active}
+      aria-pressed={item.command === "executePainter" ? active : undefined}
+      disabled={disabled}
       className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded px-1.5 text-xs ${
-        active
-          ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/40"
-          : "text-foreground hover:bg-surface"
+        disabled
+          ? "text-foreground-subtlest opacity-40"
+          : active
+            ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/40"
+            : "text-foreground hover:bg-surface"
       }`}
       onClick={() => {
         if (item.prompt) {
@@ -362,7 +373,8 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
         ))}
         {inTable ? <span className="ml-2 pb-1 text-[10px] text-foreground-subtlest">光标在表格内</span> : null}
       </div>
-      <div className="flex flex-wrap items-stretch">
+      {/* 单行排布 + 横向滚动（WPS/Word 的功能区不会换行；换行会让分组名高度参差） */}
+      <div className="flex items-stretch overflow-x-auto">
         {activeTab?.groups.map((group) => (
           <Group key={group.label} group={group} style={style} run={run} />
         ))}
