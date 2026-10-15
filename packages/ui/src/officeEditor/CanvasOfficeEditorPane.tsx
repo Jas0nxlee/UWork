@@ -16,6 +16,8 @@ import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { OfficeRibbon } from "./OfficeRibbon.js";
+import type { RibbonStyle } from "./officeRibbonModel.js";
 import { logger } from "@/logger.js";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -47,34 +49,6 @@ type CanvasEditor = InstanceType<typeof Editor> & {
   command: Record<string, (...args: unknown[]) => unknown>;
 };
 
-interface ToolButton {
-  label: string;
-  title: string;
-  command: string;
-  args?: unknown[];
-}
-
-/** 与 Word 常用项对齐的一小组按钮（够用优先，不做功能区）。 */
-const TOOL_BUTTONS: ToolButton[] = [
-  { label: "撤销", title: "撤销 (⌘Z)", command: "executeUndo" },
-  { label: "重做", title: "重做 (⇧⌘Z)", command: "executeRedo" },
-  { label: "B", title: "加粗 (⌘B)", command: "executeBold" },
-  { label: "I", title: "斜体 (⌘I)", command: "executeItalic" },
-  { label: "U", title: "下划线 (⌘U)", command: "executeUnderline" },
-  { label: "S", title: "删除线", command: "executeStrikeout" },
-  { label: "字号+", title: "增大字号", command: "executeSizeAdd" },
-  { label: "字号−", title: "减小字号", command: "executeSizeMinus" },
-  { label: "左", title: "左对齐", command: "executeRowFlex", args: ["left"] },
-  { label: "中", title: "居中", command: "executeRowFlex", args: ["center"] },
-  { label: "右", title: "右对齐", command: "executeRowFlex", args: ["right"] },
-  { label: "• ", title: "无序列表", command: "executeList", args: ["ul"] },
-  { label: "1.", title: "有序列表", command: "executeList", args: ["ol"] },
-  { label: "表格", title: "插入表格", command: "executeInsertTable", args: [3, 3] },
-  { label: "分隔线", title: "插入分隔线", command: "executeInsertHr" },
-  { label: "分页", title: "插入分页", command: "executeInsertPageBreak" },
-  { label: "查找", title: "查找替换 (⌘F)", command: "executeSearch" },
-];
-
 export interface CanvasOfficeEditorPaneProps {
   fileService: IFileService;
   path: string;
@@ -88,6 +62,8 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rangeStyle, setRangeStyle] = useState<RibbonStyle | null>(null);
+  const [inTable, setInTable] = useState(false);
 
   const loadDocument = useCallback(
     async (options: { reset?: boolean } = {}) => {
@@ -141,6 +117,16 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
+    // 官方 demo 的做法：选中态由 rangeStyleChange 驱动，工具栏据此高亮 B/I/U/对齐/列表等。
+    editor.listener.rangeStyleChange = (payload: RibbonStyle) => {
+      setRangeStyle(payload as RibbonStyle);
+      try {
+        const row = (editor.command as Record<string, () => unknown>).getRangeRow?.();
+        setInTable(Boolean((row as { value?: unknown } | null)?.value));
+      } catch {
+        setInTable(false);
+      }
+    };
     editorRef.current = editor;
     (globalThis as Record<string, unknown>).__officeEditor = editor;
     void loadDocument().catch((error) => {
@@ -189,20 +175,89 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     }
   }, [busy, fileService, path]);
 
-  const runCommand = useCallback((button: ToolButton) => {
-    const editor = editorRef.current;
-    const command = editor?.command?.[button.command];
-    if (typeof command !== "function") {
-      setStatus(`该功能不可用：${button.title}`);
-      return;
-    }
-    const instance = editor as CanvasEditor;
-    try {
-      (command as (...args: unknown[]) => unknown).apply(instance.command, button.args ?? []);
-    } catch (error) {
-      setStatus(`${button.title} 失败：${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, []);
+  /**
+   * 功能区命令入口：把 ribbon 的语义命令映射到引擎命令。
+   * 参数形态全部照抄 canvas-editor 官方 demo（见 officeRibbonModel.ts 顶部注释），不自己发明。
+   */
+  const runRibbon = useCallback(
+    (command: string, args?: unknown[]) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const commands = editor.command as Record<string, ((...params: unknown[]) => unknown) | undefined>;
+      const status = (message: string) => setStatus(message);
+      try {
+        switch (command) {
+          case "executeInsertControlByType": {
+            const type = args?.[0];
+            commands.executeInsertControl?.({ type: "control", value: "", control: { type } });
+            return;
+          }
+          case "executeSetTableCellBackgroundColor": {
+            commands.executeTableTdBackgroundColor?.(args?.[0]);
+            return;
+          }
+          case "executeSetTableCellVerticalAlign": {
+            commands.executeTableTdVerticalAlign?.(args?.[0]);
+            return;
+          }
+          case "executeImage": {
+            // 官方 demo 从 <img> 载入宽高；这里给一个稳妥的默认尺寸，用户可在文档里拖拽调整。
+            commands.executeImage?.({ value: args?.[0] ?? "", width: 320, height: 240 });
+            return;
+          }
+          case "executeHyperlink": {
+            const url = String(args?.[0] ?? "");
+            if (!url) return;
+            commands.executeHyperlink?.({ url, valueList: [{ value: url, size: 16 }] });
+            return;
+          }
+          case "executeLatex": {
+            const value = String(args?.[0] ?? "");
+            if (!value) return;
+            commands.executeLatex?.({ value });
+            return;
+          }
+          case "executeAddWatermark": {
+            const data = String(args?.[0] ?? "") || "UWork";
+            commands.executeAddWatermark?.({ data, color: "#d0d0d0", size: 100, opacity: 0.3, repeat: true });
+            return;
+          }
+          case "executeMode": {
+            commands.executeMode?.(editor.command.getOptions?.()?.mode === "readonly" ? "edit" : "readonly");
+            return;
+          }
+          case "executePageMode": {
+            const current = editor.command.getOptions?.()?.pageMode;
+            commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
+            return;
+          }
+          case "executeSeparator": {
+            commands.executeSeparator?.();
+            return;
+          }
+          case "executePageBreak": {
+            commands.executePageBreak?.();
+            return;
+          }
+          case "executeToggleTrace": {
+            commands.executeToggleTrace?.();
+            return;
+          }
+          default: {
+            const fn = commands[command];
+            if (typeof fn !== "function") {
+              status(`该功能不可用：${command}`);
+              return;
+            }
+            fn.apply(editor.command, args ?? []);
+          }
+        }
+      } catch (error) {
+        status(`${command} 执行失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -241,19 +296,6 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
             返回预览
           </button>
         ) : null}
-        <span className="mx-1 text-border">|</span>
-        {TOOL_BUTTONS.map((button) => (
-          <button
-            key={button.title}
-            type="button"
-            className="min-w-7 rounded border border-transparent px-1.5 py-1 hover:border-border hover:bg-surface"
-            title={button.title}
-            aria-label={button.title}
-            onClick={() => runCommand(button)}
-          >
-            {button.label}
-          </button>
-        ))}
         <span className="ml-auto text-foreground-subtle">
           {dirty ? "● 未保存 · " : ""}
           {status}
@@ -261,6 +303,7 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       </div>
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
           之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
+      <OfficeRibbon style={rangeStyle} inTable={inTable} run={runRibbon} />
       <div ref={hostRef} id="office-editor-host" className="min-h-0 flex-1 overflow-auto bg-surface" />
     </div>
   );
