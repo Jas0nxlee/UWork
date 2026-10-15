@@ -1,11 +1,65 @@
 /**
- * 功能区（Ribbon）渲染：信息架构与命令来自 canvas-editor 官方 demo（见 officeRibbonModel.ts 顶部注释），
- * 这里只负责把它渲染成 React 界面：分组标题、选中态高亮、下拉面板、表格上下文标签。
+ * 功能区渲染（对标 Word/WPS 版式）：选项卡 + 分组框（底部分组名）+ 图标按钮 + 分体颜色按钮 + 样式库。
+ *
+ * 只做渲染与交互；命令、参数形态与功能面来自 officeRibbonModel.ts（出处见该文件顶部注释）。
+ * 图标是微软自家的 @fluentui/react-icons（MIT），**逐个具名导入**以便 tree-shaking
+ * （整包 26,720 个图标，不能 `import *`）。
  */
+import {
+  AlignLeft24Regular,
+  AlignRight24Regular,
+  ArrowRedo24Regular,
+  ArrowUndo24Regular,
+  CalendarLtr24Regular,
+  CheckboxChecked24Regular,
+  ClearFormatting24Regular,
+  Code24Regular,
+  ColumnTriple24Regular,
+  Delete24Regular,
+  DividerShort24Regular,
+  DocumentOnePage24Regular,
+  DocumentPageBottomCenter24Regular,
+  DocumentPageBreak24Regular,
+  DocumentFit24Regular,
+  Eye24Regular,
+  FontDecrease24Regular,
+  FontIncrease24Regular,
+  Highlight24Regular,
+  Image24Regular,
+  Link24Regular,
+  LockClosed24Regular,
+  MathFormula24Regular,
+  PaintBrush24Regular,
+  Print24Regular,
+  Ruler24Regular,
+  Search24Regular,
+  TableDeleteRow24Regular,
+  TableInsertColumn24Regular,
+  TableInsertRow24Regular,
+  TableSimple24Regular,
+  TaskListSquareLtr24Regular,
+  TextAlignCenter24Regular,
+  TextAlignJustify24Regular,
+  TextBold24Regular,
+  TextBulletListLtr24Regular,
+  TextColor24Regular,
+  TextItalic24Regular,
+  TextLineSpacing24Regular,
+  TextNumberListLtr24Regular,
+  TextQuote24Regular,
+  TextStrikethrough24Regular,
+  TextSubscript24Regular,
+  TextSuperscript24Regular,
+  TextUnderline24Regular,
+  TextWordCount24Regular,
+  ZoomIn24Regular,
+  ZoomOut24Regular,
+} from "@fluentui/react-icons";
+import type { ComponentType } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   RIBBON_TABS,
-  type RibbonCommand,
+  type RibbonGallery,
   type RibbonGroup,
   type RibbonItem,
   type RibbonSelect,
@@ -18,143 +72,93 @@ export interface OfficeRibbonProps {
   run: (command: string, args?: unknown[]) => void;
 }
 
-function isActive(item: RibbonCommand, style: RibbonStyle | null): boolean {
+const ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  ArrowUndo24Regular,
+  ArrowRedo24Regular,
+  PaintBrush24Regular,
+  ClearFormatting24Regular,
+  FontIncrease24Regular,
+  FontDecrease24Regular,
+  TextBold24Regular,
+  TextItalic24Regular,
+  TextUnderline24Regular,
+  TextStrikethrough24Regular,
+  TextSuperscript24Regular,
+  TextSubscript24Regular,
+  TextColor24Regular,
+  Highlight24Regular,
+  AlignLeft24Regular,
+  TextAlignCenter24Regular,
+  AlignRight24Regular,
+  TextAlignJustify24Regular,
+  TextLineSpacing24Regular,
+  TextBulletListLtr24Regular,
+  TextNumberListLtr24Regular,
+  TaskListSquareLtr24Regular,
+  TableSimple24Regular,
+  Image24Regular,
+  Link24Regular,
+  MathFormula24Regular,
+  CalendarLtr24Regular,
+  CheckboxChecked24Regular,
+  Code24Regular,
+  TextQuote24Regular,
+  DividerShort24Regular,
+  DocumentPageBreak24Regular,
+  DocumentPageBottomCenter24Regular,
+  ColumnTriple24Regular,
+  TableInsertRow24Regular,
+  TableInsertColumn24Regular,
+  TableDeleteRow24Regular,
+  Delete24Regular,
+  DocumentFit24Regular,
+  ZoomOut24Regular,
+  ZoomIn24Regular,
+  Ruler24Regular,
+  DocumentOnePage24Regular,
+  Eye24Regular,
+  LockClosed24Regular,
+  TextWordCount24Regular,
+  Search24Regular,
+  Print24Regular,
+};
+
+const ICON_CLASS = "size-5";
+
+function isActive(command: string, args: unknown[] | undefined, style: RibbonStyle | null): boolean {
   if (!style) return false;
-  switch (item.command) {
-    case "executeBold":
-      return style.bold === true;
-    case "executeItalic":
-      return style.italic === true;
-    case "executeUnderline":
-      return style.underline === true;
-    case "executeStrikeout":
-      return style.strikeout === true;
-    case "executePainter":
-      return style.painter === true;
-    case "executeUndo":
-      return style.undo === true;
-    case "executeRedo":
-      return style.redo === true;
-    case "executeRowFlex":
-      return style.rowFlex === item.args?.[0];
-    case "executeList":
-    case "executeInsertElementList":
-      return false;
-    default:
-      return false;
-  }
+  if (command === "executeRowFlex") return style.rowFlex === args?.[0];
+  if (command === "executeList") return style.listType === args?.[0];
+  const map: Record<string, boolean | undefined> = {
+    executeBold: style.bold,
+    executeItalic: style.italic,
+    executeUnderline: style.underline,
+    executeStrikeout: style.strikeout,
+    executePainter: style.painter,
+    executeUndo: style.undo,
+    executeRedo: style.redo,
+  };
+  return map[command] === true;
 }
 
-function currentValue(item: RibbonSelect, style: RibbonStyle | null): string | null {
-  if (!style) return null;
-  const value = item.current?.(style) ?? null;
-  return value;
-}
-
-function RibbonButton({
-  item,
-  style,
-  run,
-}: {
-  item: RibbonCommand;
-  style: RibbonStyle | null;
-  run: OfficeRibbonProps["run"];
-}) {
-  const active = isActive(item, style);
-  return (
-    <button
-      type="button"
-      title={item.title}
-      aria-label={item.title}
-      aria-pressed={active}
-      className={`min-w-7 rounded border px-1.5 py-1 text-xs leading-none ${
-        active ? "border-accent bg-accent/10 text-accent" : "border-transparent hover:border-border hover:bg-surface"
-      }`}
-      onClick={() => {
-        if (item.prompt) {
-          const answer = window.prompt(item.prompt.message, "");
-          if (answer === null) return;
-          const args = [...(item.args ?? [])];
-          args[item.prompt.at] = answer;
-          run(item.command, args.length ? args : undefined);
-          return;
-        }
-        run(item.command, item.args);
-      }}
-    >
-      {item.label}
-    </button>
-  );
-}
-
-function RibbonSelect({ item, style, run }: { item: RibbonSelect; style: RibbonStyle | null; run: OfficeRibbonProps["run"] }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
-  const value = currentValue(item, style);
-  const valueLabel =
-    item.options.find((option) => String(option.args[0]) === value)?.label ?? value ?? "—";
-  return (
-    <div className="relative" ref={containerRef}>
-      <button
-        type="button"
-        title={item.title}
-        className="flex min-w-14 items-center gap-1 rounded border border-border px-1.5 py-1 text-xs leading-none hover:bg-surface"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="text-foreground-subtle">{item.label}</span>
-        <span className="max-w-24 truncate">{valueLabel}</span>
-        <span className="text-foreground-subtle">▾</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 max-h-72 w-48 overflow-auto rounded border border-border bg-background py-1 shadow-lg">
-          {item.options.map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-surface ${
-                String(option.args[0]) === value ? "text-accent" : ""
-              }`}
-              onClick={() => {
-                setOpen(false);
-                run(optionCommand(item), option.args);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** 下拉项对应哪条命令：按分组内的下拉语义映射（与 officeRibbonModel 的选项一一对应）。 */
-function optionCommand(item: RibbonSelect): string {
-  switch (item.title) {
+function optionsCommand(title: string): string {
+  switch (title) {
     case "字体":
       return "executeFont";
     case "字号":
       return "executeSize";
     case "行距":
       return "executeRowMargin";
-    case "标题级别":
-      return "executeTitle";
     case "项目符号与编号":
       return "executeList";
     case "文字颜色":
       return "executeColor";
     case "高亮（底纹）":
       return "executeHighlight";
-    case "插入内容控件":
-      return "executeInsertControlByType";
+    case "单元格底色":
+      return "executeSetTableCellBackgroundColor";
+    case "单元格垂直对齐":
+      return "executeSetTableCellVerticalAlign";
     case "纸张大小":
       return "executePaperSize";
     case "纸张方向":
@@ -163,29 +167,173 @@ function optionCommand(item: RibbonSelect): string {
       return "executeSetPaperMargin";
     case "分栏":
       return "executeSetColumns";
-    case "单元格底色":
-      return "executeSetTableCellBackgroundColor";
-    case "单元格垂直对齐":
-      return "executeSetTableCellVerticalAlign";
+    case "插入内容控件（文本/列举/复选/单选/日期/数字）":
+      return "executeInsertControlByType";
     default:
       return "executeNoop";
   }
 }
 
-function Group({ group, style, run }: { group: RibbonGroup; style: RibbonStyle | null; run: OfficeRibbonProps["run"] }) {
+function IconButton({
+  item,
+  style,
+  run,
+}: {
+  item: Extract<RibbonItem, { kind: "command" }>;
+  style: RibbonStyle | null;
+  run: OfficeRibbonProps["run"];
+}) {
+  const Icon = item.icon ? ICONS[item.icon] : undefined;
+  const active = isActive(item.command, item.args, style);
   return (
-    <div className="flex items-stretch gap-1 border-r border-border px-2 last:border-r-0">
-      <div className="flex flex-wrap items-center gap-0.5">{group.items.map((item) => renderItem(item, style, run))}</div>
-      <div className="flex items-end pb-0.5 pl-1 text-[10px] text-foreground-subtlest">{group.label}</div>
+    <button
+      type="button"
+      title={item.title}
+      aria-label={item.title}
+      aria-pressed={active}
+      className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded px-1.5 text-xs ${
+        active
+          ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/40"
+          : "text-foreground hover:bg-surface"
+      }`}
+      onClick={() => {
+        if (item.prompt) {
+          const answer = window.prompt(item.prompt.message, "");
+          if (answer === null) return;
+          const args = [...(item.args ?? [])];
+          args[item.prompt.at] = answer;
+          run(item.command, args);
+          return;
+        }
+        run(item.command, item.args);
+      }}
+    >
+      {Icon ? <Icon className={ICON_CLASS} /> : <span className="px-1">{item.label}</span>}
+    </button>
+  );
+}
+
+function SelectControl({
+  item,
+  style,
+  run,
+}: {
+  item: RibbonSelect;
+  style: RibbonStyle | null;
+  run: OfficeRibbonProps["run"];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const Icon = item.icon ? ICONS[item.icon] : undefined;
+  const value = item.current?.(style ?? {}) ?? null;
+  const valueLabel = item.options.find((option) => String(option.args[0]) === value)?.label ?? value;
+  const swatch = item.swatch?.(style ?? {}) ?? null;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        title={item.title}
+        className="flex h-8 items-center gap-1 rounded border border-border px-1.5 text-xs text-foreground hover:bg-surface"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {Icon ? <Icon className={ICON_CLASS} /> : null}
+        <span className="max-w-20 truncate">{valueLabel ?? item.label}</span>
+        <span className="text-foreground-subtle">▾</span>
+      </button>
+      {swatch ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-0.5 left-1.5 right-5 h-1 rounded-sm"
+          style={{ backgroundColor: swatch }}
+        />
+      ) : null}
+      {open ? (
+        <div className="absolute left-0 top-full z-30 mt-1 max-h-72 w-52 overflow-auto rounded border border-border bg-background py-1 shadow-lg">
+          {item.options.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-surface ${
+                String(option.args[0]) === value ? "text-accent" : ""
+              }`}
+              onClick={() => {
+                setOpen(false);
+                run(optionsCommand(item.title), option.args);
+              }}
+            >
+              {String(option.args[0] ?? "").startsWith("rgb") ? (
+                <span
+                  className="size-3 shrink-0 rounded-sm border border-border"
+                  style={{ backgroundColor: String(option.args[0]) }}
+                />
+              ) : null}
+              <span className="truncate">{option.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function renderItem(item: RibbonItem, style: RibbonStyle | null, run: OfficeRibbonProps["run"]) {
-  return item.kind === "command" ? (
-    <RibbonButton key={item.title} item={item} style={style} run={run} />
-  ) : (
-    <RibbonSelect key={item.title} item={item} style={style} run={run} />
+function StyleGallery({
+  gallery,
+  style,
+  run,
+}: {
+  gallery: RibbonGallery;
+  style: RibbonStyle | null;
+  run: OfficeRibbonProps["run"];
+}) {
+  const current = gallery.current?.(style ?? {}) ?? null;
+  return (
+    <div className="flex items-center gap-1">
+      {gallery.items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          title={`应用样式：${item.label}`}
+          className={`flex h-14 w-[76px] flex-col items-start justify-center gap-0.5 rounded border px-2 text-left ${
+            current === item.label || (item.label === "正文" && current === "正文")
+              ? "border-accent bg-accent/10"
+              : "border-border hover:bg-surface"
+          }`}
+          onClick={() => run("executeTitle", item.args)}
+        >
+          <span className="truncate text-foreground" style={item.style}>
+            {item.label}
+          </span>
+          <span className="text-[9px] text-foreground-subtlest">{item.label === "正文" ? "Normal" : "Heading"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Group({ group, style, run }: { group: RibbonGroup; style: RibbonStyle | null; run: OfficeRibbonProps["run"] }) {
+  return (
+    <div className="flex flex-col justify-between border-r border-border px-2 py-1 last:border-r-0">
+      <div className="flex flex-wrap items-center gap-0.5">
+        {group.items.map((item) =>
+          item.kind === "command" ? (
+            <IconButton key={item.title} item={item} style={style} run={run} />
+          ) : item.kind === "select" ? (
+            <SelectControl key={item.title} item={item} style={style} run={run} />
+          ) : (
+            <StyleGallery key={item.title} gallery={item} style={style} run={run} />
+          ),
+        )}
+      </div>
+      <div className="pt-0.5 text-center text-[10px] text-foreground-subtlest">{group.label}</div>
+    </div>
   );
 }
 
@@ -195,22 +343,24 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   return (
     <div className="border-b border-border bg-background">
-      <div className="flex items-center gap-0.5 border-b border-border px-2 pt-1">
+      <div className="flex items-end gap-0.5 border-b border-border px-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            className={`rounded-t px-2.5 py-1 text-xs ${
-              tab.id === activeTab?.id ? "border border-b-0 border-border bg-surface text-accent" : "text-foreground-subtle hover:text-foreground"
+            className={`rounded-t px-3 py-1 text-xs ${
+              tab.id === activeTab?.id
+                ? "border border-b-0 border-border bg-surface font-medium text-accent"
+                : "text-foreground-subtle hover:text-foreground"
             }`}
             onClick={() => setActiveTabId(tab.id)}
           >
             {tab.label}
           </button>
         ))}
-        {inTable ? <span className="ml-2 text-[10px] text-foreground-subtlest">已进入表格</span> : null}
+        {inTable ? <span className="ml-2 pb-1 text-[10px] text-foreground-subtlest">光标在表格内</span> : null}
       </div>
-      <div className="flex flex-wrap items-start gap-0 py-1.5">
+      <div className="flex flex-wrap items-stretch">
         {activeTab?.groups.map((group) => (
           <Group key={group.label} group={group} style={style} run={run} />
         ))}

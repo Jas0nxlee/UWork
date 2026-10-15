@@ -1,16 +1,18 @@
 /**
- * 编辑功能区的数据模型：分组 / 按钮 / 下拉，命令名与参数形态**照抄 canvas-editor 官方 demo**
- * （Hufe921/canvas-editor 的 src/main.ts，2477 行 vanilla TS 实现的 Word 级工具栏），
- * 只把它的信息架构搬成数据 + React 渲染，不自己发明命令或参数。
+ * 编辑功能区的数据模型：分组 / 按钮 / 下拉 / 样式库。
  *
- * 选中的命令名与参数来自官方实现中的调用处：
- * - 行距 `executeRowMargin(数字)`；段前/段后 `executeSpacingBefore/After(数字)`
- * - 对齐 `executeRowFlex('left'|'center'|'right'|'alignment')`（RowFlex 枚举）
- * - 标题 `executeTitle('h1'..'h6' | null)`；列表 `executeList('ul'|'ol'|'task')`
- * - 页面 `executeSetPaperMargin([上,右,下,左])`、`executeSetColumns({count,gap,separator})`、`executePaperSize/paperDirection`
- * - 插入控件 `executeInsertControl({ type:'control', value:'', control:{ type:'select'|'checkbox'|'radio'|'date'|'number', ... } })`
- * - 其余插入走 `executeInsertElementList([{ type: <ElementType>, ... }])`
+ * 命令名与参数形态**照抄 canvas-editor 官方 demo**（Hufe921/canvas-editor 的 src/main.ts，
+ * 2477 行 vanilla TS 实现的 Word 级工具栏）；官方仓库还按菜单逐个写了 e2e
+ * （text/format/title/list/row/table/image/hyperlink/date/checkbox/codeblock/latex/pagebreak/
+ *  watermark/painter/search/print/pageLayout）——这就是我们功能面的依据。
+ *
+ * 图标用微软自家的 **@fluentui/react-icons（MIT）**；名字是"基名+尺寸+字重"（如 TextBold24Regular），
+ * 下面每个 icon 都是在安装包里核对过的真实导出名。
+ *
+ * 引擎没有的能力不假装：canvas-editor **没有缩进（首行/悬挂缩进）命令**，
+ * 所以对标 WPS 时那一排缩进按钮我们没有做（用列表层级与行距代之）。
  */
+import type { CSSProperties } from "react";
 
 export interface RibbonStyle {
   bold?: boolean;
@@ -35,7 +37,8 @@ export interface RibbonCommand {
   title: string;
   command: string;
   args?: unknown[];
-  /** 输入型命令（超链接/图片/水印这类需要一句话参数）用 prompt 取参，取到后填进 args 的对应位置。 */
+  icon?: string;
+  /** 需要一句话参数的命令（图片/超链接/LaTeX/水印）：取到后填进 args 的 index。 */
   prompt?: { message: string; at: number };
 }
 
@@ -44,11 +47,21 @@ export interface RibbonSelect {
   label: string;
   title: string;
   options: Array<{ label: string; args: unknown[] }>;
-  /** 当前值回显（与 style 对齐时高亮选项）。 */
+  current?: (style: RibbonStyle) => string | null;
+  icon?: string;
+  /** 颜色类下拉：用当前值画色条（Word/WPS 的分体按钮观感）。 */
+  swatch?: (style: RibbonStyle) => string | null;
+}
+
+export interface RibbonGallery {
+  kind: "gallery";
+  label: string;
+  title: string;
+  items: Array<{ label: string; args: unknown[]; style: CSSProperties }>;
   current?: (style: RibbonStyle) => string | null;
 }
 
-export type RibbonItem = RibbonCommand | RibbonSelect;
+export type RibbonItem = RibbonCommand | RibbonSelect | RibbonGallery;
 
 export interface RibbonGroup {
   label: string;
@@ -59,7 +72,7 @@ export interface RibbonTab {
   id: string;
   label: string;
   groups: RibbonGroup[];
-  /** 只在表格内可用（选中表格时自动切过去）。 */
+  /** 只在表格内可用（光标进表格时出现）。 */
   contextual?: boolean;
 }
 
@@ -82,77 +95,53 @@ const COLORS = [
   "rgb(233, 222, 255)",
 ];
 
-const FONTS = [
-  "宋体",
-  "仿宋",
-  "黑体",
-  "微软雅黑",
-  "楷体",
-  "等线",
-  "SimSun",
-  "Times New Roman",
-  "Arial",
-  "Calibri",
-];
-
+const FONTS = ["宋体", "仿宋", "黑体", "微软雅黑", "楷体", "等线", "Times New Roman", "Arial", "Calibri"];
 const SIZES = [9, 10.5, 11, 12, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 42, 48, 56, 72];
 
-const TITLES: Array<{ label: string; args: unknown[] }> = [
-  { label: "正文", args: [null] },
-  { label: "标题 1", args: ["h1"] },
-  { label: "标题 2", args: ["h2"] },
-  { label: "标题 3", args: ["h3"] },
-  { label: "标题 4", args: ["h4"] },
-  { label: "标题 5", args: ["h5"] },
-  { label: "标题 6", args: ["h6"] },
-];
-
-const ROW_MARGINS = [1, 1.15, 1.5, 2, 2.5, 3].map((ratio) => ({
-  label: `${ratio} 倍行距`,
-  args: [Math.round(ratio * 24)],
-}));
-
-const CONTROL_TYPES: Array<{ label: string; args: unknown[] }> = [
-  { label: "文本控件", args: ["text"] },
-  { label: "列举控件", args: ["select"] },
-  { label: "复选框控件", args: ["checkbox"] },
-  { label: "单选框控件", args: ["radio"] },
-  { label: "日期控件", args: ["date"] },
-  { label: "数字控件", args: ["number"] },
-];
-
-const PAPER_SIZES: Array<{ label: string; args: unknown[] }> = [
-  { label: "A4（纵向尺寸）", args: ["A4"] },
-  { label: "A3", args: ["A3"] },
-  { label: "A5", args: ["A5"] },
-  { label: "B5", args: ["B5"] },
-];
-
-const PAPER_DIRECTIONS: Array<{ label: string; args: unknown[] }> = [
-  { label: "纵向", args: ["vertical"] },
-  { label: "横向", args: ["horizontal"] },
-];
-
-const MARGINS: Array<{ label: string; args: unknown[] }> = [
-  { label: "常规（100/120）", args: [[100, 120, 100, 120]] },
-  { label: "窄（60/60）", args: [[60, 60, 60, 60]] },
-  { label: "宽（160/200）", args: [[160, 200, 160, 200]] },
-];
-
-const COLUMN_PRESETS: Array<{ label: string; args: unknown[] }> = [
-  { label: "单栏", args: [{ count: 1, gap: 30, separator: false }] },
-  { label: "两栏", args: [{ count: 2, gap: 30, separator: false }] },
-  { label: "两栏＋分隔线", args: [{ count: 2, gap: 30, separator: true }] },
-  { label: "三栏", args: [{ count: 3, gap: 24, separator: false }] },
-];
+/** 样式库（对标 Word/WPS 的「正文 / 标题 1..」）：预览按实际字号字重渲染。 */
+const STYLE_GALLERY: RibbonGallery = {
+  kind: "gallery",
+  label: "样式",
+  title: "样式库",
+  items: [
+    { label: "正文", args: [null], style: { fontSize: 13, fontWeight: 400 } },
+    { label: "标题 1", args: ["h1"], style: { fontSize: 19, fontWeight: 700 } },
+    { label: "标题 2", args: ["h2"], style: { fontSize: 17, fontWeight: 600 } },
+    { label: "标题 3", args: ["h3"], style: { fontSize: 15, fontWeight: 600 } },
+    { label: "标题 4", args: ["h4"], style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" } },
+    { label: "标题 5", args: ["h5"], style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" } },
+  ],
+  current: (style) => (style.level ? `标题 ${String(style.level).replace("h", "")}` : "正文"),
+};
 
 const button = (
   label: string,
   title: string,
   command: string,
-  args?: unknown[],
-  prompt?: RibbonCommand["prompt"],
-): RibbonCommand => ({ kind: "command", label, title, command, ...(args ? { args } : {}), ...(prompt ? { prompt } : {}) });
+  options: { args?: unknown[]; icon?: string; prompt?: RibbonCommand["prompt"] } = {},
+): RibbonCommand => ({
+  kind: "command",
+  label,
+  title,
+  command,
+  ...(options.args ? { args: options.args } : {}),
+  ...(options.icon ? { icon: options.icon } : {}),
+  ...(options.prompt ? { prompt: options.prompt } : {}),
+});
+
+const colorSelect = (
+  label: string,
+  title: string,
+  icon: string,
+  swatchKey: "color" | "highlight",
+): RibbonSelect => ({
+  kind: "select",
+  label,
+  title,
+  icon,
+  options: [{ label: "自动", args: [null] }, ...COLORS.map((color) => ({ label: color, args: [color] }))],
+  swatch: (style) => (swatchKey === "color" ? (style.color ?? null) : (style.highlight ?? null)),
+});
 
 export const RIBBON_TABS: RibbonTab[] = [
   {
@@ -162,10 +151,12 @@ export const RIBBON_TABS: RibbonTab[] = [
       {
         label: "历史",
         items: [
-          button("撤销", "撤销 (⌘Z)", "executeUndo"),
-          button("重做", "重做 (⇧⌘Z)", "executeRedo"),
-          button("格式刷", "格式刷：先选中带格式的文字，再点要套用的文字", "executePainter"),
-          button("清格式", "清除格式", "executeFormat"),
+          button("撤销", "撤销 (⌘Z)", "executeUndo", { icon: "ArrowUndo24Regular" }),
+          button("重做", "重做 (⇧⌘Z)", "executeRedo", { icon: "ArrowRedo24Regular" }),
+          button("格式刷", "格式刷：先选带格式的文字，再点要套用的文字", "executePainter", {
+            icon: "PaintBrush24Regular",
+          }),
+          button("清除格式", "清除格式", "executeFormat", { icon: "ClearFormatting24Regular" }),
         ],
       },
       {
@@ -185,67 +176,44 @@ export const RIBBON_TABS: RibbonTab[] = [
             options: SIZES.map((size) => ({ label: String(size), args: [size] })),
             current: (style) => (style.size ? String(style.size) : null),
           },
-          button("A+", "增大字号", "executeSizeAdd"),
-          button("A−", "减小字号", "executeSizeMinus"),
-          button("B", "加粗 (⌘B)", "executeBold"),
-          button("I", "斜体 (⌘I)", "executeItalic"),
-          button("U", "下划线 (⌘U)", "executeUnderline"),
-          button("S", "删除线", "executeStrikeout"),
-          button("x²", "上标", "executeSuperscript"),
-          button("x₂", "下标", "executeSubscript"),
-          {
-            kind: "select",
-            label: "字色",
-            title: "文字颜色",
-            options: [{ label: "自动", args: [null] }, ...COLORS.map((color) => ({ label: color, args: [color] }))],
-            current: (style) => style.color ?? null,
-          },
-          {
-            kind: "select",
-            label: "底纹",
-            title: "高亮（底纹）",
-            options: [{ label: "无", args: [null] }, ...COLORS.map((color) => ({ label: color, args: [color] }))],
-            current: (style) => style.highlight ?? null,
-          },
+          button("增大字号", "增大字号", "executeSizeAdd", { icon: "FontIncrease24Regular" }),
+          button("减小字号", "减小字号", "executeSizeMinus", { icon: "FontDecrease24Regular" }),
+          button("加粗", "加粗 (⌘B)", "executeBold", { icon: "TextBold24Regular" }),
+          button("斜体", "斜体 (⌘I)", "executeItalic", { icon: "TextItalic24Regular" }),
+          button("下划线", "下划线 (⌘U)", "executeUnderline", { icon: "TextUnderline24Regular" }),
+          button("删除线", "删除线", "executeStrikeout", { icon: "TextStrikethrough24Regular" }),
+          button("上标", "上标", "executeSuperscript", { icon: "TextSuperscript24Regular" }),
+          button("下标", "下标", "executeSubscript", { icon: "TextSubscript24Regular" }),
+          colorSelect("字色", "文字颜色", "TextColor24Regular", "color"),
+          colorSelect("底纹", "高亮（底纹）", "Highlight24Regular", "highlight"),
         ],
       },
       {
         label: "段落",
         items: [
-          button("左", "左对齐 (⌘L)", "executeRowFlex", ["left"]),
-          button("中", "居中 (⌘E)", "executeRowFlex", ["center"]),
-          button("右", "右对齐 (⌘R)", "executeRowFlex", ["right"]),
-          button("两端", "两端对齐 (⌘J)", "executeRowFlex", ["alignment"]),
+          button("左对齐", "左对齐 (⌘L)", "executeRowFlex", { args: ["left"], icon: "AlignLeft24Regular" }),
+          button("居中", "居中 (⌘E)", "executeRowFlex", { args: ["center"], icon: "TextAlignCenter24Regular" }),
+          button("右对齐", "右对齐 (⌘R)", "executeRowFlex", { args: ["right"], icon: "AlignRight24Regular" }),
+          button("两端对齐", "两端对齐 (⌘J)", "executeRowFlex", {
+            args: ["alignment"],
+            icon: "TextAlignJustify24Regular",
+          }),
           {
             kind: "select",
             label: "行距",
             title: "行距",
-            options: ROW_MARGINS,
+            icon: "TextLineSpacing24Regular",
+            options: [1, 1.15, 1.5, 2, 2.5, 3].map((ratio) => ({
+              label: `${ratio} 倍行距`,
+              args: [Math.round(ratio * 24)],
+            })),
           },
-          button("段前−", "减小段前间距", "executeSpacingBefore", [-6]),
-          button("段前+", "增大段前间距", "executeSpacingBefore", [6]),
-          button("段后−", "减小段后间距", "executeSpacingAfter", [-6]),
-          button("段后+", "增大段后间距", "executeSpacingAfter", [6]),
-          {
-            kind: "select",
-            label: "标题",
-            title: "标题级别",
-            options: TITLES,
-            current: (style) => style.level ?? null,
-          },
-          {
-            kind: "select",
-            label: "列表",
-            title: "项目符号与编号",
-            options: [
-              { label: "无序（•）", args: ["ul"] },
-              { label: "有序（1.）", args: ["ol"] },
-              { label: "任务列表（☑）", args: ["task"] },
-            ],
-            current: (style) => style.listType ?? null,
-          },
+          button("无序列表", "项目符号", "executeList", { args: ["ul"], icon: "TextBulletListLtr24Regular" }),
+          button("有序列表", "编号", "executeList", { args: ["ol"], icon: "TextNumberListLtr24Regular" }),
+          button("任务列表", "任务列表", "executeList", { args: ["task"], icon: "TaskListSquareLtr24Regular" }),
         ],
       },
+      { label: "样式", items: [STYLE_GALLERY] },
     ],
   },
   {
@@ -255,87 +223,107 @@ export const RIBBON_TABS: RibbonTab[] = [
       {
         label: "表格",
         items: [
-          button("3×3", "插入 3×3 表格", "executeInsertTable", [3, 3]),
-          button("5×4", "插入 5×4 表格", "executeInsertTable", [5, 4]),
+          button("3×3 表格", "插入 3×3 表格", "executeInsertTable", {
+            args: [3, 3],
+            icon: "TableSimple24Regular",
+          }),
+          button("5×4 表格", "插入 5×4 表格", "executeInsertTable", { args: [5, 4] }),
         ],
       },
       {
         label: "插图与链接",
         items: [
-          button("图片", "插入图片（图片地址）", "executeImage", undefined, {
-            message: "图片地址（http/https 或 data:）",
-            at: 0,
+          button("图片", "插入图片（图片地址）", "executeImage", {
+            icon: "Image24Regular",
+            prompt: { message: "图片地址（http/https 或 data:）", at: 0 },
           }),
-          button("超链接", "插入/编辑超链接", "executeHyperlink", undefined, {
-            message: "链接地址",
-            at: 0,
+          button("超链接", "插入/编辑超链接", "executeHyperlink", {
+            icon: "Link24Regular",
+            prompt: { message: "链接地址", at: 0 },
           }),
-          button("LaTeX", "插入 LaTeX 公式", "executeLatex", undefined, {
-            message: "LaTeX 公式（如 E=mc^2）",
-            at: 0,
+          button("公式", "插入 LaTeX 公式", "executeLatex", {
+            icon: "MathFormula24Regular",
+            prompt: { message: "LaTeX 公式（如 E=mc^2）", at: 0 },
           }),
         ],
       },
       {
-        label: "控件",
+        label: "控件与块",
         items: [
           {
             kind: "select",
-            label: "控件",
-            title: "插入内容控件",
-            options: CONTROL_TYPES,
+            label: "插入控件",
+            title: "插入内容控件（文本/列举/复选/单选/日期/数字）",
+            options: [
+              { label: "文本控件", args: ["text"] },
+              { label: "列举控件", args: ["select"] },
+              { label: "复选框控件", args: ["checkbox"] },
+              { label: "单选框控件", args: ["radio"] },
+              { label: "日期控件", args: ["date"] },
+              { label: "数字控件", args: ["number"] },
+            ],
           },
-          button("日期", "插入当前日期", "executeInsertElementList", [{ type: "date", value: "", dateFormat: "yyyy-MM-dd" }]),
-          button("复选框", "插入复选框", "executeInsertElementList", [{ type: "checkbox", value: false, checkbox: { value: false } }]),
-          button("代码块", "插入代码块", "executeInsertElementList", [{ type: "codeblock", value: "", codeBlock: { language: "javascript" } }]),
-          button("引用块", "插入引用块", "executeInsertElementList", [{ type: "blockquote", value: "", blockquote: { showLine: true } }]),
+          button("日期", "插入当前日期", "executeInsertElementList", {
+            args: [{ type: "date", value: "", dateFormat: "yyyy-MM-dd" }],
+            icon: "CalendarLtr24Regular",
+          }),
+          button("复选框", "插入复选框", "executeInsertElementList", {
+            args: [{ type: "checkbox", value: false, checkbox: { value: false } }],
+            icon: "CheckboxChecked24Regular",
+          }),
+          button("代码块", "插入代码块", "executeInsertElementList", {
+            args: [{ type: "codeblock", value: "", codeBlock: { language: "javascript" } }],
+            icon: "Code24Regular",
+          }),
+          button("引用块", "插入引用块", "executeInsertElementList", {
+            args: [{ type: "blockquote", value: "", blockquote: { showLine: true } }],
+            icon: "TextQuote24Regular",
+          }),
         ],
       },
       {
         label: "页面元素",
         items: [
-          button("分隔线", "插入分隔线", "executeSeparator", ["separator"]),
-          button("分页符", "插入分页符", "executePageBreak", ["pageBreak"]),
-          button("水印", "添加水印", "executeAddWatermark", undefined, {
-            message: "水印文字（留空则用默认）",
-            at: 0,
+          button("分隔线", "插入分隔线", "executeSeparator", { icon: "DividerShort24Regular" }),
+          button("分页符", "插入分页符", "executePageBreak", { icon: "DocumentPageBreak24Regular" }),
+          button("水印", "添加水印", "executeAddWatermark", {
+            icon: "DocumentPageBottomCenter24Regular",
+            prompt: { message: "水印文字", at: 0 },
           }),
           button("去水印", "删除水印", "executeDeleteWatermark"),
-          button("分栏", "分栏", "executeSetColumns", [{ count: 2, gap: 30, separator: false }]),
+          button("分栏", "分栏（两栏）", "executeSetColumns", {
+            args: [{ count: 2, gap: 30, separator: false }],
+            icon: "ColumnTriple24Regular",
+          }),
         ],
       },
     ],
   },
   {
     id: "table",
-    label: "表格",
+    label: "表格工具",
     contextual: true,
     groups: [
       {
         label: "行列",
         items: [
-          button("上方插行", "在上方插入行", "executeInsertTableTopRow"),
+          button("上方插行", "在上方插入行", "executeInsertTableTopRow", { icon: "TableInsertRow24Regular" }),
           button("下方插行", "在下方插入行", "executeInsertTableBottomRow"),
-          button("左侧插列", "在左侧插入列", "executeInsertTableLeftCol"),
+          button("左侧插列", "在左侧插入列", "executeInsertTableLeftCol", { icon: "TableInsertColumn24Regular" }),
           button("右侧插列", "在右侧插入列", "executeInsertTableRightCol"),
-          button("删行", "删除当前行", "executeDeleteTableRow"),
+          button("删行", "删除当前行", "executeDeleteTableRow", { icon: "TableDeleteRow24Regular" }),
           button("删列", "删除当前列", "executeDeleteTableCol"),
-          button("删表", "删除整个表格", "executeDeleteTable"),
+          button("删表", "删除整个表格", "executeDeleteTable", { icon: "Delete24Regular" }),
         ],
       },
       {
         label: "单元格",
         items: [
           button("合并", "合并单元格", "executeMergeTableCell"),
-          button("横拆", "水平拆分单元格", "executeSplitHorizontalTableCell"),
-          button("竖拆", "垂直拆分单元格", "executeSplitVerticalTableCell"),
+          button("横拆", "水平拆分", "executeSplitHorizontalTableCell"),
+          button("竖拆", "垂直拆分", "executeSplitVerticalTableCell"),
           button("全选表", "选中整个表格", "executeTableSelectAll"),
-          {
-            kind: "select",
-            label: "单元格底色",
-            title: "单元格底色",
-            options: [{ label: "无", args: [null] }, ...COLORS.map((color) => ({ label: color, args: [color] }))],
-          },
+          colorSelect("底色", "单元格底色", "Highlight24Regular", "highlight"),
           {
             kind: "select",
             label: "垂直对齐",
@@ -359,15 +347,53 @@ export const RIBBON_TABS: RibbonTab[] = [
   },
   {
     id: "layout",
-    label: "布局",
+    label: "页面布局",
     groups: [
       {
-        label: "页面",
+        label: "页面设置",
         items: [
-          { kind: "select", label: "纸张", title: "纸张大小", options: PAPER_SIZES },
-          { kind: "select", label: "方向", title: "纸张方向", options: PAPER_DIRECTIONS },
-          { kind: "select", label: "页边距", title: "页边距", options: MARGINS },
-          { kind: "select", label: "分栏", title: "分栏", options: COLUMN_PRESETS },
+          {
+            kind: "select",
+            label: "纸张",
+            title: "纸张大小",
+            icon: "DocumentFit24Regular",
+            options: [
+              { label: "A4", args: ["A4"] },
+              { label: "A3", args: ["A3"] },
+              { label: "A5", args: ["A5"] },
+              { label: "B5", args: ["B5"] },
+            ],
+          },
+          {
+            kind: "select",
+            label: "方向",
+            title: "纸张方向",
+            options: [
+              { label: "纵向", args: ["vertical"] },
+              { label: "横向", args: ["horizontal"] },
+            ],
+          },
+          {
+            kind: "select",
+            label: "页边距",
+            title: "页边距",
+            options: [
+              { label: "常规", args: [[100, 120, 100, 120]] },
+              { label: "窄", args: [[60, 60, 60, 60]] },
+              { label: "宽", args: [[160, 200, 160, 200]] },
+            ],
+          },
+          {
+            kind: "select",
+            label: "分栏",
+            title: "分栏",
+            options: [
+              { label: "单栏", args: [{ count: 1, gap: 30, separator: false }] },
+              { label: "两栏", args: [{ count: 2, gap: 30, separator: false }] },
+              { label: "两栏＋线", args: [{ count: 2, gap: 30, separator: true }] },
+              { label: "三栏", args: [{ count: 3, gap: 24, separator: false }] },
+            ],
+          },
         ],
       },
     ],
@@ -379,21 +405,21 @@ export const RIBBON_TABS: RibbonTab[] = [
       {
         label: "显示",
         items: [
-          button("缩放−", "缩小", "executePageScaleMinus"),
+          button("缩小", "缩小", "executePageScaleMinus", { icon: "ZoomOut24Regular" }),
           button("100%", "恢复缩放", "executePageScaleRecovery"),
-          button("缩放+", "放大", "executePageScaleAdd"),
-          button("标尺", "显示/隐藏标尺", "executeToggleRuler"),
-          button("连页/分页", "切换连页与分页视图", "executePageMode"),
-          button("痕迹", "显示/隐藏修订与格式痕迹", "executeToggleTrace"),
-          button("只读", "切换只读模式", "executeMode"),
+          button("放大", "放大", "executePageScaleAdd", { icon: "ZoomIn24Regular" }),
+          button("标尺", "显示/隐藏标尺", "executeToggleRuler", { icon: "Ruler24Regular" }),
+          button("连页/分页", "切换连页与分页视图", "executePageMode", { icon: "DocumentOnePage24Regular" }),
+          button("痕迹", "显示/隐藏修订与格式痕迹", "executeToggleTrace", { icon: "Eye24Regular" }),
+          button("只读", "切换只读模式", "executeMode", { icon: "LockClosed24Regular" }),
         ],
       },
       {
         label: "工具",
         items: [
-          button("字数", "字数统计", "executeWordTool"),
-          button("查找替换", "查找替换 (⌘F)", "executeSearch"),
-          button("打印", "打印 (⌘P)", "executePrint"),
+          button("字数统计", "字数统计", "executeWordTool", { icon: "TextWordCount24Regular" }),
+          button("查找替换", "查找替换 (⌘F)", "executeSearch", { icon: "Search24Regular" }),
+          button("打印", "打印 (⌘P)", "executePrint", { icon: "Print24Regular" }),
         ],
       },
     ],
