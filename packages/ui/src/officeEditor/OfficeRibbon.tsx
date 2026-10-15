@@ -343,7 +343,7 @@ function Group({ group, style, run }: { group: RibbonGroup; style: RibbonStyle |
           ),
         )}
       </div>
-      <div className="pt-0.5 text-center text-[10px] text-foreground-subtlest">{group.label}</div>
+      <div className="pt-1 text-center text-[11px] text-foreground-subtle">{group.label}</div>
     </div>
   );
 }
@@ -356,22 +356,24 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
     // mousedown 阻止默认：点功能区不能让画布失焦——否则选区丢失、撤销/格式化不生效（真机反馈：
     // "撤销不能用，但 Ctrl+Z 可以"）。键盘快捷键保持焦点所以一直可用，这里对齐两者。
     <div className="border-b border-border bg-background" onMouseDown={(event) => event.preventDefault()}>
-      <div className="flex items-end gap-0.5 border-b border-border px-2">
+      {/* 标签对比度：未选中用正常前景色（此前用最暗档，深色主题下"看不清"——真机反馈），
+          选中用强调色 + 下划线（Word/WPS 的标签指示方式）。 */}
+      <div className="flex items-end gap-1 border-b border-border px-2 pt-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            className={`rounded-t px-3 py-1 text-xs ${
+            className={`-mb-px border-b-2 px-3 py-1.5 text-[13px] ${
               tab.id === activeTab?.id
-                ? "border border-b-0 border-border bg-surface font-medium text-accent"
-                : "text-foreground-subtle hover:text-foreground"
+                ? "border-accent font-medium text-accent"
+                : "border-transparent text-foreground hover:bg-surface"
             }`}
             onClick={() => setActiveTabId(tab.id)}
           >
             {tab.label}
           </button>
         ))}
-        {inTable ? <span className="ml-2 pb-1 text-[10px] text-foreground-subtlest">光标在表格内</span> : null}
+        {inTable ? <span className="ml-2 pb-2 text-[11px] text-foreground-subtle">光标在表格内</span> : null}
       </div>
       {/* 单行排布 + 横向滚动（WPS/Word 的功能区不会换行；换行会让分组名高度参差） */}
       <div className="flex items-stretch overflow-x-auto">
