@@ -13,6 +13,13 @@
  * 所以对标 WPS 时那一排缩进按钮我们没有做（用列表层级与行距代之）。
  */
 import type { CSSProperties } from "react";
+import {
+  TEXT_COLORS,
+  HIGHLIGHT_COLORS,
+  FONTS,
+  SIZES,
+  STYLE_GALLERY,
+} from "./officeRibbonOptions.js";
 
 export interface RibbonStyle {
   bold?: boolean;
@@ -38,11 +45,15 @@ export interface RibbonCommand {
   command: string;
   args?: unknown[];
   icon?: string;
+  /** 窄侧栏下的取舍：secondary 会收进「⋯」溢出菜单（Word/WPS 的降级方式）。 */
+  priority?: "primary" | "secondary";
   /** 需要一句话参数的命令（图片/超链接/LaTeX/水印）：取到后填进 args 的 index。 */
   prompt?: { message: string; at: number };
 }
 
 export interface RibbonSelect {
+  /** 窄侧栏下的取舍：secondary 会收进「⋯」溢出菜单。 */
+  priority?: "primary" | "secondary";
   kind: "select";
   label: string;
   title: string;
@@ -55,6 +66,8 @@ export interface RibbonSelect {
 
 export interface RibbonGallery {
   kind: "gallery";
+  /** 窄侧栏下的取舍：secondary 会收进「⋯」溢出菜单。 */
+  priority?: "primary" | "secondary";
   label: string;
   title: string;
   items: Array<{ label: string; args: unknown[]; style: CSSProperties }>;
@@ -76,70 +89,22 @@ export interface RibbonTab {
   contextual?: boolean;
 }
 
-/** 文字颜色：深色为主，另含浅色（用于深色底纹场景）。 */
-const TEXT_COLORS = [
-  "rgb(0, 0, 0)",
-  "rgb(38, 38, 38)",
-  "rgb(115, 115, 115)",
-  "rgb(217, 38, 38)",
-  "rgb(230, 126, 34)",
-  "rgb(241, 196, 15)",
-  "rgb(46, 139, 87)",
-  "rgb(41, 128, 185)",
-  "rgb(52, 73, 94)",
-  "rgb(142, 68, 173)",
-  "rgb(255, 255, 255)",
-  "rgb(255, 221, 221)",
-  "rgb(255, 236, 179)",
-  "rgb(211, 247, 211)",
-  "rgb(204, 229, 255)",
-  "rgb(233, 222, 255)",
-];
-
-/**
- * 高亮（底纹）：**只用浅色**——Word 的底纹调色板同理。
- * 之前把深色也放进来，选到深色底纹后黑字被吞掉，看起来就像"文字消失了"（真机反馈）。
- */
-const HIGHLIGHT_COLORS = [
-  "rgb(255, 255, 0)",
-  "rgb(255, 236, 179)",
-  "rgb(255, 221, 221)",
-  "rgb(211, 247, 211)",
-  "rgb(204, 229, 255)",
-  "rgb(233, 222, 255)",
-  "rgb(214, 245, 255)",
-  "rgb(240, 240, 240)",
-];
-
-const FONTS = ["宋体", "仿宋", "黑体", "微软雅黑", "楷体", "等线", "Times New Roman", "Arial", "Calibri"];
-const SIZES = [9, 10.5, 11, 12, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 42, 48, 56, 72];
-
-/** 样式库（对标 Word/WPS 的「正文 / 标题 1..」）：预览按实际字号字重渲染。 */
-const STYLE_GALLERY: RibbonGallery = {
-  kind: "gallery",
-  label: "样式",
-  title: "样式库",
-  items: [
-    { label: "正文", args: [null], style: { fontSize: 13, fontWeight: 400 } },
-    { label: "标题 1", args: ["h1"], style: { fontSize: 19, fontWeight: 700 } },
-    { label: "标题 2", args: ["h2"], style: { fontSize: 17, fontWeight: 600 } },
-    { label: "标题 3", args: ["h3"], style: { fontSize: 15, fontWeight: 600 } },
-    { label: "标题 4", args: ["h4"], style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" } },
-    { label: "标题 5", args: ["h5"], style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" } },
-  ],
-  current: (style) => (style.level ? `标题 ${String(style.level).replace("h", "")}` : "正文"),
-};
-
 const button = (
   label: string,
   title: string,
   command: string,
-  options: { args?: unknown[]; icon?: string; prompt?: RibbonCommand["prompt"] } = {},
+  options: {
+    args?: unknown[];
+    icon?: string;
+    prompt?: RibbonCommand["prompt"];
+    priority?: "primary" | "secondary";
+  } = {},
 ): RibbonCommand => ({
   kind: "command",
   label,
   title,
   command,
+  ...(options.priority ? { priority: options.priority } : {}),
   ...(options.args ? { args: options.args } : {}),
   ...(options.icon ? { icon: options.icon } : {}),
   ...(options.prompt ? { prompt: options.prompt } : {}),
@@ -176,7 +141,7 @@ export const RIBBON_TABS: RibbonTab[] = [
           button("格式刷", "格式刷：先选带格式的文字，再点要套用的文字", "executePainter", {
             icon: "PaintBrush24Regular",
           }),
-          button("清除格式", "清除格式", "executeFormat", { icon: "ClearFormatting24Regular" }),
+          button("清除格式", "清除格式", "executeFormat", { icon: "ClearFormatting24Regular", priority: "secondary" }),
         ],
       },
       {
@@ -202,8 +167,8 @@ export const RIBBON_TABS: RibbonTab[] = [
           button("斜体", "斜体 (⌘I)", "executeItalic", { icon: "TextItalic24Regular" }),
           button("下划线", "下划线 (⌘U)", "executeUnderline", { icon: "TextUnderline24Regular" }),
           button("删除线", "删除线", "executeStrikeout", { icon: "TextStrikethrough24Regular" }),
-          button("上标", "上标", "executeSuperscript", { icon: "TextSuperscript24Regular" }),
-          button("下标", "下标", "executeSubscript", { icon: "TextSubscript24Regular" }),
+          button("上标", "上标", "executeSuperscript", { icon: "TextSuperscript24Regular", priority: "secondary" }),
+          button("下标", "下标", "executeSubscript", { icon: "TextSubscript24Regular", priority: "secondary" }),
           colorSelect("字色", "文字颜色", "TextColor24Regular", "color", TEXT_COLORS),
           colorSelect("底纹", "高亮（底纹）", "Highlight24Regular", "highlight", HIGHLIGHT_COLORS),
         ],
@@ -231,7 +196,7 @@ export const RIBBON_TABS: RibbonTab[] = [
           },
           button("无序列表", "项目符号", "executeList", { args: ["ul"], icon: "TextBulletListLtr24Regular" }),
           button("有序列表", "编号", "executeList", { args: ["ol"], icon: "TextNumberListLtr24Regular" }),
-          button("任务列表", "任务列表", "executeList", { args: ["task"], icon: "TaskListSquareLtr24Regular" }),
+          button("任务列表", "任务列表", "executeList", { args: ["task"], icon: "TaskListSquareLtr24Regular", priority: "secondary" }),
         ],
       },
       { label: "样式", items: [STYLE_GALLERY] },
@@ -297,13 +262,13 @@ export const RIBBON_TABS: RibbonTab[] = [
       {
         label: "页面元素",
         items: [
-          button("分隔线", "插入分隔线", "executeSeparator", { icon: "DividerShort24Regular" }),
+          button("分隔线", "插入分隔线", "executeSeparator", { icon: "DividerShort24Regular", priority: "secondary" }),
           button("分页符", "插入分页符", "executePageBreak", { icon: "DocumentPageBreak24Regular" }),
           button("水印", "添加水印", "executeAddWatermark", {
             icon: "DocumentPageBottomCenter24Regular",
             prompt: { message: "水印文字", at: 0 },
           }),
-          button("去水印", "删除水印", "executeDeleteWatermark"),
+          button("去水印", "删除水印", "executeDeleteWatermark", { priority: "secondary" }),
           button("分栏", "分栏（两栏）", "executeSetColumns", {
             args: [{ count: 2, gap: 30, separator: false }],
             icon: "ColumnTriple24Regular",
@@ -423,8 +388,8 @@ export const RIBBON_TABS: RibbonTab[] = [
           button("放大", "放大", "executePageScaleAdd", { icon: "ZoomIn24Regular" }),
           button("标尺", "显示/隐藏标尺", "executeToggleRuler", { icon: "Ruler24Regular" }),
           button("连页/分页", "切换连页与分页视图", "executePageMode", { icon: "DocumentOnePage24Regular" }),
-          button("痕迹", "显示/隐藏修订与格式痕迹", "executeToggleTrace", { icon: "Eye24Regular" }),
-          button("只读", "切换只读模式", "executeMode", { icon: "LockClosed24Regular" }),
+          button("痕迹", "显示/隐藏修订与格式痕迹", "executeToggleTrace", { icon: "Eye24Regular", priority: "secondary" }),
+          button("只读", "切换只读模式", "executeMode", { icon: "LockClosed24Regular", priority: "secondary" }),
         ],
       },
       {
