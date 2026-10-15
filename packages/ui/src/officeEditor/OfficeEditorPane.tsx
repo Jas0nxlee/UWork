@@ -10,7 +10,7 @@
  * 显式保存、写前比对 (size, mtimeMs)、先落 sibling 备份、原子替换；冲突时**拒绝写入**并提示。
  */
 import type { IFileService } from "@zcode/services";
-import { SuperDoc } from "superdoc";
+// 壳的样式仍从 npm 包引（纯 CSS）；**壳的 JS 走静态托管**，见 loadSuperDocShell 的注释。
 import "superdoc/style.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -25,7 +25,36 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * 生产（file:// 页面）下相对路径取不到模块，需要主进程 loopback 静态服务——见
  * UWork-plugin/specs/office-in-core-research.md 的 C3 交付章节。
  */
-const ENGINE_BASE_URL = `${import.meta.env.BASE_URL}superdoc`.replace(/\/{2,}/g, "/");
+const SUPERDOC_BASE_URL = `${import.meta.env.BASE_URL}superdoc`.replace(/\/{2,}/g, "/");
+/** 引擎基址：壳会在其后拼 `/dist-cdn/docx-engine.es.js` 与 `/dist-cdn/style.css`。 */
+const ENGINE_BASE_URL = SUPERDOC_BASE_URL;
+
+/** 实例只用到 destroy/导出方法；其余按 unknown 处理，避免跟着 SuperDoc 的类型版本走。 */
+type SuperDocInstance = { destroy?: () => void } & Record<string, unknown>;
+type SuperDocConstructor = new (options: Record<string, unknown>) => SuperDocInstance;
+
+/**
+ * 加载 SuperDoc 壳（官方 CDN 产物，UMD，挂在 globalThis.SuperDoc）。
+ *
+ * 为什么不用 npm 的 ESM 壳：它内部是 `import("@superdoc/docx-engine")` 的**裸导入**，会被打包器静态
+ * 解析成 node_modules 里的路径，绕过我们静态托管的引擎；那个副本的 worker 资产在 `dist/assets/` 下并不
+ * 存在（真机报 `Failed to fetch dynamically imported module .../docx-engine/dist/assets/browser-worker-…`）。
+ * CDN 壳改从 globalThis.SUPERDOC_ENGINE_CDN_BASE_URL 取基址，正好吃我们 public/ 下的静态资产。
+ */
+async function loadSuperDocShell(): Promise<SuperDocConstructor> {
+  const existing = (globalThis as Record<string, unknown>).SuperDoc;
+  if (typeof existing === "function") return existing as SuperDocConstructor;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `${SUPERDOC_BASE_URL}/superdoc.min.js`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("SuperDoc 壳加载失败（静态资产缺失？）"));
+    document.head.appendChild(script);
+  });
+  const loaded = (globalThis as Record<string, unknown>).SuperDoc;
+  if (typeof loaded !== "function") throw new Error("SuperDoc 壳未暴露全局构造器");
+  return loaded as SuperDocConstructor;
+}
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -79,7 +108,7 @@ export interface OfficeEditorPaneProps {
 
 export function OfficeEditorPane({ fileService, path, onExit }: OfficeEditorPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<SuperDoc | null>(null);
+  const editorRef = useRef<SuperDocInstance | null>(null);
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
@@ -113,12 +142,14 @@ export function OfficeEditorPane({ fileService, path, onExit }: OfficeEditorPane
             : null;
 
         (globalThis as Record<string, unknown>).SUPERDOC_ENGINE_CDN_BASE_URL = ENGINE_BASE_URL;
+        setStatus("加载 Office 编辑器…");
+        const SuperDocCtor = await loadSuperDocShell();
         const bytes = base64ToBytes(preview.dataBase64);
         const file = new File([bytes as unknown as BlobPart], path.split("/").pop() ?? "document.docx", {
           type: DOCX_MIME,
         });
         setStatus("启动 Office 编辑器…");
-        const editor = new SuperDoc({
+        const editor = new SuperDocCtor({
           selector: "#office-editor-host",
           document: file,
           // 默认按修订记录改动：编辑结果在 Word 里仍是"未接受的修订"，与 office 插件的审阅流程同一套词汇。
@@ -221,7 +252,8 @@ export function OfficeEditorPane({ fileService, path, onExit }: OfficeEditorPane
               if (!host) return;
               host.replaceChildren();
               const bytes = base64ToBytes(preview.dataBase64);
-              const editor = new SuperDoc({
+              const SuperDocCtor = await loadSuperDocShell();
+              const editor = new SuperDocCtor({
                 selector: "#office-editor-host",
                 document: new File([bytes as unknown as BlobPart], path.split("/").pop() ?? "document.docx", {
                   type: DOCX_MIME,

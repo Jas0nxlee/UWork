@@ -17,6 +17,11 @@ const source = join(repoRoot, "node_modules/@superdoc/docx-engine/dist-cdn");
 // 渲染进程 Vite 的 root 是 packages/desktop/src/renderer（见 packages/desktop/vite.config.ts:185），
 // 所以 publicDir 就是它下面的 public/ —— 资产必须放这里才会按静态文件托管。
 const target = join(repoRoot, "packages/desktop/src/renderer/public/superdoc/dist-cdn");
+// 壳用官方 CDN 产物（UMD）：它从 globalThis.SUPERDOC_ENGINE_CDN_BASE_URL 读引擎基址，
+// 而 npm 的 ESM 壳会被打包器静态解析 @superdoc/docx-engine，绕过我们的静态托管（真机踩过：
+// worker 去 node_modules/.pnpm/.../dist/assets/ 找文件，必然失败）。
+const shellSource = join(repoRoot, "node_modules/superdoc/dist-cdn");
+const shellTarget = join(repoRoot, "packages/desktop/src/renderer/public/superdoc");
 
 async function isUpToDate() {
   try {
@@ -32,8 +37,10 @@ async function isUpToDate() {
   }
 }
 
+await mkdir(shellTarget, { recursive: true });
+await cp(shellSource, shellTarget, { recursive: true, force: true });
 if (await isUpToDate()) {
-  console.log("[superdoc-assets] 已是最新，跳过");
+  console.log("[superdoc-assets] 引擎已是最新，仅同步壳（UMD + CSS）");
 } else {
   await mkdir(target, { recursive: true });
   await cp(source, target, { recursive: true });
