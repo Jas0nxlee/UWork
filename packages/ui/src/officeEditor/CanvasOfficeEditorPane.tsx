@@ -114,6 +114,9 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       margins: [100, 120, 100, 120],
       // 滚动必须显式交给外层容器（默认也是父节点，这里写明意图；配合容器的 overflow-auto）
       scrollContainerSelector: "#office-editor-host",
+      // 选区色：默认 #AECBFA@60% 在深色应用里与正文对比太弱，看起来像"字没了"。改浅蓝低透明度。
+      rangeColor: "#0969da",
+      rangeAlpha: 0.25,
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
@@ -229,6 +232,13 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
           case "executePageMode": {
             const current = editor.command.getOptions?.()?.pageMode;
             commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
+            return;
+          }
+          case "executeUndo":
+          case "executeRedo": {
+            // 先确保画布有焦点/游标，再走引擎的历史栈（与 Ctrl+Z 行为一致）。
+            commands.focus?.();
+            commands[command]?.();
             return;
           }
           case "executePainter": {

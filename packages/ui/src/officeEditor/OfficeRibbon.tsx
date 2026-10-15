@@ -342,7 +342,9 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
   const tabs = RIBBON_TABS.filter((tab) => !tab.contextual || inTable);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   return (
-    <div className="border-b border-border bg-background">
+    // mousedown 阻止默认：点功能区不能让画布失焦——否则选区丢失、撤销/格式化不生效（真机反馈：
+    // "撤销不能用，但 Ctrl+Z 可以"）。键盘快捷键保持焦点所以一直可用，这里对齐两者。
+    <div className="border-b border-border bg-background" onMouseDown={(event) => event.preventDefault()}>
       <div className="flex items-end gap-0.5 border-b border-border px-2">
         {tabs.map((tab) => (
           <button

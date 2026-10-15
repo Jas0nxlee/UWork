@@ -76,7 +76,8 @@ export interface RibbonTab {
   contextual?: boolean;
 }
 
-const COLORS = [
+/** 文字颜色：深色为主，另含浅色（用于深色底纹场景）。 */
+const TEXT_COLORS = [
   "rgb(0, 0, 0)",
   "rgb(38, 38, 38)",
   "rgb(115, 115, 115)",
@@ -93,6 +94,21 @@ const COLORS = [
   "rgb(211, 247, 211)",
   "rgb(204, 229, 255)",
   "rgb(233, 222, 255)",
+];
+
+/**
+ * 高亮（底纹）：**只用浅色**——Word 的底纹调色板同理。
+ * 之前把深色也放进来，选到深色底纹后黑字被吞掉，看起来就像"文字消失了"（真机反馈）。
+ */
+const HIGHLIGHT_COLORS = [
+  "rgb(255, 255, 0)",
+  "rgb(255, 236, 179)",
+  "rgb(255, 221, 221)",
+  "rgb(211, 247, 211)",
+  "rgb(204, 229, 255)",
+  "rgb(233, 222, 255)",
+  "rgb(214, 245, 255)",
+  "rgb(240, 240, 240)",
 ];
 
 const FONTS = ["宋体", "仿宋", "黑体", "微软雅黑", "楷体", "等线", "Times New Roman", "Arial", "Calibri"];
@@ -134,13 +150,17 @@ const colorSelect = (
   title: string,
   icon: string,
   swatchKey: "color" | "highlight",
+  palette: readonly string[],
 ): RibbonSelect => ({
   kind: "select",
   label,
   title,
   icon,
-  options: [{ label: "自动", args: [null] }, ...COLORS.map((color) => ({ label: color, args: [color] }))],
   swatch: (style) => (swatchKey === "color" ? (style.color ?? null) : (style.highlight ?? null)),
+  options: [
+    { label: swatchKey === "color" ? "自动" : "无底纹", args: [null] },
+    ...palette.map((color) => ({ label: color, args: [color] })),
+  ],
 });
 
 export const RIBBON_TABS: RibbonTab[] = [
@@ -184,8 +204,8 @@ export const RIBBON_TABS: RibbonTab[] = [
           button("删除线", "删除线", "executeStrikeout", { icon: "TextStrikethrough24Regular" }),
           button("上标", "上标", "executeSuperscript", { icon: "TextSuperscript24Regular" }),
           button("下标", "下标", "executeSubscript", { icon: "TextSubscript24Regular" }),
-          colorSelect("字色", "文字颜色", "TextColor24Regular", "color"),
-          colorSelect("底纹", "高亮（底纹）", "Highlight24Regular", "highlight"),
+          colorSelect("字色", "文字颜色", "TextColor24Regular", "color", TEXT_COLORS),
+          colorSelect("底纹", "高亮（底纹）", "Highlight24Regular", "highlight", HIGHLIGHT_COLORS),
         ],
       },
       {
@@ -316,7 +336,7 @@ export const RIBBON_TABS: RibbonTab[] = [
           button("横拆", "水平拆分", "executeSplitHorizontalTableCell"),
           button("竖拆", "垂直拆分", "executeSplitVerticalTableCell"),
           button("全选表", "选中整个表格", "executeTableSelectAll"),
-          colorSelect("底色", "单元格底色", "Highlight24Regular", "highlight"),
+          colorSelect("底色", "单元格底色", "Highlight24Regular", "highlight", HIGHLIGHT_COLORS),
           {
             kind: "select",
             label: "垂直对齐",
