@@ -16,8 +16,13 @@ import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from "@/logger.js";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** 应用内原地编辑的体积上限：超过就只读审阅（超大文档在任何浏览器编辑器里都不可用）。 */
+const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
+/** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
+const SLOW_PARSE_MS = 3000;
 
 function base64ToArrayBuffer(value: string): ArrayBuffer {
   const binary = atob(value);
@@ -96,10 +101,27 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
           : null;
       const editor = editorRef.current;
       if (!editor) return;
-      setStatus("解析文档…");
+      if (preview.totalBytes > MAX_EDITABLE_BYTES) {
+        setStatus(
+          `文档过大（${Math.round(preview.totalBytes / 1048576)} MB），不在应用内编辑：请用只读预览 + 对话卡片审阅，或分段编辑。`,
+        );
+        return;
+      }
+      setStatus(`解析文档（${Math.round(preview.totalBytes / 1024)} KiB）…`);
+      const startedAt = performance.now();
       await editor.command.executeImportDocx({ arrayBuffer: base64ToArrayBuffer(preview.dataBase64) });
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      logger.info(`[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${Math.round(preview.totalBytes / 1024)} KiB）`);
       if (options.reset !== false) setDirty(false);
-      setStatus(`已载入 ${Math.round(preview.totalBytes / 1024)} KiB · 可直接编辑，点「保存到文件」写回`);
+      // 实测（headless Chromium，canvas-editor）：500 段 76ms / 2000 段 266ms / 6000 段 957ms / 20000 段 4.4s。
+      // 超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug。
+      const slowHint =
+        elapsedMs > SLOW_PARSE_MS
+          ? `（文档很大，编辑会明显卡顿：${Math.round(elapsedMs / 1000)}s 解析。建议改用只读预览 + 卡片审阅。）`
+          : "";
+      setStatus(
+        `已载入 ${Math.round(preview.totalBytes / 1024)} KiB · 解析 ${(elapsedMs / 1000).toFixed(1)}s · 点「保存到文件」写回${slowHint}`,
+      );
     },
     [fileService, path],
   );
@@ -114,6 +136,8 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       // 页面观感贴近 Office：A4 纸张 + 页边距 + 分页
       pageMode: "paging",
       margins: [100, 120, 100, 120],
+      // 滚动必须显式交给外层容器（默认也是父节点，这里写明意图；配合容器的 overflow-auto）
+      scrollContainerSelector: "#office-editor-host",
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
@@ -235,7 +259,9 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
           {status}
         </span>
       </div>
-      <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden bg-surface" />
+      {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
+          之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
+      <div ref={hostRef} id="office-editor-host" className="min-h-0 flex-1 overflow-auto bg-surface" />
     </div>
   );
 }
