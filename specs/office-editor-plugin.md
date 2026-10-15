@@ -71,6 +71,15 @@ iframe/webview/沙箱目标，日志里也没有 `plugin-ui-bridge` 行（是"�
 - **页面挂载期的瞬态**：冷启动恢复任务时，卡片会在会话的 MCP app 连接登记前就 prepare，宿主回 `-32001`；
   该窗口由宿主侧修复（`specs/plugin-ui-session-warmup-resilience.md`，有界退避自动重试），插件侧无需处理。
 
+## 二期：预览与编辑
+
+「保留一键审查，把预览与编辑做彻底」的调研结论、架构决策与分期见
+[`specs/office-editor-editing-preview-research.md`](./office-editor-editing-preview-research.md)（2026-10-15）。要点：
+页面按 4 MiB 分块读 `office://` 资源取字节（真实天花板是 MCP stdio 帧 10 MiB，不是 8 MiB）；
+渲染用 docx-preview（Apache-2.0，`renderChanges:true`）+ 我们引擎的 id/作者/位置做浮层；
+宿主内置预览 `renderChanges:false` 会**吞掉删除文字**，这是我们已有的差异优势；
+「打开方式」接缝（P1 前两条）为 M 级核心改动，待拍板。
+
 ## 插件命名契约（UWork 命名 + 既有生态兼容）
 
 结论先说：插件交互面里 **`.zcode-plugin`、`ZCODE_PLUGIN_ROOT`、`@zcode/*` 都不是"忘了改品牌"**，而是宿主契约与上游内部命名——
