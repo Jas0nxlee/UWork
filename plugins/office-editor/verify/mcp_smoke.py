@@ -218,7 +218,7 @@ def main() -> int:
         tools = server.rpc("tools/list")["tools"]
         names = {tool["name"] for tool in tools}
         check(
-            "tools/list 暴露六个工具",
+            "tools/list 暴露八个工具（审阅 4 + 编辑 2 + 兜底 2）",
             names
             == {
                 "docx_revisions_list",
@@ -227,6 +227,8 @@ def main() -> int:
                 "docx_open_editor",
                 "docx_current_target",
                 "docx_export_pdf",
+                "docx_edit_paragraph",
+                "docx_set_paragraph_format",
             },
             str(names),
         )
@@ -263,6 +265,70 @@ def main() -> int:
             remaining["total"] == 0 and remaining["counts"] == {"insert": 0, "delete": 0, "comments": 0},
             str(remaining["counts"]),
         )
+
+        print("编辑：段落文本（修订模式 / 直改）与段落格式")
+        sys.path.insert(0, os.path.join(PLUGIN_ROOT, "server"))
+        import docx_revisions as engine  # noqa: E402
+
+        edit_dir = tempfile.mkdtemp(prefix="office-edit-")
+        atexit.register(shutil.rmtree, edit_dir, ignore_errors=True)
+        edit_path = fixture.build_sample(edit_dir)
+        before_text = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        before_counts = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+
+        edited = payload(
+            server.call(
+                "docx_edit_paragraph",
+                path=edit_path,
+                paragraph=1,
+                text="改写后的第一段，含新增内容。",
+                author="自检",
+            )
+        )
+        check("编辑返回 changed", edited.get("changed") is True, json.dumps(edited, ensure_ascii=False)[:160])
+        check("编辑落了备份", os.path.exists(edited.get("backup") or ""), str(edited.get("backup")))
+        after = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+        check(
+            "修订模式：插入与删除各增一条",
+            after["insert"] == before_counts["insert"] + 1 and after["delete"] == before_counts["delete"] + 1,
+            f"{before_counts} -> {after}",
+        )
+        marks = json.loads(
+            server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}/marks?path={edit_path}"})["contents"][0]["text"]
+        )
+        check(
+            "新修订带上作者",
+            any(mark["kind"] == "insert" for mark in marks["marks"]),
+            json.dumps(marks["marks"][-3:], ensure_ascii=False)[:200],
+        )
+        # 拒绝全部 → 段落文本回到原样（证明 del/ins 都落在正确位置）
+        server.call("docx_revisions_resolve", path=edit_path, action="reject")
+        restored = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        check("拒绝后段落文本回到原文", restored == before_text, f"{before_text!r} -> {restored!r}")
+        # 再改成直改模式：立即生效、不留修订
+        server.call("docx_edit_paragraph", path=edit_path, paragraph=1, text="直改文本", tracked=False)
+        direct = engine._paragraph_text(engine._find_paragraph(engine._load(edit_path)[1], 1))
+        check("直改立即生效", direct == "直改文本", repr(direct))
+        direct_counts = payload(server.call("docx_revisions_list", path=edit_path, limit=1))["counts"]
+        check(
+            "直改不留修订",
+            direct_counts["insert"] == 0 and direct_counts["delete"] == 0,
+            json.dumps(direct_counts),
+        )
+        formatted = payload(
+            server.call(
+                "docx_set_paragraph_format",
+                path=edit_path,
+                paragraph=2,
+                bold=True,
+                italic=True,
+                align="center",
+            )
+        )
+        check("格式返回参数回显", formatted.get("align") == "center", json.dumps(formatted, ensure_ascii=False)[:160])
+        xml_text = engine._load(edit_path)[0].read("word/document.xml").decode("utf-8")
+        check("段落格式落到 w:rPr/w:pPr", "<w:b" in xml_text and "<w:i" in xml_text and 'w:val="center"' in xml_text, "缺少格式标记")
+        server.call("docx_revisions_list", path=path, limit=1)  # 把"当前目标"还给主样本
 
         print("未实现工具必须明确失败")
         exported = server.call("docx_export_pdf", path=path)
@@ -319,7 +385,11 @@ def main() -> int:
 
         print("文档字节通道（office://docx）")
         templates = server.rpc("resources/templates/list")["resourceTemplates"]
-        check("声明字节与标记两个模板", len(templates) == 2, str([t["uriTemplate"] for t in templates]))
+        check(
+            "声明字节/标记/段落三个模板",
+            len(templates) == 3,
+            str([t["uriTemplate"] for t in templates]),
+        )
         meta = json.loads(
             server.rpc("resources/read", {"uri": f"{DOCX_RESOURCE}?path={path}&meta=1"})["contents"][0][
                 "text"

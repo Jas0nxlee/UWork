@@ -12,11 +12,13 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import shutil
 import time
 import zipfile
+from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -175,6 +177,16 @@ _parse_cache: dict[tuple[str, int, int], tuple[list[dict], list[dict]]] = {}
 _PARSE_CACHE_LIMIT = 4
 
 
+def _invalidate_cache(path: str) -> None:
+    """写回后清缓存：简单可靠，解析成本远低于误用陈旧数据的风险。"""
+    _parse_cache.pop((os.path.abspath(path), 0, 0), None)
+    _parse_cache.clear()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _parse(path: str) -> tuple[list[dict], list[dict]]:
     """返回 (revisions, comments)，按文件大小+mtime 缓存。"""
     absolute = os.path.abspath(path)
@@ -268,6 +280,251 @@ def revision_marks(path: str) -> dict:
         "marks": [
             {"id": item["id"], "kind": item["kind"], "text": item["text"]} for item in revisions
         ],
+    }
+
+
+PARAGRAPH_TEXT_CHARS_LIST = 200
+
+
+def list_paragraphs(path: str) -> dict:
+    """段落清单（段号 + 文本前缀），供编辑页把渲染出的 ``<p>`` 对回引擎段号后原地编辑。"""
+    _archive, root, _xml = _load(path)
+    paragraphs: list[dict] = []
+    state = {"paragraph": 0}
+
+    def visit(node: ET.Element) -> None:
+        for child in list(node):
+            if child.tag == f"{W}tbl":
+                for row in child.findall(f"{W}tr"):
+                    for cell in row.findall(f"{W}tc"):
+                        visit(cell)
+                continue
+            if child.tag == f"{W}p":
+                state["paragraph"] += 1
+                paragraphs.append(
+                    {
+                        "index": state["paragraph"],
+                        "text": _snippet(_paragraph_text(child), PARAGRAPH_TEXT_CHARS_LIST),
+                    }
+                )
+                continue
+            visit(child)
+
+    visit(root)
+    stat = os.stat(path)
+    return {
+        "path": path,
+        "etag": f"{stat.st_size}-{stat.st_mtime_ns}",
+        "paragraphs": paragraphs,
+    }
+
+
+def _find_paragraph(root: ET.Element, index: int) -> ET.Element | None:
+    """按文档序取第 ``index`` 个 ``w:p``——与 ``_collect_revisions`` 的段落编号同一口径（表格内也计入）。"""
+    counter = 0
+
+    def visit(node: ET.Element):
+        nonlocal counter
+        for child in list(node):
+            if child.tag == f"{W}tbl":
+                for row in child.findall(f"{W}tr"):
+                    for cell in row.findall(f"{W}tc"):
+                        hit = visit(cell)
+                        if hit is not None:
+                            return hit
+                continue
+            if child.tag == f"{W}p":
+                counter += 1
+                if counter == index:
+                    return child
+                continue
+            hit = visit(child)
+            if hit is not None:
+                return hit
+        return None
+
+    return visit(root)
+
+
+def _next_change_id(root: ET.Element) -> int:
+    highest = 0
+    for tag in (f"{W}ins", f"{W}del"):
+        for element in root.iter(tag):
+            raw = element.get(f"{W}id")
+            if raw and raw.isdigit():
+                highest = max(highest, int(raw))
+    return highest + 1
+
+
+def _common_affixes(old: str, new: str) -> tuple[int, int]:
+    """公共前缀/后缀长度（后缀不与前缀重叠）——用它把一次编辑缩成最小改动段。"""
+    prefix = 0
+    limit = min(len(old), len(new))
+    while prefix < limit and old[prefix] == new[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < limit - prefix and old[len(old) - 1 - suffix] == new[len(new) - 1 - suffix]:
+        suffix += 1
+    return prefix, suffix
+
+
+def _first_run_properties(paragraph: ET.Element) -> ET.Element | None:
+    for run in paragraph.iter(f"{W}r"):
+        properties = run.find(f"{W}rPr")
+        if properties is not None:
+            return copy.deepcopy(properties)
+    return None
+
+
+def _make_run(text: str, properties: ET.Element | None, deleted: bool) -> ET.Element:
+    run = ET.Element(f"{W}r")
+    if properties is not None:
+        run.append(copy.deepcopy(properties))
+    node = ET.SubElement(run, f"{W}delText" if deleted else f"{W}t")
+    node.text = text
+    node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    return run
+
+
+def _make_change(paragraph: ET.Element, tag: str, text: str, change_id: int, author: str, date: str, deleted: bool) -> ET.Element:
+    element = ET.Element(
+        f"{W}{tag}", {f"{W}id": str(change_id), f"{W}author": author, f"{W}date": date}
+    )
+    element.append(_make_run(text, _first_run_properties(paragraph), deleted=deleted))
+    return element
+
+
+def edit_paragraph(
+    path: str,
+    *,
+    paragraph: int,
+    text: str,
+    tracked: bool = True,
+    author: str = "应用内编辑",
+) -> dict:
+    """把第 ``paragraph`` 个段落的文本改成 ``text``。
+
+    ``tracked=True``（默认）：公共前后缀保留，只有中间改动段落成 ``w:del`` + ``w:ins``——
+    文档在 Word 里打开仍是"未接受的修订"，可被本插件的接受/拒绝流程处理。
+    ``tracked=False``：直接改写（不留修订）。
+
+    v1 以**整段文本**为单位：段落内的局部格式（局部加粗、超链接、域）在编辑后不保留；
+    未改动的首尾文本沿用原段落首个 run 的属性。
+    """
+    absolute = os.path.abspath(path)
+    _archive, root, _xml = _load(path)
+    element = _find_paragraph(root, int(paragraph))
+    if element is None:
+        raise ValueError(f"找不到第 {paragraph} 段")
+    old_text = _paragraph_text(element)
+    if old_text == text:
+        return {"path": path, "paragraph": paragraph, "changed": False}
+
+    properties = _first_run_properties(element)
+    prefix_length, suffix_length = _common_affixes(old_text, text)
+    removed = old_text[prefix_length : len(old_text) - suffix_length if suffix_length else len(old_text)]
+    added = text[prefix_length : len(text) - suffix_length if suffix_length else len(text)]
+    kept_prefix = old_text[:prefix_length]
+    kept_suffix = old_text[len(old_text) - suffix_length :] if suffix_length else ""
+
+    # 只替换 run 级内容：w:pPr、书签与批注锚点等非 run 子元素原位保留（否则批注会失锚）。
+    for child in list(element):
+        if child.tag in (f"{W}r", f"{W}ins", f"{W}del"):
+            element.remove(child)
+    insert_at = list(element).index(element.find(f"{W}pPr")) + 1 if element.find(f"{W}pPr") is not None else 0
+    new_children: list[ET.Element] = []
+    if kept_prefix:
+        new_children.append(_make_run(kept_prefix, properties, deleted=False))
+    if tracked:
+        change_id = _next_change_id(root)
+        date = _now_iso()
+        if removed:
+            new_children.append(
+                _make_change(element, "del", removed, change_id, author, date, deleted=True)
+            )
+        if added:
+            new_children.append(
+                _make_change(element, "ins", added, change_id + 1, author, date, deleted=False)
+            )
+    else:
+        merged = kept_prefix + added + kept_suffix
+        if merged:
+            new_children.append(_make_run(merged, properties, deleted=False))
+    if kept_suffix and tracked:
+        new_children.append(_make_run(kept_suffix, properties, deleted=False))
+    for offset, child in enumerate(new_children):
+        element.insert(insert_at + offset, child)
+
+    backup = _unique_backup_path(path)
+    shutil.copy2(path, backup)
+    _rewrite_document_part(path, _serialize(root))
+    _invalidate_cache(absolute)
+    return {
+        "path": path,
+        "paragraph": paragraph,
+        "changed": True,
+        "tracked": tracked,
+        "removed": _snippet(removed, 100),
+        "added": _snippet(added, 100),
+        "backup": backup,
+    }
+
+
+def set_paragraph_format(
+    path: str, *, paragraph: int, bold: bool | None = None, italic: bool | None = None,
+    underline: bool | None = None, align: str | None = None,
+) -> dict:
+    """段落格式：``bold``/``italic``/``underline`` 落到每个 run 的 ``w:rPr``，``align`` 落到 ``w:pPr/w:jc``。
+
+    注意：格式改动目前**直接生效、不留修订**（格式修订 ``w:rPrChange``/``w:pPrChange`` 属二期后续）。
+    """
+    _archive, root, _xml = _load(path)
+    element = _find_paragraph(root, int(paragraph))
+    if element is None:
+        raise ValueError(f"找不到第 {paragraph} 段")
+    if align is not None and align not in ("left", "center", "right", "justify"):
+        raise ValueError(f"不支持的 align: {align}")
+
+    flags = {"b": bold, "i": italic, "u": underline}
+    for run in element.iter(f"{W}r"):
+        properties = run.find(f"{W}rPr")
+        for tag, value in flags.items():
+            if value is None:
+                continue
+            if properties is None:
+                properties = ET.Element(f"{W}rPr")
+                run.insert(0, properties)
+            existing = properties.find(f"{W}{tag}")
+            if existing is not None:
+                properties.remove(existing)
+            if value:
+                element_node = ET.Element(f"{W}{tag}")
+                if tag == "u":
+                    element_node.set(f"{W}val", "single")
+                properties.insert(len(properties), element_node)
+    if align is not None:
+        properties = element.find(f"{W}pPr")
+        if properties is None:
+            properties = ET.Element(f"{W}pPr")
+            element.insert(0, properties)
+        existing = properties.find(f"{W}jc")
+        if existing is not None:
+            properties.remove(existing)
+        node = ET.SubElement(properties, f"{W}jc")
+        node.set(f"{W}val", align)
+
+    backup = _unique_backup_path(path)
+    shutil.copy2(path, backup)
+    _rewrite_document_part(path, _serialize(root))
+    _invalidate_cache(os.path.abspath(path))
+    return {
+        "path": path,
+        "paragraph": paragraph,
+        "bold": bold,
+        "italic": italic,
+        "underline": underline,
+        "align": align,
+        "backup": backup,
     }
 
 

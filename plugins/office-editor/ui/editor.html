@@ -198,21 +198,45 @@
         margin: -4px 0 8px;
         min-height: 16px;
       }
-      /* 窄（对话卡片）：审阅优先，文档按需展开；宽（侧栏大窗口）：文档为主，列表收进右栏。 */
+      /* 窄（对话卡片）：审阅优先，动作只有接受/拒绝；宽（侧栏）：Office 式编辑页，文档是唯一主角。 */
       #grid {
         display: grid;
         gap: 12px;
       }
       body.wide #grid {
-        grid-template-columns: minmax(0, 1fr) 380px;
-        align-items: start;
+        grid-template-columns: minmax(0, 1fr);
       }
+      body.wide #rail,
+      body.wide #toolbar,
       body.wide #preview-toggle {
         display: none;
       }
+      body.wide #editor-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 6px 0 8px;
+      }
+      #editor-bar .sep {
+        color: var(--border);
+      }
       body.wide #doc-preview {
         max-height: none;
-        height: 74vh;
+        height: 78vh;
+      }
+      /* 编辑态：段落悬停有边界提示，正在编辑的段落有焦点环（像编辑器的编辑区）。 */
+      #doc-body p[contenteditable] {
+        border-radius: 3px;
+      }
+      #doc-body p[contenteditable]:hover {
+        outline: 1px dashed var(--border);
+        outline-offset: 1px;
+      }
+      #doc-body p[contenteditable]:focus {
+        outline: 2px solid #0969da;
+        outline-offset: 2px;
+        background: #f6f8fa;
       }
       #doc-preview {
         border: 1px solid var(--border);
@@ -266,8 +290,19 @@
       <button id="reject-all" disabled>全部拒绝</button>
       <button id="comments-toggle" disabled>加载批注</button>
       <button id="preview-toggle" disabled>显示文档</button>
-      <button id="open-side" disabled>在侧栏打开</button>
+      <button id="open-side" disabled>在侧栏编辑</button>
       <button id="refresh" disabled>刷新</button>
+    </div>
+    <div id="editor-bar" hidden>
+      <button id="fmt-bold" data-fmt="bold">加粗</button>
+      <button id="fmt-italic" data-fmt="italic">斜体</button>
+      <button id="fmt-underline" data-fmt="underline">下划线</button>
+      <span class="sep">|</span>
+      <button id="fmt-left" data-align="left">左</button>
+      <button id="fmt-center" data-align="center">中</button>
+      <button id="fmt-right" data-align="right">右</button>
+      <span class="sep">|</span>
+      <span class="meta">点段落即可改文字（Enter 换行 / ⌘↵ 保存 / Esc 放弃）；改动默认记成修订，可在对话卡片里逐条接受或拒绝</span>
     </div>
     <div id="preview-bar"><span id="preview-status"></span></div>
     <div id="grid">

@@ -12,7 +12,7 @@ docx-preview 的裸导入 ``import e from"jszip"`` 内联前改写成对上面 I
 
 文档字节通道（页面无文件系统原语）：``office://docx?path=…`` 分块读。宿主对页面读资源的单次上限是
 8 MiB 解码，但真正的天花板是 vendored MCP SDK 的 stdio 帧 10 MiB（base64 膨胀 4/3），所以按 4 MiB 分块；
-``meta=1`` 返回 ``{size, mtimeNs, etag, chunkBytes, chunks}`` 供页面决定读几块与是否需要重读。
+``meta=1`` 返回 ``{size, mtimeNs, etag, chunkBytes, chunks}`` 供页面决定读几块与是否需要重读；\n``office://docx/paragraphs`` 给段号清单，供编辑页把渲染出的 ``<p>`` 对回引擎段号。
 """
 
 from __future__ import annotations
@@ -29,11 +29,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from docx_revisions import (  # noqa: E402
     DEFAULT_PAGE_SIZE,
+    edit_paragraph,
     list_comments,
+    list_paragraphs,
     list_revisions,
     revision_counts,
     revision_marks,
     resolve_revisions,
+    set_paragraph_format,
 )
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -111,6 +114,39 @@ TOOLS = [
             "type": "object",
             "properties": {"path": {"type": "string"}},
             "required": ["path"],
+        },
+    },
+    {
+        "name": "docx_edit_paragraph",
+        "title": "编辑段落（默认修订模式）",
+        "description": "把第 N 段改成给定文本。默认按修订模式落成 w:del + w:ins（公共前后缀保留），文档在 Word 里仍是未接受的修订；tracked=false 则直接改写。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "paragraph": {"type": "integer", "description": "段落序号（与列表工具同一口径，从 1 开始）"},
+                "text": {"type": "string", "description": "该段的新文本"},
+                "tracked": {"type": "boolean", "description": "默认 true＝留修订"},
+                "author": {"type": "string", "description": "修订作者（默认「应用内编辑」）"},
+            },
+            "required": ["path", "paragraph", "text"],
+        },
+    },
+    {
+        "name": "docx_set_paragraph_format",
+        "title": "设置段落格式",
+        "description": "段落级格式：加粗/斜体/下划线（落到 w:rPr）与对齐（w:jc）。注意格式改动目前直接生效、不留修订。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "paragraph": {"type": "integer"},
+                "bold": {"type": "boolean"},
+                "italic": {"type": "boolean"},
+                "underline": {"type": "boolean"},
+                "align": {"type": "string", "enum": ["left", "center", "right", "justify"]},
+            },
+            "required": ["path", "paragraph"],
         },
     },
     {
@@ -262,6 +298,9 @@ def read_docx_resource(uri: str) -> dict:
     if parsed.path == "/marks":
         payload = json.dumps(revision_marks(path), ensure_ascii=False)
         return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
+    if parsed.path == "/paragraphs":
+        payload = json.dumps(list_paragraphs(path), ensure_ascii=False)
+        return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
     if (query.get("meta") or ["0"])[0] not in ("", "0"):
         payload = json.dumps(docx_resource_meta(path), ensure_ascii=False)
         return {"contents": [{"uri": uri, "mimeType": META_MIME, "text": payload}]}
@@ -304,6 +343,27 @@ def call_tool(name: str, arguments: dict) -> dict:
     if name == "docx_revisions_resolve":
         result = resolve_revisions(
             arguments["path"], arguments["action"], arguments.get("ids")
+        )
+        return {"content": _text(result), "structuredContent": result}
+    if name == "docx_edit_paragraph":
+        remember_target(arguments["path"])
+        result = edit_paragraph(
+            arguments["path"],
+            paragraph=int(arguments["paragraph"]),
+            text=str(arguments.get("text") or ""),
+            tracked=arguments.get("tracked") is not False,
+            author=str(arguments.get("author") or "应用内编辑"),
+        )
+        return {"content": _text(result), "structuredContent": result}
+    if name == "docx_set_paragraph_format":
+        remember_target(arguments["path"])
+        result = set_paragraph_format(
+            arguments["path"],
+            paragraph=int(arguments["paragraph"]),
+            bold=arguments.get("bold"),
+            italic=arguments.get("italic"),
+            underline=arguments.get("underline"),
+            align=arguments.get("align"),
         )
         return {"content": _text(result), "structuredContent": result}
     if name == "docx_open_editor":
@@ -386,6 +446,11 @@ def handle_request(message: dict):
                 {
                     "uriTemplate": f"{DOCX_RESOURCE_URI}/marks{{?path}}",
                     "name": "DOCX 修订标记（id/kind/文本，文档序）",
+                    "mimeType": META_MIME,
+                },
+                {
+                    "uriTemplate": f"{DOCX_RESOURCE_URI}/paragraphs{{?path}}",
+                    "name": "DOCX 段落清单（段号 + 文本前缀，编辑页用）",
                     "mimeType": META_MIME,
                 },
             ]

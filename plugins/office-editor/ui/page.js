@@ -18,6 +18,7 @@ const state = {
   comments: null, // null = 未加载（按需加载，少一次页面发起的工具调用）
   commentOffset: 0,
   preview: { shown: false, etag: null },
+  editor: { active: null },
 };
 
 // 模块级持有：refresh/resolve 与宿主回调都要用它。放进 else 块里会让模块级函数取不到（真机踩坑）。
@@ -40,6 +41,7 @@ const dom = {
   refresh: document.getElementById("refresh"),
   previewToggle: document.getElementById("preview-toggle"),
   openSide: document.getElementById("open-side"),
+  editorBar: document.getElementById("editor-bar"),
   previewStatus: document.getElementById("preview-status"),
   preview: document.getElementById("doc-preview"),
   docBody: document.getElementById("doc-body"),
@@ -62,7 +64,8 @@ function applyLayout() {
   const wide = mode === "fullscreen";
   document.body.classList.toggle("wide", wide);
   dom.openSide.hidden = wide;
-  // 侧栏里打开时文档就是主角：自动渲染一次（卡片里仍按需展开，避免在窄卡片里渲染整篇）。
+  dom.editorBar.hidden = !wide;
+  // 侧栏＝Office 式编辑页：打开就把文档渲染出来并让段落可编辑；卡片里仍按需展开（只做接受/拒绝）。
   if (wide && state.path && !state.preview.shown && !state.busy) void renderDocument();
 }
 
@@ -459,6 +462,8 @@ async function renderDocument() {
     setPreviewStatus(
       `已渲染 ${meta.chunks} 块 / ${Math.round(meta.size / 1024)} KiB · 修订 ${aligned.total} 处（对齐 ${aligned.matched}，${aligned.mode === "order" ? "按文档序" : "按文本"}）`,
     );
+    // 侧栏＝编辑位：渲染完就把段落变成可编辑区（卡片里不做编辑，只做接受/拒绝）。
+    if (document.body.classList.contains("wide")) await enableEditing();
   } catch (error) {
     setPreviewStatus("");
     showNotice(`渲染文档失败：${error instanceof Error ? error.message : String(error)}`);
@@ -491,6 +496,115 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(fitPreview, 150);
 });
+
+// —— 编辑（侧栏＝Office 式编辑页；卡片里不做编辑）——
+// 段落与引擎段号按文档序对齐，但**文本必须对得上**才允许编辑：对不上就不动它（宁可不给编辑，也不改错段落）。
+
+async function enableEditing() {
+  if (!state.path) return;
+  const payload = await readResourceJson(
+    `${DOCX_RESOURCE}/paragraphs?path=${encodeURIComponent(state.path)}`,
+  );
+  const paragraphs = Array.isArray(payload?.paragraphs) ? payload.paragraphs : [];
+  const nodes = [...dom.docBody.querySelectorAll("p")].filter((node) => !node.closest("header, footer"));
+  let editable = 0;
+  let skipped = 0;
+  nodes.forEach((node, position) => {
+    const item = paragraphs[position];
+    const domText = normalizeMarkText(node.textContent).slice(0, 60);
+    const engineText = normalizeMarkText(item?.text ?? "").slice(0, 60);
+    const aligned =
+      Boolean(item) &&
+      (domText.startsWith(engineText.slice(0, 20)) || engineText.startsWith(domText.slice(0, 20)));
+    if (!aligned) {
+      skipped += 1;
+      return;
+    }
+    node.dataset.paragraph = String(item.index);
+    node.dataset.originalText = node.textContent ?? "";
+    node.setAttribute("contenteditable", "plaintext-only");
+    node.addEventListener("focus", () => {
+      state.editor.active = node;
+    });
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        node.blur();
+      }
+      if (event.key === "Escape") {
+        node.textContent = node.dataset.originalText ?? "";
+        node.blur();
+      }
+    });
+    node.addEventListener("blur", () => void commitParagraph(node));
+    editable += 1;
+  });
+  setPreviewStatus(
+    `编辑就绪：${editable} 段可编辑${skipped ? ` · ${skipped} 段未对齐（不在编辑范围）` : ""}；点段落改字，⌘↵ 保存，Esc 放弃`,
+  );
+}
+
+async function commitParagraph(node) {
+  const paragraph = Number(node.dataset.paragraph);
+  const text = node.textContent ?? "";
+  const original = node.dataset.originalText ?? "";
+  if (!Number.isFinite(paragraph) || text === original) return;
+  setPreviewStatus(`写入第 ${paragraph} 段…`);
+  try {
+    const result = await app.callServerTool({
+      name: "docx_edit_paragraph",
+      arguments: { path: state.path, paragraph, text },
+    });
+    const output = parseToolPayload(result);
+    if (result?.isError) throw new Error(output ? JSON.stringify(output) : "工具返回错误");
+    const backupName = output?.backup ? String(output.backup).split("/").pop() : "";
+    setPreviewStatus(
+      `第 ${paragraph} 段已写入${output?.tracked === false ? "（直接改写）" : "（记为修订，可在对话卡片里接受/拒绝）"}${backupName ? ` · 备份 ${backupName}` : ""}`,
+    );
+    await renderDocument(); // 重读重渲染：修订标记与段落文本都跟着更新
+  } catch (error) {
+    node.textContent = original;
+    showNotice(`写入失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function applyParagraphFormat(patch) {
+  const node = state.editor.active;
+  const paragraph = Number(node?.dataset?.paragraph);
+  if (!Number.isFinite(paragraph)) {
+    showNotice("先点一下要设置格式的段落。");
+    return;
+  }
+  setPreviewStatus(`设置第 ${paragraph} 段格式…`);
+  try {
+    const result = await app.callServerTool({
+      name: "docx_set_paragraph_format",
+      arguments: { path: state.path, paragraph, ...patch },
+    });
+    const output = parseToolPayload(result);
+    if (result?.isError) throw new Error(output ? JSON.stringify(output) : "工具返回错误");
+    setPreviewStatus(`第 ${paragraph} 段格式已更新`);
+    await renderDocument();
+  } catch (error) {
+    showNotice(`设置格式失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+for (const button of document.querySelectorAll("#editor-bar [data-fmt]")) {
+  const flag = button.dataset.fmt;
+  button.addEventListener("click", () => {
+    const node = state.editor.active;
+    // 文档里的真实格式尚未回读，这里按点击次数在 true/false 间切换（v1 近似）。
+    const next = node?.dataset[`fmt${flag}`] !== "1";
+    if (node) node.dataset[`fmt${flag}`] = next ? "1" : "0";
+    void applyParagraphFormat({ [flag]: next });
+  });
+}
+
+for (const button of document.querySelectorAll("#editor-bar [data-align]")) {
+  const align = button.dataset.align;
+  button.addEventListener("click", () => void applyParagraphFormat({ align }));
+}
 
 dom.refresh.addEventListener("click", () => void loadPage(state.offset));
 dom.prev.addEventListener("click", () => void loadPage(Math.max(state.offset - state.limit, 0)));
