@@ -9,18 +9,25 @@
  * 保存约定（与 office 插件一致，业务规则来自 specs/office-editor-plugin.md）：
  * 显式保存、写前比对 (size, mtimeMs)、先落 sibling 备份、原子替换；冲突时**拒绝写入**并提示。
  */
-import engineFileUrl from "@superdoc/docx-engine/dist-cdn/docx-engine.es.js?url";
 import type { IFileService } from "@zcode/services";
 import { SuperDoc } from "superdoc";
 import "superdoc/style.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/**
+ * 引擎地址：必须是一个**真实 http(s) 基址**（SuperDoc 壳只认 http(s)，并在其后拼
+ * `/dist-cdn/docx-engine.es.js` 与 `/dist-cdn/style.css`）。
+ *
+ * 资产由 `packages/ui/scripts/copy-superdoc-assets.mjs` 原样复制到 `public/superdoc/`，
+ * 交给 Vite 当静态文件托管。**不要**改成从 node_modules 直接 import：dev server 会把 10.6 MB 的
+ * worker 当源码处理（内联 sourcemap 后 48.6 MB），导致 module worker 起不来（真机报 "worker not start"）。
+ *
+ * 生产（file:// 页面）下相对路径取不到模块，需要主进程 loopback 静态服务——见
+ * UWork-plugin/specs/office-in-core-research.md 的 C3 交付章节。
+ */
+const ENGINE_BASE_URL = `${import.meta.env.BASE_URL}superdoc`.replace(/\/{2,}/g, "/");
 
-/** SuperDoc 壳只接受 http(s) 的引擎地址，并在其后拼 `/dist-cdn/docx-engine.es.js`。 */
-function engineBaseUrl(): string {
-  return engineFileUrl.replace(/\/dist-cdn\/docx-engine\.es\.js$/, "");
-}
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 function base64ToBytes(value: string): Uint8Array {
   const binary = atob(value);
@@ -105,7 +112,7 @@ export function OfficeEditorPane({ fileService, path, onExit }: OfficeEditorPane
             ? { size: preview.totalBytes, mtimeMs: fileStat.mtimeMs }
             : null;
 
-        (globalThis as Record<string, unknown>).SUPERDOC_ENGINE_CDN_BASE_URL = engineBaseUrl();
+        (globalThis as Record<string, unknown>).SUPERDOC_ENGINE_CDN_BASE_URL = ENGINE_BASE_URL;
         const bytes = base64ToBytes(preview.dataBase64);
         const file = new File([bytes as unknown as BlobPart], path.split("/").pop() ?? "document.docx", {
           type: DOCX_MIME,

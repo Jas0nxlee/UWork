@@ -80,3 +80,4 @@ packages/desktop/.e2e-cache/
 packages/desktop/.e2e-network-capture/
 .zcode-runtime/
 packages/desktop/.release-config/
+packages/desktop/src/renderer/public/superdoc/
