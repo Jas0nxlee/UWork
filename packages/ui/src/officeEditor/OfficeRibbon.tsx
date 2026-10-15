@@ -204,7 +204,7 @@ function IconButton({
         disabled
           ? "text-foreground-subtlest opacity-40"
           : active
-            ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/40"
+            ? "bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/40"
             : "text-foreground hover:bg-surface"
       }`}
       onClick={() => {
@@ -273,7 +273,7 @@ function SelectControl({
               key={option.label}
               type="button"
               className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-surface ${
-                String(option.args[0]) === value ? "text-accent" : ""
+                String(option.args[0]) === value ? "text-sky-300" : ""
               }`}
               onClick={() => {
                 setOpen(false);
@@ -314,7 +314,7 @@ function StyleGallery({
           title={`应用样式：${item.label}`}
           className={`flex h-14 w-[76px] flex-col items-start justify-center gap-0.5 rounded border px-2 text-left ${
             current === item.label || (item.label === "正文" && current === "正文")
-              ? "border-accent bg-accent/10"
+              ? "border-sky-500 bg-sky-500/10 text-sky-200"
               : "border-border hover:bg-surface"
           }`}
           onClick={() => run("executeTitle", item.args)}
@@ -365,7 +365,7 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
             type="button"
             className={`-mb-px border-b-2 px-3 py-1.5 text-[13px] ${
               tab.id === activeTab?.id
-                ? "border-accent font-medium text-accent"
+                ? "border-sky-400 font-medium text-sky-300"
                 : "border-transparent text-foreground hover:bg-surface"
             }`}
             onClick={() => setActiveTabId(tab.id)}
