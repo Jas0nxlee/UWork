@@ -19,6 +19,7 @@ import {
   ExternalLinkIcon,
   FileCode2Icon,
   CopyIcon,
+  PencilIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { Button } from "@/components/ui/button.js";
@@ -48,6 +49,7 @@ import { normalizeCodeViewerSource } from "@/lib/codeViewerSource.js";
 import { FileDisplayIcon, resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
 import { getPathLeaf, isAbsoluteFilePath } from "@/lib/path.js";
 import { decodeBase64ToArrayBuffer, getOfficeFilePreviewKind } from "@/lib/officeFilePreview.js";
+import { OfficeEditorPane } from "@/officeEditor/OfficeEditorPane.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
@@ -544,6 +546,8 @@ export function PreviewPane({
   const [pdfViewerSource, setPdfViewerSource] = useState<PdfViewerSource | null>(null);
   const [officePreview, setOfficePreview] = useState<FileBinaryPreview | null>(null);
   const [loadingOfficePreview, setLoadingOfficePreview] = useState(false);
+  // 应用内 DOCX 编辑（内核侧 spike）：编辑态直接接管内容区，返回预览即卸载编辑器。
+  const [officeEditing, setOfficeEditing] = useState(false);
   const [loadingPptxPreview, setLoadingPptxPreview] = useState(false);
   const [pptxPreviewData, setPptxPreviewData] = useState<ArrayBuffer | null>(null);
   const [validatedPptxReferenceNavigationRequestId, setValidatedPptxReferenceNavigationRequestId] =
@@ -1698,6 +1702,19 @@ export function PreviewPane({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+          {officePreviewKind === "docx" && source?.type === "file" ? (
+            <Button
+              type="button"
+              size="icon-md"
+              variant="ghost"
+              className="shrink-0 text-foreground-subtle hover:text-foreground disabled:text-foreground-subtlest"
+              onClick={() => setOfficeEditing((value) => !value)}
+              title={officeEditing ? "返回只读预览" : "应用内编辑（改动记为修订）"}
+              aria-label={officeEditing ? "返回只读预览" : "应用内编辑（改动记为修订）"}
+            >
+              <PencilIcon className="size-3.5" />
+            </Button>
+          ) : null}
           {/* 第一期 PPTX 明确为只读预览，不展示任何编辑入口。 */}
           <Button
             type="button"
@@ -1730,7 +1747,13 @@ export function PreviewPane({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        {renderHeavyContent ? (
+        {officeEditing && officePreviewKind === "docx" && source?.type === "file" ? (
+          <OfficeEditorPane
+            fileService={fileService}
+            path={source.path}
+            onExit={() => setOfficeEditing(false)}
+          />
+        ) : renderHeavyContent ? (
           <PreviewPaneContent
             source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
             filePreview={filePreview}

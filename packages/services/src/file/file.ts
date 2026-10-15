@@ -42,6 +42,28 @@ export interface IFileService {
   readFileRange(params: { path: string; offset: number; length: number }): Promise<Uint8Array>;
   readBinaryPreview(params: { path: string; maxBytes?: number }): Promise<FileBinaryPreview>;
   /**
+   * 把原始字节写回**同一个** workspace 文件（应用内文档编辑保存）。
+   *
+   * 与"另存为"不同：这里只改这个 path，且必须自己防丢更新——
+   * - `expectedRevision`：写前与磁盘当前 (size, mtimeMs) 比对，不一致就抛 `File revision mismatch`
+   *   （调用方据此弹冲突提示，绝不做静默覆盖）；
+   * - `backup: "sibling"`：先把原文件复制成 `<stem>_backup<ext>`（同名则 `_backup-2`、`_backup-3`…）；
+   * - 落盘走"临时文件 + rename"原子替换，避免写一半把用户文档写坏。
+   *
+   * 返回写入后的新 revision，调用方用它更新 baseline。
+   */
+  writeBinaryFile(params: {
+    path: string;
+    dataBase64: string;
+    expectedRevision?: { size: number; mtimeMs: number };
+    backup?: "none" | "sibling";
+  }): Promise<{
+    path: string;
+    bytes: number;
+    backup?: string;
+    revision: { size: number; mtimeMs: number };
+  }>;
+  /**
    * workspace 文件索引的列式打包长度（字符数）。与 listWorkspaceFilesRange 配对，
    * 调用方按长度分块拉取（见 fetchWorkspaceFileEntriesPacked）。
    * 返回 number：RPC Int 快速路径。

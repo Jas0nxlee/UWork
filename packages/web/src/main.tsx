@@ -1156,6 +1156,8 @@ export function createHomeOnlyWebRemoteControlServices(): RootServices {
       readMediaPreview: unsupported("fileService.readMediaPreview"),
       readFileRange: unsupported("fileService.readFileRange"),
       readBinaryPreview: unsupported("fileService.readBinaryPreview"),
+      // 应用内文档编辑保存只在桌面/远端 host 上存在（web 端没有 workspace 写入能力）。
+      writeBinaryFile: unsupported("fileService.writeBinaryFile"),
       searchWorkspaceFiles: unsupported("fileService.searchWorkspaceFiles"),
       listWorkspaceFilesLength: unsupported("fileService.listWorkspaceFilesLength"),
       listWorkspaceFilesRange: unsupported("fileService.listWorkspaceFilesRange"),
