@@ -14,7 +14,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView } from "/dispatcher.js";
+  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -80,6 +80,34 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   window.__elements = () => window.__editor.command.getValue().data.main;
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
+  /**
+   * 审阅（Word 的接受/拒绝）：枚举 → 逐条处理 → 全部处理，断言每步的剩余数与文字结果。
+   */
+  window.__reviewCase = () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const document =
+      '<w:document ' + XMLNS + '><w:body>' +
+      '<w:p><w:r><w:t>AAA</w:t></w:r><w:ins w:id="1" w:author="A"><w:r><w:t>INS1</w:t></w:r></w:ins>' +
+      '<w:del w:id="2" w:author="B"><w:r><w:delText>DEL2</w:delText></w:r></w:del></w:p>' +
+      '<w:p><w:ins w:id="3" w:author="A"><w:r><w:t>INS3</w:t></w:r></w:ins></w:p>' +
+      '</w:body></w:document>';
+    const api = window.__trackedApi;
+    const all = api.listRevisions(document);
+    const acceptOne = api.resolveRevisions(document, { action: "accept", targetIndex: 0 });
+    const rejectOne = api.resolveRevisions(document, { action: "reject", targetIndex: 1 });
+    const acceptAll = api.resolveRevisions(document, { action: "accept" });
+    const rejectAll = api.resolveRevisions(document, { action: "reject" });
+    return {
+      listed: all.map((item) => item.kind + ":" + item.text),
+      acceptOneRemaining: acceptOne.remaining.length,
+      acceptOneText: acceptOne.xml,
+      rejectOneRemaining: rejectOne.remaining.length,
+      rejectOneText: rejectOne.xml,
+      acceptAllText: acceptAll.xml,
+      rejectAllText: rejectAll.xml,
+    };
+  };
+
   window.__trackedApi = {
     applyTrackedChanges,
     acceptedText,
@@ -87,6 +115,8 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     applyRevisionView,
     restoreRevisions,
     buildRevisionView,
+    listRevisions,
+    resolveRevisions,
   };
 
   /**
@@ -283,7 +313,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
-      `export { applyRevisionView, restoreRevisions, buildRevisionView } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
+      `export { applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
     ].join("\n"),
     "utf8",
   );

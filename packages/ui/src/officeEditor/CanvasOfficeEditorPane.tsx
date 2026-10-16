@@ -73,6 +73,10 @@ export function CanvasOfficeEditorPane({
     busy,
     pendingPreflight,
     writeBlocked,
+    revisions,
+    currentRevision,
+    setCurrentRevision,
+    resolveRevision,
     revisionSummary,
     trackChangesEnabled,
     setTrackChangesEnabled,
@@ -217,6 +221,21 @@ export function CanvasOfficeEditorPane({
           engineState,
           findRef: findRef.current,
           layoutRef: layoutRef as { current: LayoutHistory },
+          review: {
+            acceptCurrent: () =>
+              void resolveRevision("accept", currentRevision >= 0 ? currentRevision : undefined),
+            acceptAll: () => void resolveRevision("accept"),
+            rejectCurrent: () =>
+              void resolveRevision("reject", currentRevision >= 0 ? currentRevision : undefined),
+            rejectAll: () => void resolveRevision("reject"),
+            prev: () =>
+              setCurrentRevision(
+                currentRevision <= 0 ? Math.max(0, revisions.length - 1) : currentRevision - 1,
+              ),
+            next: () =>
+              setCurrentRevision(currentRevision + 1 >= revisions.length ? 0 : currentRevision + 1),
+            count: () => ({ total: revisions.length, current: currentRevision }),
+          },
           canUndoEngine: () => refreshEngineUndo(editor).canUndo,
           canRedoEngine: () => refreshEngineUndo(editor).canRedo,
         },
@@ -227,7 +246,14 @@ export function CanvasOfficeEditorPane({
       // 版面栈与撤销可用性发生在 React 之外，版本号变化让功能区重算"撤销是否能点"
       setHistoryVersion((current) => current + 1);
     },
-    [engineState, refreshEngineUndo, syncLayoutState],
+    [
+      currentRevision,
+      engineState,
+      refreshEngineUndo,
+      resolveRevision,
+      revisions.length,
+      syncLayoutState,
+    ],
   );
 
   /**
@@ -272,9 +298,10 @@ export function CanvasOfficeEditorPane({
             {revisionSummary.inserted || revisionSummary.deleted || revisionSummary.comments ? (
               <span
                 className="rounded border border-border px-2 py-1 text-foreground-subtle"
-                title="修订按 Word 的方式显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝上标标记）；保存时原样写回，不会被静默接受"
+                title="修订按 Word 的方式显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝上标标记）；用「审阅」标签逐条接受/拒绝，保存时未处理的修订原样写回"
               >
-                修订 {revisionSummary.inserted + revisionSummary.deleted} 处 · 批注{" "}
+                修订 {revisions.length} 条
+                {currentRevision >= 0 ? `（当前第 ${currentRevision + 1} 条）` : ""} · 批注{" "}
                 {revisionSummary.comments} 处
               </span>
             ) : null}

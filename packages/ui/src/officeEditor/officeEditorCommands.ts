@@ -46,6 +46,16 @@ export interface CommandContext {
   /** 引擎自己还能不能撤销/重做（由编辑位从 rangeStyleChange 回填；决定"该撤文本还是撤版面"）。 */
   canUndoEngine?: () => boolean;
   canRedoEngine?: () => boolean;
+  /** 审阅（Word 的接受/拒绝）：由编辑位实现（要在字节层处理并重新导入）。 */
+  review?: {
+    acceptCurrent: () => void;
+    acceptAll: () => void;
+    rejectCurrent: () => void;
+    rejectAll: () => void;
+    prev: () => void;
+    next: () => void;
+    count: () => { total: number; current: number };
+  };
 }
 
 export interface FindSession {
@@ -236,6 +246,33 @@ export function runEngineCommand(context: CommandContext, command: string, args?
             replacement ? "" : "（替换为空＝删除）"
           }`,
         );
+        break;
+      }
+      case "resolveAcceptCurrent":
+      case "resolveAcceptAll":
+      case "resolveRejectCurrent":
+      case "resolveRejectAll":
+      case "reviewPrev":
+      case "reviewNext": {
+        const review = context.review;
+        if (!review) {
+          status("审阅功能未接入");
+          break;
+        }
+        const handlers: Record<string, () => void> = {
+          resolveAcceptCurrent: review.acceptCurrent,
+          resolveAcceptAll: review.acceptAll,
+          resolveRejectCurrent: review.rejectCurrent,
+          resolveRejectAll: review.rejectAll,
+          reviewPrev: review.prev,
+          reviewNext: review.next,
+        };
+        handlers[command]?.();
+        break;
+      }
+      case "commentPrev":
+      case "commentNext": {
+        status("批注导航：正文里的 [n] 标记对应批注，列表与气泡在做（当前可用「批注 N 处」提示）");
         break;
       }
       case "executeUndo":

@@ -310,6 +310,47 @@ export const RIBBON_TABS: RibbonTab[] = [
     ],
   },
   {
+    id: "review",
+    label: "审阅",
+    groups: [
+      {
+        label: "修订",
+        essential: true,
+        items: [
+          {
+            kind: "menu",
+            label: "接受",
+            title: "接受修订（逐条或全部）",
+            icon: "CheckmarkCircle24Regular",
+            items: [
+              button("接受此修订", "接受当前位置的修订", "resolveAcceptCurrent"),
+              button("接受全部修订", "接受文档里的所有修订", "resolveAcceptAll"),
+            ],
+          },
+          {
+            kind: "menu",
+            label: "拒绝",
+            title: "拒绝修订（逐条或全部）",
+            icon: "DismissCircle24Regular",
+            items: [
+              button("拒绝此修订", "拒绝当前位置的修订", "resolveRejectCurrent"),
+              button("拒绝全部修订", "拒绝文档里的所有修订", "resolveRejectAll"),
+            ],
+          },
+          button("上一条", "上一条修订", "reviewPrev", { icon: "ArrowUp24Regular" }),
+          button("下一条", "下一条修订", "reviewNext", { icon: "ArrowDown24Regular" }),
+        ],
+      },
+      {
+        label: "批注",
+        items: [
+          button("上一批注", "上一条批注（正文里的 [n] 标记）", "commentPrev"),
+          button("下一批注", "下一条批注", "commentNext"),
+        ],
+      },
+    ],
+  },
+  {
     id: "view",
     label: "视图",
     groups: [

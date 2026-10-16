@@ -30,7 +30,8 @@ const dispatcherPath = join(repoRoot, "packages/ui/src/officeEditor/officeEditor
  */
 function dispatcherCommands() {
   const source = readFileSync(dispatcherPath, "utf8");
-  return new Set([...source.matchAll(/case "(execute[A-Za-z0-9]+)":/g)].map((match) => match[1]));
+  // 我们自己的命令不一定叫 execute*（审阅动作就叫 resolveAcceptAll / reviewNext），所以不限前缀
+  return new Set([...source.matchAll(/case "([A-Za-z0-9_]+)":/g)].map((match) => match[1]));
 }
 const fixture = join(repoRoot, "packages/ui/test/fixtures/office-editor-check.docx");
 

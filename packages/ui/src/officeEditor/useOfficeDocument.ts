@@ -11,13 +11,23 @@ import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./d
 import { preserveHeaderFooter } from "./docxHeaderFooter.js";
 import {
   applyRevisionView,
+  listRevisions,
+  resolveRevisionsInDocx,
   restoreRevisions,
+  type RevisionAction,
+  type RevisionItem,
   type RevisionPreservationState,
 } from "./docxRevisions.js";
 import { applyTrackedChanges, type TrackedChangeStats } from "./docxTrackChanges.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
+
+/** 取 docx 里 document.xml 的文本（审阅清单要按原始标记枚举）。 */
+async function documentXmlOf(bytes: ArrayBuffer): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  return (await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("string")) ?? "";
+}
 
 /** 应用内原地编辑的体积上限（docx 文件字节）。 */
 const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
@@ -45,6 +55,13 @@ export interface UseOfficeDocumentInput {
 }
 
 export interface UseOfficeDocumentResult {
+  /** 修订清单（Word 的"审阅"是按这个列表逐条走的）。 */
+  revisions: RevisionItem[];
+  /** 当前选中的修订序号（-1＝没选）。 */
+  currentRevision: number;
+  setCurrentRevision: (index: number) => void;
+  /** 接受/拒绝某一条或全部（Word 的接受/拒绝语义）。 */
+  resolveRevision: (action: RevisionAction, targetIndex?: number) => Promise<void>;
   /** 文档里检测到的修订/批注数（按 Word 的方式显示，不再用横幅告知）。 */
   revisionSummary: { inserted: number; deleted: number; comments: number };
   /** 修订模式开关（保存时是否把改动记成 w:ins/w:del）。 */
@@ -79,6 +96,11 @@ export function useOfficeDocument({
   /** 导入时保留下来的"修订/批注段落原件"：保存时按段落写回，避免静默接受或丢失。 */
   const revisionsRef = useRef<RevisionPreservationState>({ paragraphs: [] });
   const [revisionSummary, setRevisionSummary] = useState({ inserted: 0, deleted: 0, comments: 0 });
+  /** 文档里的修订清单（Word 的"审阅"面板就是按这个列表逐条走的）。 */
+  const [revisions, setRevisions] = useState<RevisionItem[]>([]);
+  const [currentRevision, setCurrentRevision] = useState(-1);
+  /** 归一化前的原始字节：审阅动作在这份字节上做，做完重新导入。 */
+  const normalizedBytesRef = useRef<ArrayBuffer | null>(null);
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -166,8 +188,10 @@ export function useOfficeDocument({
       const label = `${Math.round(preview.totalBytes / 1024)} KiB`;
       // 护栏：先看清这份文档里有什么是引擎**保不住**的。实测修订的插入文字、超链接文字、公式文字会直接消失；
       // 批注/脚注在保存时丢——所以先把话说明白，用户确认后才按归一化字节导入。
+      let preflightBytes = raw;
       if (!options.skipGuard) {
         const preflight = await preprocessDocx(raw);
+        preflightBytes = preflight.bytes;
         if (preflight.findings.documentXmlBytes > MAX_DOCUMENT_XML_BYTES) {
           setStatus(
             `文档解压后过大（document.xml ${(preflight.findings.documentXmlBytes / 1048576).toFixed(1)} MB，上限 ${MAX_DOCUMENT_XML_BYTES / 1048576} MB）：应用内编辑会卡到不可用，请用只读预览 + 对话卡片审阅。`,
@@ -183,8 +207,11 @@ export function useOfficeDocument({
       }
       // 修订与批注：按 Word 的样子显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝上标标记），
       // 原件留起来，保存时按段落原样写回（见 docxRevisions.ts）。
-      const view = await applyRevisionView(raw);
+      normalizedBytesRef.current = preflightBytes;
+      const view = await applyRevisionView(preflightBytes);
       revisionsRef.current = view.preservation;
+      setRevisions(listRevisions(await documentXmlOf(preflightBytes)));
+      setCurrentRevision(-1);
       setRevisionSummary(view.summary);
       await importBytes(editor, view.bytes, label, options.reset !== false);
       if (view.summary.inserted || view.summary.deleted || view.summary.comments) {
@@ -194,6 +221,53 @@ export function useOfficeDocument({
       }
     },
     [editorRef, fileService, importBytes, path, remote],
+  );
+
+  /**
+   * 审阅动作（Word 的接受/拒绝）：在**归一化前的原始字节**上做，做完重新导入。
+   *
+   * 为什么要重新导入而不是在引擎里改文字：修订是"文档结构"层面的东西（`w:ins`/`w:del` 元素），
+   * 在正文里它们只是被我们染了色的普通文字；直接改文字既分不清"这是第几条修订"，也没法把结果写回文件。
+   * 在字节层做、再导入，语义与 Word 完全一致（接受＝拆壳、拒绝＝删掉/还原），而且结果可断言。
+   * 副作用是"当前未保存的编辑会被这次导入覆盖"——Word 的接受/拒绝也是立刻改文档，所以行为一致。
+   */
+  const resolveRevision = useCallback(
+    async (action: RevisionAction, targetIndex?: number) => {
+      const editor = editorRef.current;
+      const base = normalizedBytesRef.current;
+      if (!editor || !base) return;
+      setBusy(true);
+      try {
+        const result = await resolveRevisionsInDocx(base, {
+          action,
+          ...(targetIndex === undefined ? {} : { targetIndex }),
+        });
+        const handledText =
+          result.handled.length === 1
+            ? `第 ${(result.handled[0]?.index ?? 0) + 1} 条`
+            : `${result.handled.length} 条`;
+        setStatus(`${action === "accept" ? "已接受" : "已拒绝"} ${handledText}修订 · 重新载入…`);
+        // 处理后这份字节成为新的"原始状态"：C2 的差异对比、下一次审阅都基于它
+        normalizedBytesRef.current = result.bytes;
+        sourceBytesRef.current = result.bytes;
+        const view = await applyRevisionView(result.bytes);
+        revisionsRef.current = view.preservation;
+        setRevisions(result.remaining);
+        setCurrentRevision(-1);
+        setRevisionSummary(view.summary);
+        await importBytes(editor, view.bytes, "审阅后的文档", true);
+        setStatus(
+          `${action === "accept" ? "已接受" : "已拒绝"} ${handledText}修订 · 剩余 ${result.remaining.length} 条${
+            result.remaining.length ? "" : "（已无修订）"
+          }`,
+        );
+      } catch (error) {
+        setStatus(`审阅操作失败：${String(error)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [editorRef, importBytes],
   );
 
   const acceptPreflight = useCallback(() => {
@@ -278,6 +352,10 @@ export function useOfficeDocument({
   }, [busy, editorRef, fileService, path, trackChangesEnabled]);
 
   return {
+    revisions,
+    currentRevision,
+    setCurrentRevision,
+    resolveRevision,
     revisionSummary,
     trackChangesEnabled,
     setTrackChangesEnabled,

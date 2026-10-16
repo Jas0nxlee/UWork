@@ -80,6 +80,42 @@ async function main() {
     `保存时原样写回修订与批注（w:ins/w:del/commentReference 都在，写回 ${revisionView.restored} 段）`,
   );
 
+  // 审阅：Word 的接受/拒绝语义（枚举 → 逐条 → 全部）
+  const review = await page.evaluate(() => window.__reviewCase());
+  check(
+    review.listed.join(" ") === "insert:INS1 delete:DEL2 insert:INS3",
+    `修订按文档顺序枚举（${review.listed.join(" / ")}）`,
+  );
+  check(
+    review.acceptOneRemaining === 2 &&
+      review.acceptOneText.includes("AAA") &&
+      review.acceptOneText.includes("INS1") &&
+      !new RegExp("<w:ins[ >]").test(
+        review.acceptOneText.slice(0, review.acceptOneText.indexOf("INS1")),
+      ),
+    "接受第一条插入＝拆壳保留文字（剩下 2 条）",
+  );
+  check(
+    review.rejectOneRemaining === 2 &&
+      review.rejectOneText.includes("DEL2") &&
+      !new RegExp("<w:del[ >]").test(review.rejectOneText),
+    "拒绝第一条删除＝被删的文字还原为正文（剩下 2 条）",
+  );
+  check(
+    review.acceptAllText.includes("INS1") &&
+      review.acceptAllText.includes("INS3") &&
+      !review.acceptAllText.includes("DEL2") &&
+      !new RegExp("<w:(ins|del)[ >]").test(review.acceptAllText),
+    "接受全部＝插入成正文、删除消失、无标记残留",
+  );
+  check(
+    review.rejectAllText.includes("DEL2") &&
+      !review.rejectAllText.includes("INS1") &&
+      !review.rejectAllText.includes("INS3") &&
+      !new RegExp("<w:(ins|del)[ >]").test(review.rejectAllText),
+    "拒绝全部＝插入消失、删除的文字还原为正文",
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(
