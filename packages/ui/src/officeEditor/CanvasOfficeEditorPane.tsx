@@ -18,6 +18,7 @@ import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OfficeRibbon } from "./OfficeRibbon.js";
 import type { EngineCommand } from "./engineCommands.js";
+import { createEditorOptions, createInitialData } from "./officeEditorOptions.js";
 import {
   createFindSession,
   createLayoutHistory,
@@ -132,17 +133,12 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     if (!host) return;
     setStatus("正在加载文档…");
     setDirty(false);
-    const editor = new Editor(host, {
-      main: [{ value: "" }],
-      // 页面观感贴近 Office：A4 纸张 + 页边距 + 分页
-      pageMode: "paging",
-      margins: [100, 120, 100, 120],
-      // 滚动必须显式交给外层容器（默认也是父节点，这里写明意图；配合容器的 overflow-auto）
-      scrollContainerSelector: "#office-editor-scroll",
-      // 选区色：默认 #AECBFA@60% 在深色应用里与正文对比太弱，看起来像"字没了"。改浅蓝低透明度。
-      rangeColor: "#0969da",
-      rangeAlpha: 0.25,
-    }) as unknown as CanvasEditor;
+    // 三个参数：容器、初始数据、选项（漏掉第二个参数会让选项被当成数据，静默失效）
+    const editor = new Editor(
+      host,
+      createInitialData(),
+      createEditorOptions({ scrollContainerSelector: "#office-editor-scroll" }),
+    ) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
     syncLayoutState(editor);

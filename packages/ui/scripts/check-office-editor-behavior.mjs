@@ -31,12 +31,14 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { runEngineCommand, createFindSession, createLayoutHistory, documentText } from "/dispatcher.js";
+  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText } from "/dispatcher.js";
 
   window.__load = async (url) => {
     document.getElementById("host").replaceChildren();
     const host = document.getElementById("host");
-    const editor = new Editor(host, { main: [{ value: "" }], pageMode: "paging", margins: [100, 120, 100, 120], scrollContainerSelector: "#host" });
+    // 用与编辑位同一份构造选项：这样"控件没有花括号"这类观感约定也在回归范围内
+    const editorOptions = createEditorOptions({ scrollContainerSelector: "#host" });
+    const editor = new Editor(host, createInitialData(), editorOptions);
     editor.use(docxPlugin);
     if (url) await editor.command.executeImportDocx({ arrayBuffer: await (await fetch(url)).arrayBuffer() });
     editor.command.executeSetRange(0, 0);
@@ -105,6 +107,7 @@ async function bundleDispatcher(dir) {
     [
       `export { runEngineCommand, createFindSession, createLayoutHistory } from ${JSON.stringify(join(editorDir, "officeEditorCommands.ts"))};`,
       `export { documentText } from ${JSON.stringify(join(editorDir, "engineCommands.ts"))};`,
+      `export { createEditorOptions, createInitialData } from ${JSON.stringify(join(editorDir, "officeEditorOptions.ts"))};`,
     ].join("\n"),
     "utf8",
   );
@@ -230,6 +233,36 @@ async function main() {
   check(
     controlShapes.select.includes('"sets":2') && controlShapes.radio.includes('"sets":2'),
     "列举/单选框控件带选项（不再是空壳）",
+  );
+
+  // ②a 控件不再带 `{}` 花括号（引擎默认 prefix/postfix 就是它，Word 用的是浅色底纹）
+  await reload(false);
+  const controlOptions = await page.evaluate(() => {
+    const options = window.__editor.command.getOptions();
+    return {
+      prefix: options.control?.prefix,
+      postfix: options.control?.postfix,
+    };
+  });
+  console.log(
+    "    [debug] 各阶段 prefix：" +
+      JSON.stringify(
+        await page.evaluate(() => ({ ...window.__probe, created: window.__createdOptions })),
+      ),
+  );
+
+  await run("executeInsertControlByType", ["text"]);
+  const controlElements = await elements();
+  const braceValues = controlElements
+    .map((element) => element?.value)
+    .filter((value) => value === "{" || value === "}");
+  const recognised = controlElements.some((element) => element?.type === "control");
+  check(
+    controlOptions.prefix === "\u200b" &&
+      controlOptions.postfix === "\u200b" &&
+      braceValues.length === 0 &&
+      recognised,
+    `内容控件不带花括号、且仍能被识别（定界符＝零宽空格，花括号 ${braceValues.length} 个，控件元素存在 ${recognised}）`,
   );
 
   // ②b 复选框控件 / 日期控件两个按钮
