@@ -16,7 +16,8 @@
   "scripts": {
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "check:office-editor": "node scripts/check-office-editor-commands.mjs"
+    "check:office-editor": "node scripts/check-office-editor-commands.mjs",
+    "check:office-ribbon": "node scripts/check-office-ribbon-layout.mjs"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.2.4",
@@ -91,7 +92,6 @@
     "@fluentui/react-icons": "^2.0.344",
     "@hufe921/canvas-editor": "^1.0.5",
     "@hufe921/canvas-editor-plugin-docx": "^1.0.0",
-    "@superdoc/docx-engine": "0.22.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-virtual": "^3.13.23",
     "@testing-library/dom": "^10.4.1",
@@ -100,7 +100,6 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "jsdom": "^29.1.1",
-    "superdoc": "2.23.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "unified": "^11.0.5"

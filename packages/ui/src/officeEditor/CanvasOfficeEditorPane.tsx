@@ -20,7 +20,6 @@ import { OfficeRibbon } from "./OfficeRibbon.js";
 import type { RibbonStyle } from "./officeRibbonModel.js";
 import { logger } from "@/logger.js";
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 /** 应用内原地编辑的体积上限：超过就只读审阅（超大文档在任何浏览器编辑器里都不可用）。 */
 const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
 /** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
@@ -88,9 +87,13 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       }
       setStatus(`解析文档（${Math.round(preview.totalBytes / 1024)} KiB）…`);
       const startedAt = performance.now();
-      await editor.command.executeImportDocx({ arrayBuffer: base64ToArrayBuffer(preview.dataBase64) });
+      await editor.command.executeImportDocx({
+        arrayBuffer: base64ToArrayBuffer(preview.dataBase64),
+      });
       const elapsedMs = Math.round(performance.now() - startedAt);
-      logger.info(`[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${Math.round(preview.totalBytes / 1024)} KiB）`);
+      logger.info(
+        `[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${Math.round(preview.totalBytes / 1024)} KiB）`,
+      );
       if (options.reset !== false) setDirty(false);
       // 实测（headless Chromium，canvas-editor）：500 段 76ms / 2000 段 266ms / 6000 段 957ms / 20000 段 4.4s。
       // 超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug。
@@ -123,10 +126,13 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
-    const options = (editor.command as { getOptions?: () => { width?: number; scale?: number } }).getOptions?.();
+    const options = (
+      editor.command as { getOptions?: () => { width?: number; scale?: number } }
+    ).getOptions?.();
     setPageSize({ width: options?.width ?? 794, scale: options?.scale ?? 1 });
-    (editor.listener as { pageScaleChange?: (scale: number) => void }).pageScaleChange = (scale: number) =>
-      setPageSize((current) => ({ ...current, scale }));
+    (editor.listener as { pageScaleChange?: (scale: number) => void }).pageScaleChange = (
+      scale: number,
+    ) => setPageSize((current) => ({ ...current, scale }));
     // 官方 demo 的做法：选中态由 rangeStyleChange 驱动，工具栏据此高亮 B/I/U/对齐/列表等。
     editor.listener.rangeStyleChange = (payload: RibbonStyle) => {
       setRangeStyle(payload as RibbonStyle);
@@ -189,97 +195,105 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
    * 功能区命令入口：把 ribbon 的语义命令映射到引擎命令。
    * 参数形态全部照抄 canvas-editor 官方 demo（见 officeRibbonModel.ts 顶部注释），不自己发明。
    */
-  const runRibbon = useCallback(
-    (command: string, args?: unknown[]) => {
-      const editor = editorRef.current;
-      if (!editor) return;
-      const commands = editor.command as Record<string, ((...params: unknown[]) => unknown) | undefined>;
-      const status = (message: string) => setStatus(message);
-      try {
-        switch (command) {
-          case "executeInsertControlByType": {
-            const type = args?.[0];
-            commands.executeInsertControl?.({ type: "control", value: "", control: { type } });
-            return;
-          }
-          case "executeSetTableCellBackgroundColor": {
-            commands.executeTableTdBackgroundColor?.(args?.[0]);
-            return;
-          }
-          case "executeSetTableCellVerticalAlign": {
-            commands.executeTableTdVerticalAlign?.(args?.[0]);
-            return;
-          }
-          case "executeImage": {
-            // 官方 demo 从 <img> 载入宽高；这里给一个稳妥的默认尺寸，用户可在文档里拖拽调整。
-            commands.executeImage?.({ value: args?.[0] ?? "", width: 320, height: 240 });
-            return;
-          }
-          case "executeHyperlink": {
-            const url = String(args?.[0] ?? "");
-            if (!url) return;
-            commands.executeHyperlink?.({ url, valueList: [{ value: url, size: 16 }] });
-            return;
-          }
-          case "executeLatex": {
-            const value = String(args?.[0] ?? "");
-            if (!value) return;
-            commands.executeLatex?.({ value });
-            return;
-          }
-          case "executeAddWatermark": {
-            const data = String(args?.[0] ?? "") || "UWork";
-            commands.executeAddWatermark?.({ data, color: "#d0d0d0", size: 100, opacity: 0.3, repeat: true });
-            return;
-          }
-          case "executeMode": {
-            commands.executeMode?.(editor.command.getOptions?.()?.mode === "readonly" ? "edit" : "readonly");
-            return;
-          }
-          case "executePageMode": {
-            const current = editor.command.getOptions?.()?.pageMode;
-            commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
-            return;
-          }
-          case "executeUndo":
-          case "executeRedo": {
-            // 先确保画布有焦点/游标，再走引擎的历史栈（与 Ctrl+Z 行为一致）。
-            commands.focus?.();
-            commands[command]?.();
-            return;
-          }
-          case "executePainter": {
-            // 引擎的 executePainter 读 payload.isDblclick；无参会直接抛错（回归检查发现的真 bug）。
-            commands.executePainter?.({ isDblclick: false });
-            return;
-          }
-          case "executeSeparator": {
-            commands.executeSeparator?.();
-            return;
-          }
-          case "executePageBreak": {
-            commands.executePageBreak?.();
-            return;
-          }
-          case "executeToggleTrace": {
-            commands.executeToggleTrace?.();
-            return;
-          }
-          default: {
-            const fn = commands[command];
-            if (typeof fn !== "function") {
-              status(`该功能不可用：${command}`);
-              return;
-            }
-            fn.apply(editor.command, args ?? []);
-          }
+  const runRibbon = useCallback((command: string, args?: unknown[]) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const commands = editor.command as Record<
+      string,
+      ((...params: unknown[]) => unknown) | undefined
+    >;
+    const status = (message: string) => setStatus(message);
+    try {
+      switch (command) {
+        case "executeInsertControlByType": {
+          const type = args?.[0];
+          commands.executeInsertControl?.({ type: "control", value: "", control: { type } });
+          return;
         }
-      } catch (error) {
-        status(`${command} 执行失败：${error instanceof Error ? error.message : String(error)}`);
+        case "executeSetTableCellBackgroundColor": {
+          commands.executeTableTdBackgroundColor?.(args?.[0]);
+          return;
+        }
+        case "executeSetTableCellVerticalAlign": {
+          commands.executeTableTdVerticalAlign?.(args?.[0]);
+          return;
+        }
+        case "executeImage": {
+          // 官方 demo 从 <img> 载入宽高；这里给一个稳妥的默认尺寸，用户可在文档里拖拽调整。
+          commands.executeImage?.({ value: args?.[0] ?? "", width: 320, height: 240 });
+          return;
+        }
+        case "executeHyperlink": {
+          const url = String(args?.[0] ?? "");
+          if (!url) return;
+          commands.executeHyperlink?.({ url, valueList: [{ value: url, size: 16 }] });
+          return;
+        }
+        case "executeLatex": {
+          const value = String(args?.[0] ?? "");
+          if (!value) return;
+          commands.executeLatex?.({ value });
+          return;
+        }
+        case "executeAddWatermark": {
+          const data = String(args?.[0] ?? "") || "UWork";
+          commands.executeAddWatermark?.({
+            data,
+            color: "#d0d0d0",
+            size: 100,
+            opacity: 0.3,
+            repeat: true,
+          });
+          return;
+        }
+        case "executeMode": {
+          commands.executeMode?.(
+            editor.command.getOptions?.()?.mode === "readonly" ? "edit" : "readonly",
+          );
+          return;
+        }
+        case "executePageMode": {
+          const current = editor.command.getOptions?.()?.pageMode;
+          commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
+          return;
+        }
+        case "executeUndo":
+        case "executeRedo": {
+          // 先确保画布有焦点/游标，再走引擎的历史栈（与 Ctrl+Z 行为一致）。
+          commands.focus?.();
+          commands[command]?.();
+          return;
+        }
+        case "executePainter": {
+          // 引擎的 executePainter 读 payload.isDblclick；无参会直接抛错（回归检查发现的真 bug）。
+          commands.executePainter?.({ isDblclick: false });
+          return;
+        }
+        case "executeSeparator": {
+          commands.executeSeparator?.();
+          return;
+        }
+        case "executePageBreak": {
+          commands.executePageBreak?.();
+          return;
+        }
+        case "executeToggleTrace": {
+          commands.executeToggleTrace?.();
+          return;
+        }
+        default: {
+          const fn = commands[command];
+          if (typeof fn !== "function") {
+            status(`该功能不可用：${command}`);
+            return;
+          }
+          fn.apply(editor.command, args ?? []);
+        }
       }
-    },
-    [],
-  );
+    } catch (error) {
+      status(`${command} 执行失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

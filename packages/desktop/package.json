@@ -6,7 +6,7 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
-    "pre-dev": "node scripts/ensure-local-runtime-assets.mjs && node -e \"require('node:fs').rmSync('./out',{recursive:true,force:true})\" && node ../ui/scripts/copy-superdoc-assets.mjs",
+    "pre-dev": "node scripts/ensure-local-runtime-assets.mjs && node -e \"require('node:fs').rmSync('./out',{recursive:true,force:true})\"",
     "dev": "node ../../scripts/dev-desktop-env.mjs production",
     "pre-dev:local-cli": "pnpm --dir ../.. exec node scripts/build-desktop-agent-cli.mjs && node -e \"require('node:fs').rmSync('./out',{recursive:true,force:true})\"",
     "dev:local-cli": "pnpm pre-dev:local-cli && concurrently -k -n tsup,vite,electron \"tsup --watch src --watch ../services/src --watch ../server/src --watch ../shared/src --watch ../rpc/src --watch ../client/src --watch ../provider/src --watch ../provider-node/src --ignore-watch 'mock-cdn/**' --ignore-watch 'bundled-agents/**' --ignore-watch '.e2e-cache/**' --ignore-watch '.e2e-artifacts/**' --ignore-watch '.e2e-home-*/**' --ignore-watch 'dist-cua-helper/**'\" \"vite dev\" \"node scripts/dev.mjs\"",
@@ -20,7 +20,7 @@
     "prepare:native-search": "node ../../scripts/prepare-native-search-tools.mjs",
     "prepare:browser-import-helper": "node scripts/build-windows-browser-import-helper.mjs",
     "prepare:macos-window-bounds": "node scripts/build-macos-window-bounds.mjs",
-    "build:no-runtime-assets": "node ../ui/scripts/copy-superdoc-assets.mjs && pnpm prepare:build-meta && node scripts/run-production-build.mjs",
+    "build:no-runtime-assets": "pnpm prepare:build-meta && node scripts/run-production-build.mjs",
     "build": "pnpm prepare:runtime-assets && pnpm run build:no-runtime-assets",
     "test:installer-nsh-smoke": "node scripts/test-installer-nsh-smoke.mjs",
     "test:browser-background-activity-smoke": "electron scripts/browser-background-activity-smoke.mjs",

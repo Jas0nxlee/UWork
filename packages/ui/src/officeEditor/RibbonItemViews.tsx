@@ -1,325 +1,42 @@
 /**
- * 功能区里的三种视图件：图标按钮 / 下拉 / 样式库。
+ * 功能区里的视图件：图标按钮 / 下拉 / 样式库，以及**面板内**的成套渲染。
  * 与 officeRibbonModel.ts 的数据一一对应；命令、参数形态的出处见该文件顶部注释。
+ * 图标表与按钮态判定在 ribbonItemSupport.ts，下拉面板与互斥在 RibbonDropdown.tsx。
  *
- * 布局自适应（2026-10-15，为用户反馈"侧栏窄时不适配"补）：本文件里的视图件都接受
- * `compact`（窄布局：下拉只留图标+当前值，去掉标签文字），按钮尺寸也随布局收缩。
+ * 尺寸按"侧栏最窄也能用"定：按钮 32px 见方、下拉只显示当前值（不写"字体"二字，
+ * Word 的字体框也是这样），装不下的分组由外壳收进「»」，视图件本身不再分级。
+ *
+ * 面板内不嵌面板：分组菜单里如果放一个普通下拉，点它会先关掉父面板、子面板就悬空了。
+ * 所以面板内用 RibbonSelectInline——把选项平铺成一排小按钮（颜色就是色块）。
  */
-import {
-  AlignLeft24Regular,
-  AlignRight24Regular,
-  ArrowRedo24Regular,
-  ArrowUndo24Regular,
-  CalendarLtr24Regular,
-  CheckboxChecked24Regular,
-  ClearFormatting24Regular,
-  Code24Regular,
-  ColumnTriple24Regular,
-  Delete24Regular,
-  DividerShort24Regular,
-  DocumentFit24Regular,
-  DocumentOnePage24Regular,
-  DocumentPageBottomCenter24Regular,
-  DocumentPageBreak24Regular,
-  Eye24Regular,
-  FontDecrease24Regular,
-  FontIncrease24Regular,
-  Highlight24Regular,
-  Image24Regular,
-  Link24Regular,
-  LockClosed24Regular,
-  MathFormula24Regular,
-  PaintBrush24Regular,
-  Print24Regular,
-  Ruler24Regular,
-  Search24Regular,
-  TableDeleteRow24Regular,
-  TableInsertColumn24Regular,
-  TableInsertRow24Regular,
-  TableSimple24Regular,
-  TaskListSquareLtr24Regular,
-  TextAlignCenter24Regular,
-  TextAlignJustify24Regular,
-  TextBold24Regular,
-  TextBulletListLtr24Regular,
-  TextColor24Regular,
-  TextItalic24Regular,
-  TextLineSpacing24Regular,
-  TextNumberListLtr24Regular,
-  TextQuote24Regular,
-  TextStrikethrough24Regular,
-  TextSubscript24Regular,
-  TextSuperscript24Regular,
-  TextUnderline24Regular,
-  TextWordCount24Regular,
-  ZoomIn24Regular,
-  ZoomOut24Regular,
-} from "@fluentui/react-icons";
-import type { ComponentType } from "react";
-import type { RefObject } from "react";
-import { createContext, useContext } from "react";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import type { RibbonCommand, RibbonGallery, RibbonSelect, RibbonStyle } from "./officeRibbonModel.js";
+import { useRef } from "react";
+import { DropdownPanel, useRibbonDropdown } from "./RibbonDropdown.js";
+import { iconOf, isActive, isDisabled, optionsCommand } from "./ribbonItemSupport.js";
+import type {
+  RibbonCommand,
+  RibbonGallery,
+  RibbonItem,
+  RibbonMenu,
+  RibbonSelect,
+  RibbonStyle,
+} from "./officeRibbonModel.js";
 
 export type RunCommand = (command: string, args?: unknown[]) => void;
 
-/**
- * 单一打开源：功能区里**同时只允许一个下拉打开**。
- *
- * 真机反馈："点开第一个下拉后，不选择再点第二个，第一个应该消失"——每个下拉各自持有 `open` 时，
- * 互斥只能靠点击事件的传播细节来保证（容易漏）。这里把"当前打开的下拉 id"提升到功能区唯一状态，
- * 打开任何一个都会天然关掉上一个。
- */
-interface RibbonDropdownState {
-  openId: string | null;
-  toggle: (id: string) => void;
-  close: () => void;
-}
-
-const RibbonDropdownContext = createContext<RibbonDropdownState>({
-  openId: null,
-  toggle: () => undefined,
-  close: () => undefined,
-});
-
-export function RibbonDropdownProvider({
-  value,
-  children,
-}: {
-  value: RibbonDropdownState;
-  children: React.ReactNode;
-}) {
-  return <RibbonDropdownContext.Provider value={value}>{children}</RibbonDropdownContext.Provider>;
-}
-
-export function useRibbonDropdown(): RibbonDropdownState {
-  return useContext(RibbonDropdownContext);
-}
-
-const ICONS: Record<string, ComponentType<{ className?: string }>> = {
-  ArrowUndo24Regular,
-  ArrowRedo24Regular,
-  PaintBrush24Regular,
-  ClearFormatting24Regular,
-  FontIncrease24Regular,
-  FontDecrease24Regular,
-  TextBold24Regular,
-  TextItalic24Regular,
-  TextUnderline24Regular,
-  TextStrikethrough24Regular,
-  TextSuperscript24Regular,
-  TextSubscript24Regular,
-  TextColor24Regular,
-  Highlight24Regular,
-  AlignLeft24Regular,
-  TextAlignCenter24Regular,
-  AlignRight24Regular,
-  TextAlignJustify24Regular,
-  TextLineSpacing24Regular,
-  TextBulletListLtr24Regular,
-  TextNumberListLtr24Regular,
-  TaskListSquareLtr24Regular,
-  TableSimple24Regular,
-  Image24Regular,
-  Link24Regular,
-  MathFormula24Regular,
-  CalendarLtr24Regular,
-  CheckboxChecked24Regular,
-  Code24Regular,
-  TextQuote24Regular,
-  DividerShort24Regular,
-  DocumentPageBreak24Regular,
-  DocumentPageBottomCenter24Regular,
-  ColumnTriple24Regular,
-  TableInsertRow24Regular,
-  TableInsertColumn24Regular,
-  TableDeleteRow24Regular,
-  Delete24Regular,
-  DocumentFit24Regular,
-  ZoomOut24Regular,
-  ZoomIn24Regular,
-  Ruler24Regular,
-  DocumentOnePage24Regular,
-  Eye24Regular,
-  LockClosed24Regular,
-  TextWordCount24Regular,
-  Search24Regular,
-  Print24Regular,
-};
-
-export function iconOf(name: string | undefined): ComponentType<{ className?: string }> | undefined {
-  return name ? ICONS[name] : undefined;
-}
-
-function isActive(command: string, args: unknown[] | undefined, style: RibbonStyle | null): boolean {
-  if (!style) return false;
-  if (command === "executeRowFlex") return style.rowFlex === args?.[0];
-  if (command === "executeList") return style.listType === args?.[0];
-  const map: Record<string, boolean | undefined> = {
-    executeBold: style.bold,
-    executeItalic: style.italic,
-    executeUnderline: style.underline,
-    executeStrikeout: style.strikeout,
-    // 格式刷是模式开关；撤销/重做不是（可用性只体现在置灰）
-    executePainter: style.painter,
-  };
-  return map[command] === true;
-}
-
-function isDisabled(command: string, style: RibbonStyle | null): boolean {
-  if (!style) return false;
-  if (command === "executeUndo") return style.undo === false;
-  if (command === "executeRedo") return style.redo === false;
-  return false;
-}
-
-/** 下拉项对应的命令（与 officeRibbonModel 的选项一一对应）。 */
-export function optionsCommand(title: string): string {
-  switch (title) {
-    case "字体":
-      return "executeFont";
-    case "字号":
-      return "executeSize";
-    case "行距":
-      return "executeRowMargin";
-    case "项目符号与编号":
-      return "executeList";
-    case "文字颜色":
-      return "executeColor";
-    case "高亮（底纹）":
-    case "单元格底色":
-      return "executeHighlight";
-    case "单元格垂直对齐":
-      return "executeSetTableCellVerticalAlign";
-    case "纸张大小":
-      return "executePaperSize";
-    case "纸张方向":
-      return "executePaperDirection";
-    case "页边距":
-      return "executeSetPaperMargin";
-    case "分栏":
-      return "executeSetColumns";
-    case "插入内容控件（文本/列举/复选/单选/日期/数字）":
-      return "executeInsertControlByType";
-    default:
-      return "executeNoop";
-  }
-}
-
-
-/**
- * 下拉面板：**传送到 body + fixed 定位**。
- *
- * 为什么不能用普通绝对定位：功能区的分组行有 `overflow-x-auto`，绝对定位的下拉会被祖先裁掉
- * （真机反馈"字体下拉被困在上面栏中"，截图里只剩两行）。传送到 body 后不受任何祖先的 overflow/transform 影响；
- * 位置按触发器的 rect 计算，并做视口内夹取与"下方放不下就翻到上方"。
- */
-export function DropdownPanel({
-  open,
-  anchorRef,
-  onClose,
-  minWidth = 208,
-  children,
-}: {
-  open: boolean;
-  anchorRef: RefObject<HTMLElement | null>;
-  onClose: () => void;
-  minWidth?: number;
-  children: React.ReactNode;
-}) {
-  const [position, setPosition] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    color: string;
-    background: string;
-  } | null>(null);
-  useEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return;
-    }
-    const measure = () => {
-      const anchor = anchorRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = Math.max(minWidth, rect.width);
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-      const panelHeight = 288;
-      const below = rect.bottom + 4;
-      const top = below + panelHeight <= window.innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 4);
-      // portal 到 body 会**脱离主题作用域**（应用的 color token 定义在容器上）——所以从触发器
-      // 继承前景色，并从最近的“有背景色”的祖先取背景色，保证面板与功能区同一套配色（真机反馈：
-      // 下拉文字颜色不对：暗底暗字）。
-      const anchorStyle = getComputedStyle(anchor);
-      let background = anchorStyle.backgroundColor;
-      let node: HTMLElement | null = anchor.parentElement;
-      while (node && (!background || background === "rgba(0, 0, 0, 0)" || background === "transparent")) {
-        background = getComputedStyle(node).backgroundColor;
-        node = node.parentElement;
-      }
-      setPosition({
-        left,
-        top,
-        width,
-        color: anchorStyle.color,
-        background: background && background !== "rgba(0, 0, 0, 0)" ? background : "#1f1f1f",
-      });
-    };
-    measure();
-    const onDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (anchorRef.current?.contains(target)) return;
-      if ((event.target as HTMLElement)?.closest?.("[data-ribbon-dropdown]")) return;
-      onClose();
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", measure);
-    // 面板打开时若容器滚动，关闭它（避免面板与触发器错位）
-    document.addEventListener("scroll", onClose, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", measure);
-      document.removeEventListener("scroll", onClose, true);
-    };
-  }, [anchorRef, minWidth, onClose, open]);
-  if (!open || !position) return null;
-  return createPortal(
-    <div
-      data-ribbon-dropdown
-      className="fixed z-50 max-h-72 overflow-auto rounded border border-white/15 py-1 shadow-xl"
-      style={{
-        left: position.left,
-        top: position.top,
-        width: position.width,
-        color: position.color,
-        backgroundColor: position.background,
-      }}
-    >
-      {children}
-    </div>,
-    document.body,
-  );
-}
-
+/** 图标按钮：`prompt` 非空时先弹输入框，把答案填进指定位参数再执行。 */
 export function RibbonButton({
   item,
   style,
   run,
-  compact,
   showLabel,
+  onDone,
 }: {
   item: RibbonCommand;
   style: RibbonStyle | null;
   run: RunCommand;
-  compact: boolean;
   showLabel?: boolean;
+  /** 面板内的按钮：执行完顺手关掉面板（菜单的常规行为）。 */
+  onDone?: () => void;
 }) {
   const Icon = iconOf(item.icon);
   const active = isActive(item.command, item.args, style);
@@ -331,8 +48,8 @@ export function RibbonButton({
       aria-label={item.title}
       aria-pressed={item.command === "executePainter" ? active : undefined}
       disabled={disabled}
-      className={`flex items-center justify-center gap-1 rounded text-xs ${
-        compact ? "h-7 min-w-7 px-1" : "h-8 min-w-8 px-1.5"
+      className={`flex h-8 items-center justify-center gap-1 rounded px-1.5 text-xs ${
+        item.icon ? "min-w-8" : ""
       } ${
         disabled
           ? "text-foreground-subtlest opacity-40"
@@ -347,27 +64,34 @@ export function RibbonButton({
           const args = [...(item.args ?? [])];
           args[item.prompt.at] = answer;
           run(item.command, args);
+          onDone?.();
           return;
         }
         run(item.command, item.args);
+        onDone?.();
       }}
     >
-      {Icon ? <Icon className={compact ? "size-4" : "size-5"} /> : null}
+      {Icon ? <Icon className="size-5" /> : null}
       {!Icon || showLabel ? <span className="px-1">{item.label}</span> : null}
     </button>
   );
 }
 
+/** 颜色类取值（字色/底纹/单元格底色）：在选项前画色块。 */
+function optionSwatch(args: unknown[]): string | null {
+  const value = String(args[0] ?? "");
+  return value.startsWith("rgb") || value.startsWith("#") ? value : null;
+}
+
+/** 下拉：触发器显示当前值，面板里的选项共用一条命令、以首参区分。 */
 export function RibbonSelectView({
   item,
   style,
   run,
-  compact,
 }: {
   item: RibbonSelect;
   style: RibbonStyle | null;
   run: RunCommand;
-  compact: boolean;
 }) {
   const dropdown = useRibbonDropdown();
   const dropdownId = `select:${item.title}`;
@@ -375,21 +99,26 @@ export function RibbonSelectView({
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const Icon = iconOf(item.icon);
   const value = item.current?.(style ?? {}) ?? null;
-  const valueLabel = item.options.find((option) => String(option.args[0]) === value)?.label ?? value;
+  const valueLabel =
+    item.options.find((option) => String(option.args[0]) === value)?.label ?? value;
+  // 「是不是颜色下拉」看模型有没有 swatch 取值函数；swatch 本身是**当前颜色值**，
+  // 没设过颜色时是 null——早先把 null 当成了"不是颜色下拉"，于是按钮宽度会随是否上色而跳。
+  const isColorSelect = Boolean(item.swatch);
   const swatch = item.swatch?.(style ?? {}) ?? null;
   return (
     <div className="relative" ref={anchorRef}>
       <button
         type="button"
         title={item.title}
-        className={`flex items-center gap-1 rounded border border-border text-xs text-foreground hover:bg-surface ${
-          compact ? "h-7 max-w-24 px-1.5" : "h-8 px-1.5"
+        aria-label={item.title}
+        className={`flex h-8 items-center gap-1 rounded border border-border text-xs text-foreground hover:bg-surface ${
+          isColorSelect ? "max-w-20 px-1" : "max-w-32 px-1.5"
         }`}
         onClick={() => dropdown.toggle(dropdownId)}
       >
-        {Icon ? <Icon className={compact ? "size-4" : "size-5"} /> : null}
-        {!compact ? <span className="max-w-16 shrink-0 text-foreground-subtle">{item.label}</span> : null}
-        <span className="truncate">{valueLabel ?? item.title}</span>
+        {Icon ? <Icon className="size-5" /> : null}
+        {/* 颜色类下拉只画图标 + 色条（值就是颜色本身，写"文字颜色"要占 50 多像素） */}
+        {isColorSelect ? null : <span className="truncate">{valueLabel ?? item.title}</span>}
         <span className="text-foreground-subtle">▾</span>
       </button>
       {swatch ? (
@@ -412,10 +141,10 @@ export function RibbonSelectView({
               run(optionsCommand(item.title), option.args);
             }}
           >
-            {String(option.args[0] ?? "").startsWith("rgb") ? (
+            {optionSwatch(option.args) ? (
               <span
                 className="size-3 shrink-0 rounded-sm border border-border"
-                style={{ backgroundColor: String(option.args[0]) }}
+                style={{ backgroundColor: optionSwatch(option.args) ?? undefined }}
               />
             ) : null}
             <span className="truncate">{option.label}</span>
@@ -426,14 +155,100 @@ export function RibbonSelectView({
   );
 }
 
+/** 面板（分组菜单/溢出菜单）内的下拉：标题 + 平铺选项，点选不关面板，可以连着调几项。 */
+export function RibbonSelectInline({
+  item,
+  style,
+  run,
+}: {
+  item: RibbonSelect;
+  style: RibbonStyle | null;
+  run: RunCommand;
+}) {
+  const value = item.current?.(style ?? {}) ?? null;
+  return (
+    <div className="w-full px-2 py-1">
+      <div className="pb-1 text-[11px] text-foreground-subtle">{item.title}</div>
+      <div className="flex flex-wrap items-center gap-1">
+        {item.options.map((option) => {
+          const swatch = optionSwatch(option.args);
+          const selected = String(option.args[0]) === value;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              title={option.label}
+              className={`flex h-6 items-center gap-1 rounded border px-1.5 text-xs ${
+                selected
+                  ? "border-sky-500 bg-sky-500/15 text-sky-200"
+                  : "border-border text-foreground hover:bg-neutral-500/20"
+              }`}
+              onClick={() => run(optionsCommand(item.title), option.args)}
+            >
+              {swatch ? (
+                <span
+                  className="size-3 shrink-0 rounded-sm border border-border"
+                  style={{ backgroundColor: swatch }}
+                />
+              ) : null}
+              <span className="max-w-24 truncate">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 命令菜单：「A ▾」这种把几条相关命令收在一起的小下拉（Word 的字体组同款）。 */
+export function RibbonMenuView({
+  item,
+  style,
+  run,
+}: {
+  item: RibbonMenu;
+  style: RibbonStyle | null;
+  run: RunCommand;
+}) {
+  const dropdown = useRibbonDropdown();
+  const dropdownId = `menu:${item.title}`;
+  const open = dropdown.openId === dropdownId;
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const Icon = iconOf(item.icon);
+  return (
+    <div className="relative" ref={anchorRef}>
+      <button
+        type="button"
+        title={item.title}
+        className={`flex h-8 items-center gap-0.5 rounded px-1.5 text-xs ${
+          open ? "bg-sky-500/15 text-sky-300" : "text-foreground hover:bg-surface"
+        }`}
+        onClick={() => dropdown.toggle(dropdownId)}
+      >
+        {Icon ? <Icon className="size-5" /> : <span>{item.label}</span>}
+        <span className="text-foreground-subtle">▾</span>
+      </button>
+      <DropdownPanel open={open} anchorRef={anchorRef} onClose={dropdown.close} minWidth={224}>
+        <RibbonItemRows items={item.items} style={style} run={run} />
+      </DropdownPanel>
+    </div>
+  );
+}
+
+/**
+ * 样式库：卡片直接显示该样式的字形效果（WPS/Word 的"样式"组同款）。
+ * 单行卡片：窄侧栏里"正文/标题 1/标题 2"这一排最占地方，去掉副标题一行能省下约四成宽度。
+ */
 export function StyleGalleryView({
   gallery,
   style,
   run,
+  onDone,
 }: {
   gallery: RibbonGallery;
   style: RibbonStyle | null;
   run: RunCommand;
+  onDone?: () => void;
 }) {
   const current = gallery.current?.(style ?? {}) ?? null;
   return (
@@ -443,18 +258,64 @@ export function StyleGalleryView({
           key={item.label}
           type="button"
           title={`应用样式：${item.label}`}
-          className={`flex h-14 flex-col items-start justify-center gap-0.5 rounded border px-2 text-left ${
-            current === item.label ? "border-sky-500 bg-sky-500/10 text-sky-200" : "border-border hover:bg-surface"
+          className={`flex h-9 items-center rounded border px-2 text-left ${
+            current === item.label
+              ? "border-sky-500 bg-sky-500/10 text-sky-200"
+              : "border-border hover:bg-surface"
           }`}
-          style={{ minWidth: 64 }}
-          onClick={() => run("executeTitle", item.args)}
+          style={{ minWidth: 48 }}
+          onClick={() => {
+            run("executeTitle", item.args);
+            onDone?.();
+          }}
         >
           <span className="truncate text-foreground" style={item.style}>
             {item.label}
           </span>
-          <span className="text-[9px] text-foreground-subtlest">{item.label === "正文" ? "Normal" : "Heading"}</span>
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * 面板内的整套条目（分组菜单、溢出菜单共用）：
+ * 命令＝图标按钮 + 说明，下拉＝平铺选项，样式库＝卡片。
+ */
+export function RibbonItemRows({
+  items,
+  style,
+  run,
+}: {
+  items: RibbonItem[];
+  style: RibbonStyle | null;
+  run: RunCommand;
+}) {
+  const dropdown = useRibbonDropdown();
+  return (
+    <>
+      {items.map((item) => (
+        <div key={item.title} className="flex items-center gap-1 px-2 py-1">
+          {item.kind === "select" ? (
+            <RibbonSelectInline item={item} style={style} run={run} />
+          ) : null}
+          {item.kind === "command" ? (
+            <>
+              <RibbonButton item={item} style={style} run={run} onDone={dropdown.close} />
+              <span className="truncate text-xs text-foreground-subtle">{item.title}</span>
+            </>
+          ) : null}
+          {item.kind === "menu" ? (
+            <div className="w-full">
+              <div className="px-2 py-1 text-[11px] text-foreground-subtle">{item.title}</div>
+              <RibbonItemRows items={item.items} style={style} run={run} />
+            </div>
+          ) : null}
+          {item.kind === "gallery" ? (
+            <StyleGalleryView gallery={item} style={style} run={run} onDone={dropdown.close} />
+          ) : null}
+        </div>
+      ))}
+    </>
   );
 }

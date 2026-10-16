@@ -4,7 +4,6 @@
  * 拆出来是为了守住仓库的 400 行上限；语义与出处见 officeRibbonModel.ts 顶部注释：
  * 行距是**倍数**（官方 demo 的 data-rowmargin），底纹**只用浅色**（深色底纹会吞掉黑字，真机反馈）。
  */
-import type { CSSProperties } from "react";
 import type { RibbonGallery } from "./officeRibbonModel.js";
 
 /** 文字颜色：深色为主，另含浅色（用于深色底纹场景）。 */
@@ -81,8 +80,16 @@ export const STYLE_GALLERY: RibbonGallery = {
     { label: "标题 1", args: ["first"], style: { fontSize: 19, fontWeight: 700 } },
     { label: "标题 2", args: ["second"], style: { fontSize: 17, fontWeight: 600 } },
     { label: "标题 3", args: ["third"], style: { fontSize: 15, fontWeight: 600 } },
-    { label: "标题 4", args: ["fourth"], style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" } },
-    { label: "标题 5", args: ["fifth"], style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" } },
+    {
+      label: "标题 4",
+      args: ["fourth"],
+      style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" },
+    },
+    {
+      label: "标题 5",
+      args: ["fifth"],
+      style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" },
+    },
   ],
   current: (style) => {
     const order = ["first", "second", "third", "fourth", "fifth", "sixth"];

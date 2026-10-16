@@ -30,10 +30,7 @@ import { TID_PREVIEW_PANE } from "@zcode/shared";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { usePptxFileWatch } from "@/hooks/usePptxFileWatch.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import {
-  usePdfViewerLabels,
-  usePptxViewerLabels,
-} from "@/hooks/usePreviewViewerLabels.js";
+import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
   FILE_VIEWER_MAX_TEXT_BYTES,
   createDiffSourceFilePreviewSource,
@@ -49,7 +46,7 @@ import { normalizeCodeViewerSource } from "@/lib/codeViewerSource.js";
 import { FileDisplayIcon, resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
 import { getPathLeaf, isAbsoluteFilePath } from "@/lib/path.js";
 import { decodeBase64ToArrayBuffer, getOfficeFilePreviewKind } from "@/lib/officeFilePreview.js";
-// 引擎可替换：SuperDoc 版保留在 officeEditor/OfficeEditorPane.tsx（对照用），默认走 canvas-editor。
+// 编辑位：canvas-editor 引擎（区分于下面的只读预览）。
 import { CanvasOfficeEditorPane } from "@/officeEditor/CanvasOfficeEditorPane.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
