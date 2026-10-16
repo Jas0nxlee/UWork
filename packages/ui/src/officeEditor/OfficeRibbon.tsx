@@ -66,20 +66,20 @@ function OverflowMenu({
         type="button"
         title={`更多（${label}）`}
         aria-label={`更多（${label}）`}
-        className="flex h-7 min-w-7 items-center justify-center rounded px-1 text-foreground hover:bg-surface"
+        className="flex h-7 min-w-7 items-center justify-center rounded px-1 hover:bg-neutral-500/20"
         onClick={() => setOpen((current) => !current)}
       >
         ⋯
       </button>
       <DropdownPanel open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} minWidth={224}>
-        <div className="px-2 py-1 text-[11px] text-foreground-subtle">{label} · 更多</div>
+        <div className="px-2 py-1 text-[11px] opacity-70">{label} · 更多</div>
           {items.map((item) => (
             <div key={item.title} className="flex items-center gap-1 px-2 py-1">
               {item.kind === "select" ? <RibbonSelectView item={item} style={style} run={run} compact={false} /> : null}
               {item.kind === "command" ? (
                 <>
                   <RibbonButton item={item} style={style} run={run} compact />
-                  <span className="truncate text-xs text-foreground-subtle">{item.title}</span>
+                  <span className="truncate text-xs opacity-70">{item.title}</span>
                 </>
               ) : null}
               {item.kind === "gallery" ? <StyleGalleryView gallery={item} style={style} run={run} /> : null}

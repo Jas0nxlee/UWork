@@ -194,7 +194,13 @@ export function DropdownPanel({
   minWidth?: number;
   children: React.ReactNode;
 }) {
-  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    color: string;
+    background: string;
+  } | null>(null);
   useEffect(() => {
     if (!open) {
       setPosition(null);
@@ -209,7 +215,23 @@ export function DropdownPanel({
       const panelHeight = 288;
       const below = rect.bottom + 4;
       const top = below + panelHeight <= window.innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 4);
-      setPosition({ left, top, width });
+      // portal 到 body 会**脱离主题作用域**（应用的 color token 定义在容器上）——所以从触发器
+      // 继承前景色，并从最近的“有背景色”的祖先取背景色，保证面板与功能区同一套配色（真机反馈：
+      // 下拉文字颜色不对：暗底暗字）。
+      const anchorStyle = getComputedStyle(anchor);
+      let background = anchorStyle.backgroundColor;
+      let node: HTMLElement | null = anchor.parentElement;
+      while (node && (!background || background === "rgba(0, 0, 0, 0)" || background === "transparent")) {
+        background = getComputedStyle(node).backgroundColor;
+        node = node.parentElement;
+      }
+      setPosition({
+        left,
+        top,
+        width,
+        color: anchorStyle.color,
+        background: background && background !== "rgba(0, 0, 0, 0)" ? background : "#1f1f1f",
+      });
     };
     measure();
     const onDown = (event: MouseEvent) => {
@@ -237,8 +259,14 @@ export function DropdownPanel({
   return createPortal(
     <div
       data-ribbon-dropdown
-      className="fixed z-50 max-h-72 overflow-auto rounded border border-border bg-background py-1 shadow-xl"
-      style={{ left: position.left, top: position.top, width: position.width }}
+      className="fixed z-50 max-h-72 overflow-auto rounded border border-white/15 py-1 shadow-xl"
+      style={{
+        left: position.left,
+        top: position.top,
+        width: position.width,
+        color: position.color,
+        backgroundColor: position.background,
+      }}
     >
       {children}
     </div>,
@@ -340,8 +368,8 @@ export function RibbonSelectView({
           <button
             key={option.label}
             type="button"
-            className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-surface ${
-              String(option.args[0]) === value ? "text-sky-300" : ""
+            className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-neutral-500/20 ${
+              String(option.args[0]) === value ? "bg-neutral-500/15 font-medium" : ""
             }`}
             onClick={() => {
               setOpen(false);
