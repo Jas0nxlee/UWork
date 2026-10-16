@@ -5,9 +5,10 @@
  * 属于"数据安全"路径，单独成文件后，读者能一眼看清"什么情况下我们不让编、什么情况下拒绝写"。
  */
 import type { IFileService } from "@zcode/services";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
+import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
 
@@ -30,9 +31,15 @@ export interface UseOfficeDocumentInput {
   fileService: IFileService;
   path: string;
   editorRef: { current: OfficeEditorHandle | null };
+  /** 远端工作区要探一次写能力（老远端没有 writeBinaryFile，编辑到最后才发现保存不了）。 */
+  remote?: boolean;
+  /** 脏标记变化往外报：外层据此在切换文件/退出编辑态时拦一下。 */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export interface UseOfficeDocumentResult {
+  /** 非空表示这份文件不能写回（远端缺能力），编辑位据此只显示说明。 */
+  writeBlocked: string | null;
   status: string;
   setStatus: (message: string) => void;
   dirty: boolean;
@@ -51,12 +58,34 @@ export function useOfficeDocument({
   fileService,
   path,
   editorRef,
+  remote,
+  onDirtyChange,
 }: UseOfficeDocumentInput): UseOfficeDocumentResult {
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingPreflight, setPendingPreflight] = useState<DocxPreflightResult | null>(null);
+  const [writeBlocked, setWriteBlocked] = useState<string | null>(null);
+
+  const markDirty = useCallback(
+    (value: boolean) => {
+      setDirty(value);
+      onDirtyChange?.(value);
+    },
+    [onDirtyChange],
+  );
+
+  // 未保存内容守卫：关窗口/刷新时拦一下（Electron 会弹系统确认框）
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   const importBytes = useCallback(
     async (editor: OfficeEditorHandle, bytes: ArrayBuffer, label: string, reset: boolean) => {
@@ -69,7 +98,7 @@ export function useOfficeDocument({
       });
       const elapsedMs = Math.round(performance.now() - startedAt);
       logger.info(`[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${label}）`);
-      if (reset) setDirty(false);
+      if (reset) markDirty(false);
       const slowHint =
         elapsedMs > SLOW_PARSE_MS
           ? `（文档很大，编辑会明显卡顿：${Math.round(elapsedMs / 1000)}s 解析。建议改用只读预览 + 卡片审阅。）`
@@ -93,6 +122,17 @@ export function useOfficeDocument({
           : null;
       const editor = editorRef.current;
       if (!editor) return;
+      if (remote) {
+        const probe = await probeWriteSupport(fileService, path);
+        if (!probe.supported) {
+          setWriteBlocked(probe.reason ?? "服务端不支持写回");
+          setStatus(
+            `远端工作区不支持应用内编辑：${probe.reason ?? "服务端不支持写回"}。请用只读预览 + 对话卡片审阅。`,
+          );
+          return;
+        }
+        setWriteBlocked(null);
+      }
       if (preview.totalBytes > MAX_EDITABLE_BYTES) {
         setStatus(
           `文档过大（${Math.round(preview.totalBytes / 1048576)} MB），不在应用内编辑：请用只读预览 + 对话卡片审阅，或分段编辑。`,
@@ -120,7 +160,7 @@ export function useOfficeDocument({
       }
       await importBytes(editor, raw, label, options.reset !== false);
     },
-    [editorRef, fileService, importBytes, path],
+    [editorRef, fileService, importBytes, path, remote],
   );
 
   const acceptPreflight = useCallback(() => {
@@ -157,7 +197,7 @@ export function useOfficeDocument({
         backup: "sibling",
       });
       revisionRef.current = result.revision;
-      setDirty(false);
+      markDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
       setStatus(
         `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}`,
@@ -178,7 +218,8 @@ export function useOfficeDocument({
     status,
     setStatus,
     dirty,
-    setDirty,
+    setDirty: markDirty,
+    writeBlocked,
     busy,
     pendingPreflight,
     loadDocument,

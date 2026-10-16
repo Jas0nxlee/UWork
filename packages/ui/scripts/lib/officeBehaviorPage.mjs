@@ -13,6 +13,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
+  import { probeWriteSupport } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -79,6 +80,17 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
 
+  /** 写能力探测：老远端抛 Method not found 判为不支持；版本不匹配（新服务端）判为支持。 */
+  window.__probeWrite = async (mode) => {
+    const fileService =
+      mode === "old-remote"
+        ? { writeBinaryFile: async () => { throw new Error("Method not found: fileService.writeBinaryFile"); } }
+        : mode === "new-remote"
+          ? { writeBinaryFile: async () => { throw new Error("File revision mismatch: /x (disk 10B/1 vs expected -1B/-1)"); } }
+          : { writeBinaryFile: async () => ({ path: "/x", bytes: 0, revision: { size: 0, mtimeMs: 0 } }) };
+    return await probeWriteSupport(fileService, "/x");
+  };
+
   /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
   window.__zoomScroll = (input) => scrollAfterZoom(input);
 
@@ -127,6 +139,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { createEditorOptions, createInitialData } from ${JSON.stringify(join(editorDir, "officeEditorOptions.ts"))};`,
       `export { scrollAfterZoom } from ${JSON.stringify(join(editorDir, "pageViewport.ts"))};`,
       `export { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from ${JSON.stringify(join(editorDir, "docxPreflight.ts"))};`,
+      `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
     ].join("\n"),
     "utf8",
   );

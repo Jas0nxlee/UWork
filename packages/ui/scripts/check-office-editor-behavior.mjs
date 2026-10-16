@@ -164,6 +164,19 @@ async function main() {
     `缩放可设到 ${zoomed.scale} 并恢复 ${restored.scale}（功能区的比例下拉读的就是它）`,
   );
 
+  // 远端写能力探测：老远端（Method not found）要判"不能编辑"，新远端（版本不匹配）判"可以"
+  const probes = await page.evaluate(async () => ({
+    old: await window.__probeWrite("old-remote"),
+    fresh: await window.__probeWrite("new-remote"),
+    ok: await window.__probeWrite("writable"),
+  }));
+  check(
+    probes.old.supported === false &&
+      probes.fresh.supported === true &&
+      probes.ok.supported === true,
+    `写能力探测：老远端不支持（${probes.old.reason ?? ""}）／新远端支持／本地支持`,
+  );
+
   // 缩放锚点：放大后视图不能跳回左上角；缩小到装得下时横向归零（交给 mx-auto 居中）
   const zoomCases = await page.evaluate(() => [
     window.__zoomScroll({

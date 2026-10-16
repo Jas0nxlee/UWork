@@ -49,10 +49,20 @@ interface EngineOptions {
 export interface CanvasOfficeEditorPaneProps {
   fileService: IFileService;
   path: string;
+  /** 远端工作区：载入前先探一次写能力（老远端没有 writeBinaryFile）。 */
+  remote?: boolean;
+  /** 脏标记外报：外层在切换文件/退出编辑态时据此拦一下，避免静默丢改动。 */
+  onDirtyChange?: (dirty: boolean) => void;
   onExit?: () => void;
 }
 
-export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOfficeEditorPaneProps) {
+export function CanvasOfficeEditorPane({
+  fileService,
+  path,
+  remote,
+  onDirtyChange,
+  onExit,
+}: CanvasOfficeEditorPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<CanvasEditor | null>(null);
   const {
@@ -62,10 +72,11 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     setDirty,
     busy,
     pendingPreflight,
+    writeBlocked,
     loadDocument,
     acceptPreflight,
     save,
-  } = useOfficeDocument({ fileService, path, editorRef });
+  } = useOfficeDocument({ fileService, path, editorRef, remote, onDirtyChange });
   const [rangeStyle, setRangeStyle] = useState<RibbonStyle | null>(null);
   const [inTable, setInTable] = useState(false);
   // 引擎按容器宽度铺画布、页面从 x=0 起画（天生贴左）。所以把编辑区宽度收到**纸张宽度**，
@@ -254,6 +265,15 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
         onExit={onExit}
         confirmExit={() => !dirty || window.confirm("有未保存的修改，确定退出编辑吗？")}
       />
+      {writeBlocked ? (
+        <div className="border-b border-border bg-surface px-3 py-3 text-xs">
+          <div className="pb-1 font-medium">这份文件现在不能应用内编辑</div>
+          <div className="pb-2 text-foreground-subtle">{writeBlocked}</div>
+          <div className="text-foreground-subtle">
+            只读预览与对话卡片审阅不受影响；等远端服务端升级出二进制写回后再来。
+          </div>
+        </div>
+      ) : null}
       {pendingPreflight ? (
         <div className="border-b border-amber-500/40 bg-amber-500/10 px-2 py-2 text-xs text-amber-200">
           <div className="pb-1 font-medium">这份文档有以下特性，应用内编辑会让它们发生变化：</div>
@@ -303,6 +323,7 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
       <div
+        hidden={writeBlocked !== null}
         id="office-editor-scroll"
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-auto bg-surface"

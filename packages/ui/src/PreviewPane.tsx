@@ -546,6 +546,17 @@ export function PreviewPane({
   const [loadingOfficePreview, setLoadingOfficePreview] = useState(false);
   // 应用内 DOCX 编辑（内核侧 spike）：编辑态直接接管内容区，返回预览即卸载编辑器。
   const [officeEditing, setOfficeEditing] = useState(false);
+  /**
+   * 编辑位的脏标记：切文件/退出编辑态前要拦一下（真机 review 结论：原来只有「返回预览」按钮有守卫）。
+   * 侧栏标签整体关闭仍拦不住（React 卸载不可取消），已记为已知缺口。
+   */
+  const officeEditorDirtyRef = useRef(false);
+  const confirmLeaveOfficeEditor = useCallback(() => {
+    if (!officeEditorDirtyRef.current) return true;
+    const leave = window.confirm("有未保存的修改，确定离开编辑（改动会丢失）吗？");
+    if (leave) officeEditorDirtyRef.current = false;
+    return leave;
+  }, []);
   const [loadingPptxPreview, setLoadingPptxPreview] = useState(false);
   const [pptxPreviewData, setPptxPreviewData] = useState<ArrayBuffer | null>(null);
   const [validatedPptxReferenceNavigationRequestId, setValidatedPptxReferenceNavigationRequestId] =
@@ -1706,7 +1717,10 @@ export function PreviewPane({
               size="icon-md"
               variant="ghost"
               className="shrink-0 text-foreground-subtle hover:text-foreground disabled:text-foreground-subtlest"
-              onClick={() => setOfficeEditing((value) => !value)}
+              onClick={() => {
+                if (officeEditing && !confirmLeaveOfficeEditor()) return;
+                setOfficeEditing((value) => !value);
+              }}
               title={officeEditing ? "返回只读预览" : "应用内编辑"}
               aria-label={officeEditing ? "返回只读预览" : "应用内编辑"}
             >
@@ -1749,6 +1763,10 @@ export function PreviewPane({
           <CanvasOfficeEditorPane
             fileService={fileService}
             path={source.path}
+            remote={isRemoteSource}
+            onDirtyChange={(value) => {
+              officeEditorDirtyRef.current = value;
+            }}
             onExit={() => setOfficeEditing(false)}
           />
         ) : renderHeavyContent ? (
