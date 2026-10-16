@@ -64,6 +64,9 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
   const [busy, setBusy] = useState(false);
   const [rangeStyle, setRangeStyle] = useState<RibbonStyle | null>(null);
   const [inTable, setInTable] = useState(false);
+  // 引擎按容器宽度铺画布、页面从 x=0 起画（天生贴左）。所以把编辑区宽度收到**纸张宽度**，
+  // 再由外层 flex 居中——这就是 Word/WPS「纸张居中、两侧留灰边」的做法（真机反馈）。
+  const [pageSize, setPageSize] = useState({ width: 794, scale: 1 });
 
   const loadDocument = useCallback(
     async (options: { reset?: boolean } = {}) => {
@@ -113,13 +116,17 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       pageMode: "paging",
       margins: [100, 120, 100, 120],
       // 滚动必须显式交给外层容器（默认也是父节点，这里写明意图；配合容器的 overflow-auto）
-      scrollContainerSelector: "#office-editor-host",
+      scrollContainerSelector: "#office-editor-scroll",
       // 选区色：默认 #AECBFA@60% 在深色应用里与正文对比太弱，看起来像"字没了"。改浅蓝低透明度。
       rangeColor: "#0969da",
       rangeAlpha: 0.25,
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
+    const options = (editor.command as { getOptions?: () => { width?: number; scale?: number } }).getOptions?.();
+    setPageSize({ width: options?.width ?? 794, scale: options?.scale ?? 1 });
+    (editor.listener as { pageScaleChange?: (scale: number) => void }).pageScaleChange = (scale: number) =>
+      setPageSize((current) => ({ ...current, scale }));
     // 官方 demo 的做法：选中态由 rangeStyleChange 驱动，工具栏据此高亮 B/I/U/对齐/列表等。
     editor.listener.rangeStyleChange = (payload: RibbonStyle) => {
       setRangeStyle(payload as RibbonStyle);
@@ -319,7 +326,15 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
           之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
       <OfficeRibbon style={rangeStyle} inTable={inTable} run={runRibbon} />
-      <div ref={hostRef} id="office-editor-host" className="min-h-0 flex-1 overflow-auto bg-surface" />
+      {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
+      <div id="office-editor-scroll" className="min-h-0 flex-1 overflow-auto bg-surface">
+        <div
+          ref={hostRef}
+          id="office-editor-host"
+          className="mx-auto"
+          style={{ width: Math.round(pageSize.width * pageSize.scale) }}
+        />
+      </div>
     </div>
   );
 }
