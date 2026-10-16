@@ -23,6 +23,7 @@ import {
   type RevisionPreservationState,
 } from "./docxRevisions.js";
 import { composeExportedDocx } from "./officeExportPipeline.js";
+import { gotoCommentAnchor } from "./officeReviewNavigation.js";
 import { useCommentGroups, type CommentAnchor } from "./useCommentGroups.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
@@ -307,7 +308,11 @@ export function useOfficeDocument({
       }
       setCurrentComment(index);
       locateComment(editor, comment);
-      setStatus(`批注 ${index + 1}/${comments.length} · ${comment.author}：${comment.text}`);
+      // 只调 executeLocationGroup 看不出"跳过去了"（真机反馈"不管用"）：再把锚点文字选中
+      gotoCommentAnchor(editor, comment);
+      setStatus(
+        `批注 ${index + 1}/${comments.length} · ${comment.author || "（无作者）"}：${comment.text || "（文件里没有批注内容，只有锚点）"}`,
+      );
     },
     [comments, editorRef, locateComment],
   );

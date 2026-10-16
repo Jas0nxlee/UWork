@@ -18,6 +18,17 @@ import {
   type DocxPreflightResult,
 } from "./docxPreflight.js";
 
+/** 取 docx 里 document.xml 的文本（审阅清单按原始标记枚举）。 */
+export async function documentXmlOf(bytes: ArrayBuffer): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  return (await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("string")) ?? "";
+}
+
+/** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
+export const SLOW_PARSE_MS = 3000;
+/** 应用内原地编辑的体积上限（docx 文件字节）。 */
+export const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
+
 /** document.xml 的上限：真正的体量口径（实测 191 KB 的 docx 解出 2.35 MB，约 12 倍）。 */
 export const MAX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024;
 
@@ -59,4 +70,34 @@ export async function prepareDocumentForImport(
     comments: view.comments,
     summary: view.summary,
   };
+}
+
+/**
+ * 把字节交给引擎导入，并回报解析耗时（超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug）。
+ */
+export async function importDocxIntoEditor(input: {
+  editor: { command: Record<string, unknown> };
+  bytes: ArrayBuffer;
+  label: string;
+  setStatus: (message: string) => void;
+  onLoaded?: () => void;
+}): Promise<void> {
+  const { editor, bytes, label, setStatus } = input;
+  setStatus(`解析文档（${label}）…`);
+  const startedAt = performance.now();
+  await (
+    editor.command.executeImportDocx as (payload: { arrayBuffer: ArrayBuffer }) => Promise<void>
+  )({
+    arrayBuffer: bytes,
+  });
+  const elapsedMs = Math.round(performance.now() - startedAt);
+  input.onLoaded?.();
+  // 实测（headless Chromium，canvas-editor）：500 段 76ms / 2000 段 266ms / 6000 段 957ms / 20000 段 4.4s
+  const slowHint =
+    elapsedMs > SLOW_PARSE_MS
+      ? `（文档很大，编辑会明显卡顿：${Math.round(elapsedMs / 1000)}s 解析。建议改用只读预览 + 卡片审阅。）`
+      : "";
+  setStatus(
+    `已载入 ${label} · 解析 ${(elapsedMs / 1000).toFixed(1)}s · 点「保存到文件」写回${slowHint}`,
+  );
 }

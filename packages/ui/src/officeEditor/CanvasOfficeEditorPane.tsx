@@ -20,6 +20,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { CommentAnchor } from "./useCommentGroups.js";
 import { OfficeCommentList } from "./OfficeCommentList.js";
 import { OfficeEditorSurface } from "./OfficeEditorSurface.js";
+import { gotoRevisionWithStatus } from "./officeReviewNavigation.js";
 import { OfficeGuardNotices } from "./OfficeGuardNotices.js";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
@@ -259,11 +260,22 @@ export function CanvasOfficeEditorPane({
               void resolveRevision("reject", currentRevision >= 0 ? currentRevision : undefined),
             rejectAll: () => void resolveRevision("reject"),
             prev: () =>
-              setCurrentRevision(
-                currentRevision <= 0 ? Math.max(0, revisions.length - 1) : currentRevision - 1,
-              ),
+              gotoRevisionWithStatus({
+                editorRef,
+                revisions,
+                index:
+                  currentRevision <= 0 ? Math.max(0, revisions.length - 1) : currentRevision - 1,
+                setCurrentRevision,
+                setStatus,
+              }),
             next: () =>
-              setCurrentRevision(currentRevision + 1 >= revisions.length ? 0 : currentRevision + 1),
+              gotoRevisionWithStatus({
+                editorRef,
+                revisions,
+                index: currentRevision + 1 >= revisions.length ? 0 : currentRevision + 1,
+                setCurrentRevision,
+                setStatus,
+              }),
             count: () => ({ total: revisions.length, current: currentRevision }),
           },
           comments: {
@@ -282,6 +294,7 @@ export function CanvasOfficeEditorPane({
     },
     [
       currentRevision,
+      setCurrentRevision,
       engineState,
       refreshEngineUndo,
       resolveRevision,

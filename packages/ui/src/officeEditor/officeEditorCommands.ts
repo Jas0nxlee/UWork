@@ -274,7 +274,12 @@ export function runEngineCommand(context: CommandContext, command: string, args?
       }
       case "commentPrev":
       case "commentNext": {
-        status("批注导航：正文里的 [n] 标记对应批注，列表与气泡在做（当前可用「批注 N 处」提示）");
+        const comments = context.comments;
+        if (!comments) {
+          status("批注导航未接入");
+          break;
+        }
+        (command === "commentPrev" ? comments.prev : comments.next)();
         break;
       }
       case "executeUndo":
