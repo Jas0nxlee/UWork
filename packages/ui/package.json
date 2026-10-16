@@ -17,7 +17,9 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "check:office-editor": "node scripts/check-office-editor-commands.mjs && node scripts/check-office-editor-behavior.mjs && node scripts/check-office-editor-docx.mjs",
-    "check:office-ribbon": "node scripts/check-office-ribbon-layout.mjs"
+    "check:office-ribbon": "node scripts/check-office-ribbon-layout.mjs",
+    "check:office-excel": "node scripts/check-office-excel.mjs && node scripts/check-office-excel-io.mjs",
+    "check:office": "pnpm check:office-editor && pnpm check:office-ribbon && pnpm check:office-excel"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.2.4",
@@ -30,6 +32,7 @@
     "@extend-ai/react-docx": "^0.8.1",
     "@extend-ai/react-xlsx": "^0.16.0",
     "@floating-ui/dom": "1.7.6",
+    "@fortune-sheet/react": "1.0.4",
     "@lexical/react": "^0.42.0",
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",
@@ -59,6 +62,7 @@
     "cmdk": "^1.1.1",
     "docx-preview": "^0.4.0",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "4.4.0",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "katex": "^0.16.45",

@@ -1,0 +1,10 @@
+const t0 = Date.now();
+const { chromium } = await import("playwright-core");
+console.log("imported", Date.now() - t0);
+const browser = await chromium.launch({ headless: true, executablePath: process.env.OFFICE_CHECK_CHROMIUM });
+console.log("launched", Date.now() - t0);
+const page = await browser.newPage();
+await page.setContent("<b>hi</b>");
+console.log("content", Date.now() - t0, await page.title());
+await browser.close();
+console.log("closed", Date.now() - t0);
