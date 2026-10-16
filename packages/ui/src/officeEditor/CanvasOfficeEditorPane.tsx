@@ -15,10 +15,12 @@
 import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { createEditorOptions, createInitialData } from "./officeEditorOptions.js";
+import { scrollAfterZoom } from "./pageViewport.js";
 import {
   createFindSession,
   createLayoutHistory,
@@ -237,10 +239,40 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
   const findRef = useRef({ current: createFindSession() });
   /** 版面撤销栈（纸张/页边距/分栏不在引擎的元素表历史里，见 officeEditorCommands 注释）。 */
   const layoutRef = useRef<LayoutHistory>(createLayoutHistory());
+  /** 上一次缩放：用来把滚动位置按比例换算（否则缩放后视图跳到左上角）。 */
+  const lastScaleRef = useRef(1);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   /** 引擎自己的撤销/重做可用性：由 rangeStyleChange 回填。 */
   const engineUndoRef = useRef({ canUndo: false, canRedo: false });
   // 只用来触发重渲染：版面栈/撤销可用性发生在 React 之外，功能区要重算"撤销是否能点"
   const [, setHistoryVersion] = useState(0);
+
+  /**
+   * 缩放后把滚动位置按比例搬过去（DOM 已更新完再算，避免读到旧的滚动范围）。
+   * 横向没有滚动余地时归零——页面变窄后靠外层 `mx-auto` 居中。
+   */
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    const previous = lastScaleRef.current;
+    const next = pageSize.scale;
+    if (!container || previous === next) {
+      lastScaleRef.current = next;
+      return;
+    }
+    const { scrollTop, scrollLeft } = scrollAfterZoom({
+      scrollTop: container.scrollTop,
+      scrollLeft: container.scrollLeft,
+      viewportWidth: container.clientWidth,
+      viewportHeight: container.clientHeight,
+      contentWidth: pageSize.width * next,
+      contentHeight: container.scrollHeight,
+      prevScale: previous,
+      nextScale: next,
+    });
+    container.scrollTop = scrollTop;
+    container.scrollLeft = scrollLeft;
+    lastScaleRef.current = next;
+  }, [pageSize.scale, pageSize.width]);
 
   /**
    * 问引擎"现在还能撤吗"。rangeStyleChange 会带 undo/redo，但只在新选区出现时推送，
@@ -308,46 +340,20 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
 
   return (
     <div className="flex h-full min-h-0 flex-col" onKeyDownCapture={onKeyDownCapture}>
-      <div className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 text-xs">
-        <button
-          type="button"
-          className="rounded border border-border px-2 py-1 font-medium hover:border-accent disabled:opacity-50"
-          onClick={() => void save()}
-          disabled={busy}
-          title="写回原文件（先落备份，冲突则拒绝）"
-        >
-          保存到文件
-        </button>
-        <button
-          type="button"
-          className="rounded border border-border px-2 py-1 hover:border-accent disabled:opacity-50"
-          onClick={() => {
-            void (async () => {
-              setStatus("重新加载文档…");
-              await loadDocument();
-            })().catch((error) => setStatus(`重新加载失败：${String(error)}`));
-          }}
-          disabled={busy}
-        >
-          重新加载
-        </button>
-        {onExit ? (
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 hover:border-accent"
-            onClick={() => {
-              if (dirty && !window.confirm("有未保存的修改，确定退出编辑吗？")) return;
-              onExit();
-            }}
-          >
-            返回预览
-          </button>
-        ) : null}
-        <span className="ml-auto text-foreground-subtle">
-          {dirty ? "● 未保存 · " : ""}
-          {status}
-        </span>
-      </div>
+      <OfficeEditorToolbar
+        busy={busy}
+        dirty={dirty}
+        status={status}
+        onSave={() => void save()}
+        onReload={() => {
+          void (async () => {
+            setStatus("重新加载文档…");
+            await loadDocument();
+          })().catch((error) => setStatus(`重新加载失败：${String(error)}`));
+        }}
+        onExit={onExit}
+        confirmExit={() => !dirty || window.confirm("有未保存的修改，确定退出编辑吗？")}
+      />
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
           之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
       <OfficeRibbon
@@ -365,7 +371,11 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
         run={runRibbon}
       />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
-      <div id="office-editor-scroll" className="min-h-0 flex-1 overflow-auto bg-surface">
+      <div
+        id="office-editor-scroll"
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto bg-surface"
+      >
         <div
           ref={hostRef}
           id="office-editor-host"

@@ -29,7 +29,7 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText } from "/dispatcher.js";
+  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom } from "/dispatcher.js";
 
   window.__load = async (url) => {
     document.getElementById("host").replaceChildren();
@@ -94,6 +94,9 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
 
   window.__elements = () => window.__editor.command.getValue().data.main;
 
+  /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
+  window.__zoomScroll = (input) => scrollAfterZoom(input);
+
   /** 把服务端的图片转成 data URI：与"从本机选文件"读出来的形态完全一致。 */
   window.__imageDataUri = async (url) => {
     const blob = await (await fetch(url)).blob();
@@ -123,6 +126,7 @@ async function bundleDispatcher(dir) {
       `export { runEngineCommand, createFindSession, createLayoutHistory } from ${JSON.stringify(join(editorDir, "officeEditorCommands.ts"))};`,
       `export { documentText } from ${JSON.stringify(join(editorDir, "engineCommands.ts"))};`,
       `export { createEditorOptions, createInitialData } from ${JSON.stringify(join(editorDir, "officeEditorOptions.ts"))};`,
+      `export { scrollAfterZoom } from ${JSON.stringify(join(editorDir, "pageViewport.ts"))};`,
     ].join("\n"),
     "utf8",
   );
@@ -274,6 +278,54 @@ async function main() {
   check(
     Math.abs(Number(zoomed.scale) - 1.5) < 0.001 && Math.abs(Number(restored.scale) - 1) < 0.001,
     `缩放可设到 ${zoomed.scale} 并恢复 ${restored.scale}（功能区的比例下拉读的就是它）`,
+  );
+
+  // 缩放锚点：放大后视图不能跳回左上角；缩小到装得下时横向归零（交给 mx-auto 居中）
+  const zoomCases = await page.evaluate(() => [
+    window.__zoomScroll({
+      scrollTop: 400,
+      scrollLeft: 260,
+      viewportWidth: 800,
+      viewportHeight: 600,
+      contentWidth: 1191,
+      contentHeight: 6000,
+      prevScale: 1,
+      nextScale: 1.5,
+    }),
+    window.__zoomScroll({
+      scrollTop: 400,
+      scrollLeft: 260,
+      viewportWidth: 1600,
+      viewportHeight: 600,
+      contentWidth: 794,
+      contentHeight: 6000,
+      prevScale: 1.5,
+      nextScale: 1,
+    }),
+    window.__zoomScroll({
+      scrollTop: 99999,
+      scrollLeft: 99999,
+      viewportWidth: 800,
+      viewportHeight: 600,
+      contentWidth: 1191,
+      contentHeight: 1200,
+      prevScale: 1,
+      nextScale: 1.5,
+    }),
+  ]);
+  const [zoomIn, zoomOut, zoomClamp] = zoomCases;
+  check(
+    zoomIn.scrollTop === 600 && zoomIn.scrollLeft === 390,
+    `放大后滚动锚点按比例搬运（${JSON.stringify(zoomIn)}，期望 top 600 / left 390）`,
+  );
+  // 缩小：同一文档位置对应 scrollTop = 400 × (1 / 1.5) ≈ 266.7；横向因装得下而归零
+  check(
+    zoomOut.scrollLeft === 0 && Math.abs(zoomOut.scrollTop - 400 / 1.5) < 1,
+    `缩小到装得下时横向归零、纵向换成同一文档位置（${JSON.stringify(zoomOut)}）`,
+  );
+  check(
+    zoomClamp.scrollTop === 600 && zoomClamp.scrollLeft === 391,
+    `滚动位置被夹在内容范围内（${JSON.stringify(zoomClamp)}）`,
   );
 
   // ⑤ 字数统计 / 查找 / 替换 / 公式 / 表格
