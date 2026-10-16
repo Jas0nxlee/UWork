@@ -16,7 +16,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DropdownPanel, RibbonDropdownProvider, useRibbonDropdown } from "./RibbonDropdown.js";
-import { RibbonFindView, RibbonTablePickView } from "./RibbonPickViews.js";
+import { RibbonFindView, RibbonPromptButton, RibbonTablePickView } from "./RibbonPickViews.js";
 import {
   RibbonButton,
   RibbonItemRows,
@@ -62,6 +62,8 @@ function placementOrder(groups: RibbonGroup[]): RibbonGroup[] {
 }
 
 function renderItem(item: RibbonItem, style: RibbonStyle | null, run: RunCommand) {
+  if (item.kind === "command" && item.prompt)
+    return <RibbonPromptButton key={item.title} item={item} run={run} />;
   if (item.kind === "command")
     return <RibbonButton key={item.title} item={item} style={style} run={run} />;
   if (item.kind === "select")

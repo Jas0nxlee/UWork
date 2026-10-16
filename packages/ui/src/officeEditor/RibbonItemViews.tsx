@@ -12,7 +12,7 @@
 import { useRef } from "react";
 import { DropdownPanel, useRibbonDropdown } from "./RibbonDropdown.js";
 import { iconOf, isActive, isDisabled, optionsCommand } from "./ribbonItemSupport.js";
-import { RibbonFindView, RibbonTablePickView } from "./RibbonPickViews.js";
+import { RibbonFindView, RibbonPromptButton, RibbonTablePickView } from "./RibbonPickViews.js";
 import type { RunCommand } from "./officeRibbonModel.js";
 import type {
   RibbonCommand,
@@ -58,15 +58,8 @@ export function RibbonButton({
             : "text-foreground hover:bg-surface"
       }`}
       onClick={() => {
-        if (item.prompt) {
-          const answer = window.prompt(item.prompt.message, "");
-          if (answer === null) return;
-          const args = [...(item.args ?? [])];
-          args[item.prompt.at] = answer;
-          run(item.command, args);
-          onDone?.();
-          return;
-        }
+        // 需要填值的命令不在这里处理：它们由 RibbonPromptButton 弹对话框
+        // （Electron 没有实现 window.prompt，原本用它取值的图片/链接/公式都点了没反应）
         run(item.command, item.args);
         onDone?.();
       }}
@@ -300,10 +293,17 @@ export function RibbonItemRows({
             <RibbonSelectInline item={item} style={style} run={run} />
           ) : null}
           {item.kind === "command" ? (
-            <>
-              <RibbonButton item={item} style={style} run={run} onDone={dropdown.close} />
-              <span className="truncate text-xs text-foreground-subtle">{item.title}</span>
-            </>
+            item.prompt ? (
+              <>
+                <RibbonPromptButton item={item} run={run} />
+                <span className="truncate text-xs text-foreground-subtle">{item.title}</span>
+              </>
+            ) : (
+              <>
+                <RibbonButton item={item} style={style} run={run} onDone={dropdown.close} />
+                <span className="truncate text-xs text-foreground-subtle">{item.title}</span>
+              </>
+            )
           ) : null}
           {item.kind === "menu" ? (
             <div className="w-full">

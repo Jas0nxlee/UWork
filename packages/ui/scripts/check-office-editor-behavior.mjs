@@ -31,7 +31,7 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { runEngineCommand, createFindSession, documentText } from "/dispatcher.js";
+  import { runEngineCommand, createFindSession, createLayoutHistory, documentText } from "/dispatcher.js";
 
   window.__load = async (url) => {
     document.getElementById("host").replaceChildren();
@@ -43,6 +43,10 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
     window.__editor = editor;
     window.__findRef = { current: createFindSession() };
     window.__engineState = { mode: "edit", pageMode: "paging" };
+    window.__layoutRef = { current: createLayoutHistory() };
+    // 引擎的撤销可用性由编辑位从 rangeStyleChange 回填；这里固定成"引擎没得撤"，
+    // 用来验证"版面改动能否被撤销"（真机反馈：分栏改完 Ctrl+Z 没反应）。
+    window.__engineUndo = { canUndo: false, canRedo: false };
     return true;
   };
 
@@ -58,6 +62,9 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
           status: (message) => messages.push(message),
           engineState: window.__engineState,
           findRef: window.__findRef,
+          layoutRef: window.__layoutRef,
+          canUndoEngine: () => window.__engineUndo.canUndo,
+          canRedoEngine: () => window.__engineUndo.canRedo,
         },
         name,
         args,
@@ -96,7 +103,7 @@ async function bundleDispatcher(dir) {
   writeFileSync(
     entry,
     [
-      `export { runEngineCommand, createFindSession } from ${JSON.stringify(join(editorDir, "officeEditorCommands.ts"))};`,
+      `export { runEngineCommand, createFindSession, createLayoutHistory } from ${JSON.stringify(join(editorDir, "officeEditorCommands.ts"))};`,
       `export { documentText } from ${JSON.stringify(join(editorDir, "engineCommands.ts"))};`,
     ].join("\n"),
     "utf8",
@@ -333,6 +340,32 @@ async function main() {
   check(
     printResult.settled === "resolved" && printResult.after > printResult.before,
     `打印路径跑通（${printResult.settled}，打印 iframe ${printResult.before} → ${printResult.after}）`,
+  );
+
+  // 版面撤销：分栏/纸张改动不在引擎的撤销栈里（引擎只存元素表），我们自己记快照
+  await reload(false);
+  const columnsOf = () => page.evaluate(() => window.__editor.command.getColumns());
+  const beforeColumns = await columnsOf();
+  await run("executeSetColumns", [{ count: 2, gap: 30, separator: false }]);
+  const withColumns = await columnsOf();
+  await run("executeUndo");
+  const afterUndo = await columnsOf();
+  check(
+    withColumns?.count === 2 && afterUndo?.count !== 2,
+    `分栏可撤销（${JSON.stringify(beforeColumns)} → 两栏 ${JSON.stringify(withColumns)} → 撤销后 ${JSON.stringify(afterUndo)}）`,
+  );
+
+  await reload(false);
+  const beforePaper = await state();
+  await run("executePaperSize", ["A3"]);
+  const withPaper = await state();
+  await run("executeUndo");
+  const afterPaperUndo = await state();
+  check(
+    withPaper.width === 1125 &&
+      afterPaperUndo.width === beforePaper.width &&
+      afterPaperUndo.height === beforePaper.height,
+    `纸张改动可撤销（${beforePaper.width}×${beforePaper.height} → ${withPaper.width}×${withPaper.height} → ${afterPaperUndo.width}×${afterPaperUndo.height}）`,
   );
 
   // 引擎没有这条命令时要明确报出来，不能静默无反应

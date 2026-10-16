@@ -6,9 +6,112 @@
  * 这两块的交互与状态都比普通按钮重，所以从 RibbonItemViews 拆出来，守住单文件 400 行上限。
  */
 import { Search24Regular, TableSimple24Regular } from "@fluentui/react-icons";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { DropdownPanel, useRibbonDropdown } from "./RibbonDropdown.js";
-import type { RibbonFind, RibbonTable, RunCommand } from "./officeRibbonModel.js";
+import { iconOf } from "./ribbonItemSupport.js";
+import type { RibbonCommand, RibbonFind, RibbonTable, RunCommand } from "./officeRibbonModel.js";
+
+/**
+ * 需要"填一个值"的命令（图片地址/超链接/公式/水印文字）。
+ *
+ * 为什么不能用 `window.prompt`：**Electron 没有实现 prompt**（调用它没有任何反应），
+ * 于是"插入图片/链接/公式全部没响应"（真机反馈）。这里自己做一个小对话框：
+ * 传送到 body 居中显示，与功能区是否收起、是不是从分组菜单里点的都无关。
+ * `data-ribbon-dropdown` 只是让已打开的功能区面板别把这次点击当成"点外面"（面板会忽略这些元素）。
+ */
+export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: RunCommand }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const Icon = iconOf(item.icon);
+  const prompt = item.prompt;
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  if (!prompt) return null;
+
+  const submit = () => {
+    const answer = value.trim();
+    if (!answer) return;
+    const args = [...(item.args ?? [])];
+    args[prompt.at] = answer;
+    run(item.command, args);
+    setValue("");
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        title={item.title}
+        aria-label={item.title}
+        aria-expanded={open}
+        data-office-ribbon-prompt={item.command}
+        className={`flex h-8 items-center gap-1 rounded px-1.5 text-xs ${
+          open ? "bg-sky-500/15 text-sky-300" : "text-foreground hover:bg-surface"
+        }`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {Icon ? <Icon className="size-5" /> : <span className="px-1">{item.label}</span>}
+        {Icon ? <span className="text-foreground-subtle">▾</span> : null}
+      </button>
+      {open
+        ? createPortal(
+            <div
+              data-ribbon-dropdown
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+              onClick={() => setOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setOpen(false);
+                if (event.key === "Enter") submit();
+              }}
+              role="presentation"
+            >
+              <div
+                className="w-80 rounded border border-white/15 bg-neutral-900 p-3 shadow-xl"
+                style={{ color: "inherit" }}
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-label={item.title}
+              >
+                <div className="pb-2 text-xs text-foreground-subtle">{prompt.message}</div>
+                <input
+                  ref={inputRef}
+                  value={value}
+                  aria-label={prompt.message}
+                  className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs"
+                  onChange={(event) => setValue(event.target.value)}
+                />
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    className="rounded border border-border px-3 py-1 text-xs hover:bg-surface"
+                    onClick={() => setOpen(false)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    data-office-ribbon-prompt-submit
+                    className="rounded border border-sky-500 bg-sky-500/15 px-3 py-1 text-xs text-sky-200 hover:bg-sky-500/25 disabled:opacity-40"
+                    disabled={!value.trim()}
+                    onClick={submit}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 const TABLE_GRID_COLS = 10;
 const TABLE_GRID_ROWS = 8;

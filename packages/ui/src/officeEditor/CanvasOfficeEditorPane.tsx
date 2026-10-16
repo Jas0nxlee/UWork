@@ -17,7 +17,13 @@ import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OfficeRibbon } from "./OfficeRibbon.js";
-import { createFindSession, runEngineCommand } from "./officeEditorCommands.js";
+import type { EngineCommand } from "./engineCommands.js";
+import {
+  createFindSession,
+  createLayoutHistory,
+  runEngineCommand,
+  type LayoutHistory,
+} from "./officeEditorCommands.js";
 import type { RibbonStyle } from "./officeRibbonModel.js";
 import { logger } from "@/logger.js";
 
@@ -143,6 +149,10 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     // 官方 demo 的做法：选中态由 rangeStyleChange 驱动，工具栏据此高亮 B/I/U/对齐/列表等。
     editor.listener.rangeStyleChange = (payload: RibbonStyle) => {
       setRangeStyle(payload as RibbonStyle);
+      engineUndoRef.current = {
+        canUndo: (payload as { undo?: boolean }).undo !== false,
+        canRedo: (payload as { redo?: boolean }).redo !== false,
+      };
       try {
         const row = (editor.command as Record<string, () => unknown>).getRangeRow?.();
         setInTable(Boolean((row as { value?: unknown } | null)?.value));
@@ -199,10 +209,6 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
   }, [busy, fileService, path]);
 
   /**
-   * 功能区命令入口：把 ribbon 的语义命令映射到引擎命令。
-   * 参数形态全部照抄 canvas-editor 官方 demo（见 officeRibbonModel.ts 顶部注释），不自己发明。
-   */
-  /**
    * 引擎没有"布局变了"的统一事件（纸张/页边距/模式切换都不发通知），所以每次命令后主动读一次
    * `getOptions()`：纸张宽度决定编辑区宽度（居中靠它），缩放/模式/痕迹决定功能区的显示状态。
    */
@@ -226,9 +232,31 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     traceDisabled: true,
   });
 
+  /** 查找会话：功能区发起的查找/替换要在多条命令之间记住关键词与当前位置。 */
+  const findRef = useRef({ current: createFindSession() });
+  /** 版面撤销栈（纸张/页边距/分栏不在引擎的元素表历史里，见 officeEditorCommands 注释）。 */
+  const layoutRef = useRef<LayoutHistory>(createLayoutHistory());
+  /** 引擎自己的撤销/重做可用性：由 rangeStyleChange 回填。 */
+  const engineUndoRef = useRef({ canUndo: false, canRedo: false });
+  // 只用来触发重渲染：版面栈/撤销可用性发生在 React 之外，功能区要重算"撤销是否能点"
+  const [, setHistoryVersion] = useState(0);
+
   /**
-   * 功能区入口：命令交给 officeEditorCommands 调度，命令后统一同步一次布局状态
-   * （纸张/缩放/模式都没有引擎事件，不主动读就会显示旧值）。
+   * 问引擎"现在还能撤吗"。rangeStyleChange 会带 undo/redo，但只在新选区出现时推送，
+   * 所以先按当前选区触发一次（不改变选区本身），再读回填结果。
+   */
+  const refreshEngineUndo = useCallback((editor: CanvasEditor) => {
+    const commands = editor.command as EngineCommand;
+    const range = commands.getRange?.() as { startIndex?: number; endIndex?: number } | undefined;
+    if (range && typeof range.startIndex === "number" && range.startIndex >= 0) {
+      commands.executeSetRange?.(range.startIndex, range.endIndex ?? range.startIndex);
+    }
+    return engineUndoRef.current;
+  }, []);
+
+  /**
+   * 功能区入口：命令交给 officeEditorCommands 调度，调度完同步一次编辑器状态
+   * （纸张/缩放/模式/痕迹都没有引擎事件，不主动读就会显示旧值）。
    */
   const runRibbon = useCallback(
     (command: string, args?: unknown[]) => {
@@ -237,24 +265,48 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       runEngineCommand(
         {
           editor: editor as unknown as { command: Record<string, unknown>; draw?: unknown },
-          commands: editor.command as import("./engineCommands.js").EngineCommand,
+          commands: editor.command as EngineCommand,
           status: setStatus,
           engineState,
           findRef: findRef.current,
+          layoutRef: layoutRef as { current: LayoutHistory },
+          canUndoEngine: () => refreshEngineUndo(editor).canUndo,
+          canRedoEngine: () => refreshEngineUndo(editor).canRedo,
         },
         command,
         args,
       );
       syncLayoutState(editor);
+      // 版面栈与撤销可用性发生在 React 之外，版本号变化让功能区重算"撤销是否能点"
+      setHistoryVersion((current) => current + 1);
     },
-    [engineState, syncLayoutState],
+    [engineState, refreshEngineUndo, syncLayoutState],
   );
 
-  /** 查找会话：功能区发起的查找/替换要在多条命令之间记住关键词与当前位置。 */
-  const findRef = useRef({ current: createFindSession() });
+  /**
+   * Ctrl/⌘+Z 的接管：引擎自己的快捷键只撤元素表（文本），版面改动撤不动。
+   * 所以先问引擎能不能撤——能就交给引擎；不能而我们有版面快照时，才拦下来撤版面。
+   */
+  const onKeyDownCapture = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== "z") return;
+      const editor = editorRef.current;
+      if (!editor) return;
+      const engine = refreshEngineUndo(editor);
+      const redo = event.shiftKey;
+      if (redo ? engine.canRedo : engine.canUndo) return;
+      const history = layoutRef.current;
+      if ((redo ? history.redo : history.undo).length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runRibbon(redo ? "executeRedo" : "executeUndo");
+    },
+    [refreshEngineUndo, runRibbon],
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" onKeyDownCapture={onKeyDownCapture}>
       <div className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 text-xs">
         <button
           type="button"
@@ -300,6 +352,9 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       <OfficeRibbon
         style={{
           ...rangeStyle,
+          // 引擎撤不动但版面栈还有货时，撤销按钮必须仍然可点（否则用户点了灰按钮以为坏了）
+          undo: rangeStyle?.undo !== false || layoutRef.current.undo.length > 0,
+          redo: rangeStyle?.redo !== false || layoutRef.current.redo.length > 0,
           mode: engineState.mode,
           pageMode: engineState.pageMode,
           traceDisabled: engineState.traceDisabled,

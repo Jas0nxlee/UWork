@@ -24,6 +24,58 @@ import type { IElement } from "./engineTypes.js";
  * 参数形态与坑**（纸张收像素、控件要整套 valueSets、连页是 "continuity"、引擎没有字数统计命令…），
  * 集中在一处才好对照 engineCommands.ts 的注释。
  */
+/**
+ * 版面状态（纸张/页边距/方向/分栏）。
+ *
+ * 为什么要自己做撤销：引擎的撤销栈存的是**元素表快照**（`historyManager.execute(fn)`），
+ * 而分栏/纸张这些是 `options` 上的版面配置，不进元素表——所以改完版面按 Ctrl+Z 什么都不会发生
+ * （真机反馈"最右边的插入分栏没法撤销"）。这里给版面单独记一份快照栈，撤销时先让引擎撤文本、
+ * 引擎撤不动了再撤版面（与用户的心智一致：最后做的先回退）。
+ */
+export interface LayoutState {
+  width?: number;
+  height?: number;
+  margins?: number[];
+  paperDirection?: string;
+  columns: unknown;
+}
+
+export interface LayoutHistory {
+  undo: LayoutState[];
+  redo: LayoutState[];
+}
+
+export function createLayoutHistory(): LayoutHistory {
+  return { undo: [], redo: [] };
+}
+
+/** 读当前版面（引擎的 getOptions 里有纸张/页边距/方向，分栏要单独问 getColumns）。 */
+export function readLayout(commands: EngineCommand): LayoutState | null {
+  const getOptions = commands.getOptions as
+    | (() => { width?: number; height?: number; margins?: number[]; paperDirection?: string })
+    | undefined;
+  const options = getOptions?.();
+  if (!options) return null;
+  const getColumns = commands.getColumns as (() => unknown) | undefined;
+  return {
+    width: options.width,
+    height: options.height,
+    margins: options.margins,
+    paperDirection: options.paperDirection,
+    columns: getColumns?.() ?? null,
+  };
+}
+
+/** 把版面恢复成快照（用引擎自己的命令，避免直接改 options 造成状态不一致）。 */
+export function applyLayout(commands: EngineCommand, layout: LayoutState): void {
+  if (typeof layout.width === "number" && typeof layout.height === "number") {
+    commands.executePaperSize?.(layout.width, layout.height);
+  }
+  if (layout.margins) commands.executeSetPaperMargin?.(layout.margins);
+  commands.executeSetColumns?.(layout.columns ?? null);
+  if (layout.paperDirection) commands.executePaperDirection?.(layout.paperDirection);
+}
+
 export interface CommandContext {
   /** 引擎实例（需要 `command`，替换还要读内部元素表）。 */
   editor: { command: Record<string, unknown>; draw?: unknown };
@@ -33,7 +85,20 @@ export interface CommandContext {
   engineState: { mode: string; pageMode: string };
   /** 查找会话：关键词、命中下标与当前位置（跨命令保留）。 */
   findRef: { current: FindSession };
+  /** 版面撤销栈（纸张/页边距/方向/分栏）。 */
+  layoutRef?: { current: LayoutHistory };
+  /** 引擎自己还能不能撤销/重做（由编辑位从 rangeStyleChange 里回填；决定"该撤文本还是撤版面"）。 */
+  canUndoEngine?: () => boolean;
+  canRedoEngine?: () => boolean;
 }
+
+/** 会改变版面的命令：执行前记一份快照，供"撤版面"使用。 */
+const LAYOUT_COMMANDS = new Set([
+  "executeSetColumns",
+  "executePaperSize",
+  "executePaperDirection",
+  "executeSetPaperMargin",
+]);
 
 export interface FindSession {
   keyword: string;
@@ -48,6 +113,14 @@ export function createFindSession(): FindSession {
 
 export function runEngineCommand(context: CommandContext, command: string, args?: unknown[]): void {
   const { editor, commands, status, engineState, findRef } = context;
+  // 版面类命令先记快照：执行成功与否都要能退回上一种版面（引擎的元素表历史管不到版面）
+  if (LAYOUT_COMMANDS.has(command) && context.layoutRef) {
+    const before = readLayout(commands);
+    if (before) {
+      context.layoutRef.current.undo.push(before);
+      context.layoutRef.current.redo.length = 0;
+    }
+  }
   try {
     switch (command) {
       case "executeInsertControlByType": {
@@ -216,6 +289,20 @@ export function runEngineCommand(context: CommandContext, command: string, args?
       }
       case "executeUndo":
       case "executeRedo": {
+        const redo = command === "executeRedo";
+        const engineCan = redo ? context.canRedoEngine?.() : context.canUndoEngine?.();
+        const history = context.layoutRef?.current;
+        const stack = redo ? history?.redo : history?.undo;
+        // 引擎的元素表历史优先（文本编辑），撤不动了再撤版面——顺序与用户操作顺序一致。
+        if (!engineCan && history && stack?.length) {
+          const layout = stack.pop();
+          if (layout) {
+            applyLayout(commands, layout);
+            (redo ? history.undo : history.redo).push(layout);
+            status(redo ? "已重做版面修改" : "已撤销版面修改（纸张/页边距/分栏）");
+            break;
+          }
+        }
         // 先确保画布有焦点/游标，再走引擎的历史栈（与 Ctrl+Z 行为一致）。
         commands.focus?.();
         commands[command]?.();

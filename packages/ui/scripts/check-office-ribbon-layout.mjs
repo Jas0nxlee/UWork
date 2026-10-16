@@ -53,8 +53,10 @@ const style = {
   highlight: null,
 };
 
+// 记录回调，供"需要填值的命令"断言（图片/链接/公式走对话框取值）
+window.__calls = [];
 function App() {
-  return <OfficeRibbon style={style} inTable run={() => {}} />;
+  return <OfficeRibbon style={style} inTable run={(command, args) => window.__calls.push([command, args])} />;
 }
 
 createRoot(document.getElementById("root")).render(<App />);
@@ -373,6 +375,44 @@ async function main() {
   if (findPanel.buttons < 5) failures.push(`查找替换面板按钮不足（${findPanel.buttons}）`);
   const findShot = await page.screenshot();
   writeFileSync(join(dir, "ribbon-find.png"), findShot);
+
+  // ⑤ 需要填值的命令（图片/链接/公式）：Electron 没有 window.prompt，必须走我们的对话框
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.waitForTimeout(120);
+  await page.click('[data-office-ribbon-tab="insert"]');
+  await page.waitForTimeout(120);
+  for (const [command, value] of [
+    ["executeImage", "https://example.com/a.png"],
+    ["executeHyperlink", "https://example.com"],
+    ["executeLatex", "E=mc^2"],
+  ]) {
+    await page.evaluate(() => {
+      window.__calls.length = 0;
+    });
+    await page.click(`button[data-office-ribbon-prompt="${command}"]`);
+    await page.waitForTimeout(80);
+    const dialog = await page.evaluate(() => {
+      const input = document.querySelector('[role="dialog"] input');
+      return { hasDialog: Boolean(input), focused: document.activeElement === input };
+    });
+    if (!dialog.hasDialog) {
+      failures.push(
+        `${command}：点开后没有取值对话框（Electron 里 window.prompt 没有实现，必须自己弹）`,
+      );
+      continue;
+    }
+    await page.fill('[role="dialog"] input', value);
+    await page.click("button[data-office-ribbon-prompt-submit]");
+    await page.waitForTimeout(80);
+    const calls = await page.evaluate(() => window.__calls);
+    const ok =
+      calls.length === 1 && calls[0][0] === command && JSON.stringify(calls[0][1]).includes(value);
+    console.log(
+      `取值对话框 ${command}：${dialog.hasDialog ? "有" : "无"}对话框 · 提交后调用 ${JSON.stringify(calls)}`,
+    );
+    if (!ok)
+      failures.push(`${command}：对话框提交后没有把填的值带进命令（${JSON.stringify(calls)}）`);
+  }
 
   const shot = await page.screenshot();
   writeFileSync(join(dir, "ribbon.png"), shot);
