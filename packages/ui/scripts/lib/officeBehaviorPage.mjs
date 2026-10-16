@@ -9,11 +9,12 @@ import { join } from "node:path";
 
 export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <div id="host" style="height:100vh;overflow:auto"></div>
+<script src="/jszip.js"></script>
 <script type="importmap">{"imports":{"@hufe921/canvas-editor":"/ce/canvas-editor.js"}}</script>
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { probeWriteSupport } from "/dispatcher.js";
+  import { probeWriteSupport, preserveHeaderFooter } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -80,6 +81,22 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
 
+  /** 页眉页脚保留：给源文档与导出文档的字节，返回处理后的 zip 结构摘要。 */
+  window.__preserveHeaderFooter = async (sourceB64, exportedB64) => {
+    const toBuffer = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+    const result = await preserveHeaderFooter(toBuffer(sourceB64), toBuffer(exportedB64));
+    const zip = await window.JSZip.loadAsync(result.bytes);
+    const document = await zip.file("word/document.xml")?.async("string");
+    const footer = await zip.file("word/footer1.xml")?.async("string");
+    return {
+      note: result.note,
+      parts: Object.keys(zip.files).filter((n) => new RegExp("word/(header|footer)[0-9]*[.]xml$").test(n)),
+      headerRefs: (document?.match(new RegExp("<w:headerReference", "g")) ?? []).length,
+      footerRefs: (document?.match(new RegExp("<w:footerReference", "g")) ?? []).length,
+      footerText: footer ?? "",
+    };
+  };
+
   /** 写能力探测：老远端抛 Method not found 判为不支持；版本不匹配（新服务端）判为支持。 */
   window.__probeWrite = async (mode) => {
     const fileService =
@@ -140,6 +157,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { scrollAfterZoom } from ${JSON.stringify(join(editorDir, "pageViewport.ts"))};`,
       `export { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from ${JSON.stringify(join(editorDir, "docxPreflight.ts"))};`,
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
+      `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
     ].join("\n"),
     "utf8",
   );

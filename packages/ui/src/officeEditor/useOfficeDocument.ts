@@ -8,6 +8,7 @@ import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
+import { preserveHeaderFooter } from "./docxHeaderFooter.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
@@ -62,6 +63,8 @@ export function useOfficeDocument({
   onDirtyChange,
 }: UseOfficeDocumentInput): UseOfficeDocumentResult {
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
+  /** 源文件字节：保存时要用它把原页眉页脚还给导出结果（编辑器不编辑页眉页脚）。 */
+  const sourceBytesRef = useRef<ArrayBuffer | null>(null);
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -140,6 +143,7 @@ export function useOfficeDocument({
         return;
       }
       const raw = base64ToArrayBuffer(preview.dataBase64);
+      sourceBytesRef.current = raw;
       const label = `${Math.round(preview.totalBytes / 1024)} KiB`;
       // 护栏：先看清这份文档里有什么是引擎**保不住**的。实测修订的插入文字、超链接文字、公式文字会直接消失；
       // 批注/脚注在保存时丢——所以先把话说明白，用户确认后才按归一化字节导入。
@@ -188,7 +192,12 @@ export function useOfficeDocument({
         ? await exportDocx({ fileName: path.split("/").pop() ?? "document.docx" })
         : null;
       if (!(blob instanceof Blob)) throw new Error("编辑器没有返回文档内容");
-      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const exported = await blob.arrayBuffer();
+      // 页眉页脚不属于本次编辑范围：原样保留（没有就别让插件默认页脚留下来）
+      const restored = sourceBytesRef.current
+        ? await preserveHeaderFooter(sourceBytesRef.current, exported)
+        : { bytes: exported, note: "" };
+      const bytes = new Uint8Array(restored.bytes);
       setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
       const result = await fileService.writeBinaryFile({
         path,
@@ -200,7 +209,9 @@ export function useOfficeDocument({
       markDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
       setStatus(
-        `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}`,
+        `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}${
+          restored.note ? ` · ${restored.note}` : ""
+        }`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
