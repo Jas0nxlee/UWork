@@ -9,7 +9,13 @@
  * 数据与命令出处见 officeRibbonModel.ts 顶部注释。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RibbonButton, RibbonSelectView, StyleGalleryView, type RunCommand } from "./RibbonItemViews.js";
+import {
+  DropdownPanel,
+  RibbonButton,
+  RibbonSelectView,
+  StyleGalleryView,
+  type RunCommand,
+} from "./RibbonItemViews.js";
 import { RIBBON_TABS, type RibbonGroup, type RibbonItem, type RibbonStyle } from "./officeRibbonModel.js";
 
 export interface OfficeRibbonProps {
@@ -52,18 +58,10 @@ function OverflowMenu({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
   if (items.length === 0) return null;
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={anchorRef}>
       <button
         type="button"
         title={`更多（${label}）`}
@@ -73,9 +71,8 @@ function OverflowMenu({
       >
         ⋯
       </button>
-      {open ? (
-        <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded border border-border bg-background py-1 shadow-lg">
-          <div className="px-2 py-1 text-[11px] text-foreground-subtle">{label} · 更多</div>
+      <DropdownPanel open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} minWidth={224}>
+        <div className="px-2 py-1 text-[11px] text-foreground-subtle">{label} · 更多</div>
           {items.map((item) => (
             <div key={item.title} className="flex items-center gap-1 px-2 py-1">
               {item.kind === "select" ? <RibbonSelectView item={item} style={style} run={run} compact={false} /> : null}
@@ -87,9 +84,8 @@ function OverflowMenu({
               ) : null}
               {item.kind === "gallery" ? <StyleGalleryView gallery={item} style={style} run={run} /> : null}
             </div>
-          ))}
-        </div>
-      ) : null}
+        ))}
+      </DropdownPanel>
     </div>
   );
 }

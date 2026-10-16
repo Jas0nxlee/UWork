@@ -56,7 +56,9 @@ import {
   ZoomOut24Regular,
 } from "@fluentui/react-icons";
 import type { ComponentType } from "react";
+import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RibbonCommand, RibbonGallery, RibbonSelect, RibbonStyle } from "./officeRibbonModel.js";
 
 export type RunCommand = (command: string, args?: unknown[]) => void;
@@ -171,6 +173,79 @@ export function optionsCommand(title: string): string {
   }
 }
 
+
+/**
+ * 下拉面板：**传送到 body + fixed 定位**。
+ *
+ * 为什么不能用普通绝对定位：功能区的分组行有 `overflow-x-auto`，绝对定位的下拉会被祖先裁掉
+ * （真机反馈"字体下拉被困在上面栏中"，截图里只剩两行）。传送到 body 后不受任何祖先的 overflow/transform 影响；
+ * 位置按触发器的 rect 计算，并做视口内夹取与"下方放不下就翻到上方"。
+ */
+export function DropdownPanel({
+  open,
+  anchorRef,
+  onClose,
+  minWidth = 208,
+  children,
+}: {
+  open: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+  minWidth?: number;
+  children: React.ReactNode;
+}) {
+  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(null);
+  useEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    const measure = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.max(minWidth, rect.width);
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      const panelHeight = 288;
+      const below = rect.bottom + 4;
+      const top = below + panelHeight <= window.innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 4);
+      setPosition({ left, top, width });
+    };
+    measure();
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (anchorRef.current?.contains(target)) return;
+      if ((event.target as HTMLElement)?.closest?.("[data-ribbon-dropdown]")) return;
+      onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", measure);
+    // 面板打开时若容器滚动，关闭它（避免面板与触发器错位）
+    document.addEventListener("scroll", onClose, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", onClose, true);
+    };
+  }, [anchorRef, minWidth, onClose, open]);
+  if (!open || !position) return null;
+  return createPortal(
+    <div
+      data-ribbon-dropdown
+      className="fixed z-50 max-h-72 overflow-auto rounded border border-border bg-background py-1 shadow-xl"
+      style={{ left: position.left, top: position.top, width: position.width }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
 export function RibbonButton({
   item,
   style,
@@ -233,21 +308,13 @@ export function RibbonSelectView({
   compact: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
   const Icon = iconOf(item.icon);
   const value = item.current?.(style ?? {}) ?? null;
   const valueLabel = item.options.find((option) => String(option.args[0]) === value)?.label ?? value;
   const swatch = item.swatch?.(style ?? {}) ?? null;
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={anchorRef}>
       <button
         type="button"
         title={item.title}
@@ -268,31 +335,29 @@ export function RibbonSelectView({
           style={{ backgroundColor: swatch }}
         />
       ) : null}
-      {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 max-h-72 w-52 overflow-auto rounded border border-border bg-background py-1 shadow-lg">
-          {item.options.map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-surface ${
-                String(option.args[0]) === value ? "text-sky-300" : ""
-              }`}
-              onClick={() => {
-                setOpen(false);
-                run(optionsCommand(item.title), option.args);
-              }}
-            >
-              {String(option.args[0] ?? "").startsWith("rgb") ? (
-                <span
-                  className="size-3 shrink-0 rounded-sm border border-border"
-                  style={{ backgroundColor: String(option.args[0]) }}
-                />
-              ) : null}
-              <span className="truncate">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <DropdownPanel open={open} anchorRef={anchorRef} onClose={() => setOpen(false)}>
+        {item.options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-surface ${
+              String(option.args[0]) === value ? "text-sky-300" : ""
+            }`}
+            onClick={() => {
+              setOpen(false);
+              run(optionsCommand(item.title), option.args);
+            }}
+          >
+            {String(option.args[0] ?? "").startsWith("rgb") ? (
+              <span
+                className="size-3 shrink-0 rounded-sm border border-border"
+                style={{ backgroundColor: String(option.args[0]) }}
+              />
+            ) : null}
+            <span className="truncate">{option.label}</span>
+          </button>
+        ))}
+      </DropdownPanel>
     </div>
   );
 }

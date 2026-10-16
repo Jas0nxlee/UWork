@@ -42,7 +42,27 @@ export const HIGHLIGHT_COLORS = [
   "rgb(240, 240, 240)",
 ];
 
-export const FONTS = ["宋体", "仿宋", "黑体", "微软雅黑", "楷体", "等线", "Times New Roman", "Arial", "Calibri"];
+/**
+ * 字体：给**跨平台字体栈**而不是单一字体名。
+ *
+ * 真机反馈"字体没有变化"：原来只列 Windows 字体名（宋体/仿宋/黑体/微软雅黑/楷体），
+ * 在 macOS 上这些名字全部解析失败 → 统统回退到同一套系统字体，于是"换了跟没换一样"。
+ * 引擎把它直接塞进 canvas 的 `font`，所以用 CSS 风格的候选列表即可（逗号分隔、逐个回退）。
+ * 显示名仍用用户熟悉的中文名，值用字体栈。
+ */
+export const FONTS: Array<{ label: string; value: string }> = [
+  { label: "宋体", value: "SimSun, Songti SC, STSong, serif" },
+  { label: "仿宋", value: "FangSong, STFangsong, serif" },
+  { label: "黑体", value: "SimHei, Heiti SC, STHeiti, sans-serif" },
+  { label: "微软雅黑", value: "Microsoft YaHei, PingFang SC, Hiragino Sans GB, sans-serif" },
+  { label: "楷体", value: "KaiTi, Kaiti SC, STKaiti, serif" },
+  { label: "等线", value: "DengXian, PingFang SC, sans-serif" },
+  { label: "苹方", value: "PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" },
+  { label: "Times New Roman", value: "Times New Roman, Times, serif" },
+  { label: "Arial", value: "Arial, Helvetica, sans-serif" },
+  { label: "Calibri", value: "Calibri, Carlito, Arial, sans-serif" },
+];
+
 export const SIZES = [9, 10.5, 11, 12, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 42, 48, 56, 72];
 
 /**

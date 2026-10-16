@@ -151,8 +151,11 @@ export const RIBBON_TABS: RibbonTab[] = [
             kind: "select",
             label: "字体",
             title: "字体",
-            options: FONTS.map((font) => ({ label: font, args: [font] })),
-            current: (style) => style.font ?? null,
+            // 显示名给用户看，值给引擎（跨平台字体栈，见 officeRibbonOptions 注释）
+            options: FONTS.map((font) => ({ label: font.label, args: [font.value] })),
+            current: (style): string | null =>
+              FONTS.find((font) => style.font && String(style.font).includes(font.label))?.label ??
+              (style.font ? String(style.font).split(",")[0] ?? null : null),
           },
           {
             kind: "select",
