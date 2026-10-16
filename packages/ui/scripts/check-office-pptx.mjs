@@ -25,6 +25,10 @@ async function main() {
   const harness = await startOfficeHarness({
     prefix: "office-pptx-",
     pages: { "index.html": PPTX_PAGE },
+    // 真样本（给人手点的那份）也要过一遍：用户第一次打开的很可能就是它
+    copies: {
+      [join(repoRoot, "packages/ui/test/fixtures/office-sample.pptx")]: "office-sample.pptx",
+    },
     prepareDir: (dir) =>
       bundlePptxEntry(dir, {
         repoRoot,
@@ -209,6 +213,40 @@ async function main() {
   check(ui.areas === 2 && ui.slideButtons === 2, `界面渲染出 2 页 / 2 个文本框（${ui.areas}）`);
   check(ui.first === "标题一\n副标题", `文本框里是原文（${JSON.stringify(ui.first)}）`);
   check(ui.status.includes("已载入"), `状态栏交代清楚（${ui.status}）`);
+
+  // ⑦ 真样本文件：4 页、能改字、产物能渲染
+  const sample = await page.evaluate(async () => {
+    const bytes = await (await fetch("/office-sample.pptx")).arrayBuffer();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const patched = window.__pptx.patch(deck.sourceXml.get(part), 0, ["季度经营回顾（改过）", "2026 Q3"]);
+    const current = new Map(deck.sourceXml);
+    current.set(part, patched);
+    const written = await window.__pptx.write({ source: bytes, baseline: deck.sourceXml, current });
+    const validation = await window.__pptx.validate(written.bytes, bytes, {
+      editedSlides: written.changedSlides,
+    });
+    const rendered = await window.__pptx.render(written.bytes);
+    const reread = await window.__pptx.readDeck(written.bytes);
+    return {
+      slides: deck.slides.length,
+      tableCells: deck.slides[2].blocks.length,
+      lines: reread.slides[0].blocks[0].lines,
+      validation: { ok: validation.ok, issues: validation.issues.map((issue) => issue.message) },
+      rendered,
+    };
+  });
+  check(sample.slides === 4, `真样本读得出 4 页（${sample.slides}）`);
+  check(sample.tableCells === 12, `真样本的表格是按单元格解析的（${sample.tableCells} 个文本块）`);
+  check(
+    sample.lines.join("|") === "季度经营回顾（改过）|2026 Q3",
+    `真样本改字后读回来是对的（${JSON.stringify(sample.lines)}）`,
+  );
+  check(sample.validation.ok, `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`);
+  check(
+    sample.rendered.slides === 4,
+    `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`,
+  );
 
   await harness.close();
   if (failures.length > 0) {

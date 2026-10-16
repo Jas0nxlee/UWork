@@ -27,6 +27,10 @@ async function main() {
   const harness = await startOfficeHarness({
     prefix: "office-excel-io-",
     pages: { "index.html": EXCEL_PAGE },
+    // 真样本（给人手点的那两个）也要过一遍同样的路径：用户第一次打开的很可能就是它们
+    copies: {
+      [join(repoRoot, "packages/ui/test/fixtures/office-sample.xlsx")]: "office-sample.xlsx",
+    },
     prepareDir: (dir) =>
       bundleExcelEntry(dir, {
         repoRoot,
@@ -237,6 +241,49 @@ async function main() {
     guard.findings.charts > 0 && guard.notices.some((line) => line.includes("只读")),
     `带图表的工作簿被拦成只读（${guard.notices.join("；")}）`,
   );
+
+  // ⑤ 真样本文件（packages/ui/test/fixtures/office-sample.xlsx）：读 → 改 → 写 → 校验
+  const sample = await page.evaluate(async () => {
+    const bytes = await (await fetch("/office-sample.xlsx")).arrayBuffer();
+    const read = await window.__xlsx.read(bytes);
+    const sheet = read.sheets[0];
+    const cellAt = (r, c) => sheet.celldata.find((entry) => entry.r === r && entry.c === c)?.v ?? null;
+    const edited = {
+      ...sheet,
+      celldata: sheet.celldata.map((entry) =>
+        entry.r === 2 && entry.c === 1 ? { ...entry, v: { ...entry.v, v: 999 } } : entry,
+      ),
+    };
+    const written = await window.__xlsx.write({
+      source: bytes,
+      baseline: read.sheets,
+      current: [edited, ...read.sheets.slice(1)],
+    });
+    const validation = await window.__xlsx.validate(written.bytes, bytes);
+    const inspected = await window.__xlsx.inspect(written.bytes, "销售明细");
+    return {
+      names: read.sheets.map((item) => item.name),
+      hidden: read.sheets[1]?.hide,
+      d2: cellAt(1, 3),
+      validation: { ok: validation.ok, issues: validation.issues.map((issue) => issue.message) },
+      edited: inspected.b3,
+      note: inspected.a2note,
+      validations: inspected.validations,
+    };
+  });
+  check(
+    sample.names.join(",") === "销售明细,内部备注" && sample.hidden === 1,
+    `真样本读得出（${sample.names.join("、")}，隐藏表保留）`,
+  );
+  check(
+    sample.d2?.f === "B2*C2",
+    `真样本的公式读得出（${sample.d2?.f}）`,
+  );
+  check(
+    sample.edited === 999 && sample.note === "这个价格是含税的" && sample.validations === 1,
+    `真样本改一格后批注/数据验证仍在（B3=${sample.edited}）`,
+  );
+  check(sample.validation.ok, `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`);
 
   await harness.close();
   if (failures.length > 0) {
