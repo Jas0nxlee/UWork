@@ -7,6 +7,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { CASE_SNIPPETS } from "./officeCaseSnippets.mjs";
+
 export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <div id="host" style="height:100vh;overflow:auto"></div>
 <script src="/jszip.js"></script>
@@ -15,7 +17,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
   import { layoutBalloons } from "/dispatcher.js";
-  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from "/dispatcher.js";
+  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions, removeCommentAnchorsInDocx, stripCommentsFromPreservation } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -138,6 +140,35 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     };
   };
 
+  /**
+   * 删除批注：正文不动，但字节层要真的去掉这条的锚点，且**段落原件**也要同步
+   * （否则保存时 restoreRevisions 会把锚点原样写回去，表现就是"删不掉"）。
+   */
+  window.__deleteCommentCase = async () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const zip = new window.JSZip();
+    zip.file("word/document.xml",
+      '<w:document ' + XMLNS + '><w:body>' +
+      '<w:p><w:commentRangeStart w:id="7"/><w:r><w:t>第一条锚点</w:t></w:r><w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r></w:p>' +
+      '<w:p><w:commentRangeStart w:id="8"/><w:r><w:t>第二条锚点</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r></w:p>' +
+      '</w:body></w:document>');
+    const source = await zip.generateAsync({ type: "arraybuffer" });
+    const view = await window.__trackedApi.applyRevisionView(source);
+    const afterDelete = await window.__trackedApi.removeCommentAnchorsInDocx(view.bytes, ["7"]);
+    const preserved = window.__trackedApi.stripCommentsFromPreservation(view.preservation, ["7"]);
+    const zipAfter = await window.JSZip.loadAsync(afterDelete.bytes);
+    const xml = await zipAfter.file("word/document.xml").async("string");
+    return {
+      removed: afterDelete.removed,
+      goneFirst: !xml.includes('w:id="7"'),
+      keepSecond: xml.includes('w:id="8"'),
+      bodyKept: xml.includes("第一条锚点") && xml.includes("第二条锚点"),
+      preservationGoneFirst: !preserved.paragraphs[0].originalXml.includes('w:id="7"'),
+      preservationKeepSecond: preserved.paragraphs[1].originalXml.includes('w:id="8"'),
+      commentsLeft: preserved.comments.length,
+    };
+  };
+
   /** 批注解析：comments.xml 的作者/时间/内容要与正文里的 [n] 标记对上。 */
   window.__commentCase = async () => {
     const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -181,6 +212,8 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     buildRevisionView,
     listRevisions,
     resolveRevisions,
+    removeCommentAnchorsInDocx,
+    stripCommentsFromPreservation,
   };
 
   /**
@@ -225,119 +258,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     };
   };
 
-  /**
-   * 修订模式用例：基线文档 → "编辑后"文档（改一段、加一段、删一段）→ 落成 w:ins/w:del。
-   * 判据：接受全部修订 == 编辑后的样子；拒绝全部修订 == 基线（与 Word 口径一致）。
-   */
-  window.__trackChangesCase = async () => {
-    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    const paragraph = (text) => '<w:p><w:r><w:t xml:space="preserve">' + text + '</w:t></w:r></w:p>';
-    const doc = (paragraphs) => '<w:document ' + XMLNS + '><w:body>' + paragraphs.join("") + '</w:body></w:document>';
-    // applyTrackedChanges 收的是 **docx（zip）字节**：这里现场打两个最小 zip
-    const zipOf = async (documentXml) => {
-      const zip = new window.JSZip();
-      zip.file(
-        "[Content_Types].xml",
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
-      );
-      zip.file("word/document.xml", documentXml);
-      return await zip.generateAsync({ type: "arraybuffer" });
-    };
-    const baseline = doc([paragraph("第一段原样"), paragraph("第二段要改旧内容"), paragraph("第三段要删")]);
-    const edited = doc([paragraph("第一段原样"), paragraph("第二段要改新内容"), paragraph("新增的一段")]);
-    const result = await window.__trackedApi.applyTrackedChanges(await zipOf(baseline), await zipOf(edited), {
-      author: "UWork",
-      date: "2026-10-16T00:00:00.000Z",
-    });
-    const zip = await window.JSZip.loadAsync(result.bytes);
-    const xml = await zip.file("word/document.xml").async("string");
-    return {
-      stats: result.stats,
-      hasIns: new RegExp("<w:ins[ >]").test(xml),
-      hasDel: new RegExp("<w:del[ >]").test(xml),
-      hasDelText: new RegExp("<w:delText").test(xml),
-      accepted: window.__trackedApi.acceptedText(xml),
-      rejected: window.__trackedApi.rejectedText(xml, baseline),
-      editedText: ["第一段原样", "第二段要改新内容", "新增的一段"].join("\\n"),
-      baselineText: ["第一段原样", "第二段要改旧内容", "第三段要删"].join("\\n"),
-    };
-  };
-
-  /**
-   * 页眉页脚用例：造"源无页脚"与"源有页脚"两份文档，各走一次 preserveHeaderFooter，
-   * 与"插件导出（总带自己的 PAGE 页脚）"对比。
-   */
-  window.__headerFooterCases = async () => {
-    const encode = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
-    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    const CONTENT_TYPES_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>';
-    const FOOTER_OVERRIDE = '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>';
-    const HEADER_OVERRIDE = '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>';
-
-    const buildSource = async (withFooter) => {
-      const zip = new window.JSZip();
-      zip.file("[Content_Types].xml", CONTENT_TYPES_HEAD + (withFooter ? FOOTER_OVERRIDE : "") + "</Types>");
-      zip.file("word/document.xml", '<w:document ' + XMLNS + '><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p></w:body></w:document>');
-      if (withFooter)
-        zip.file("word/footer1.xml", '<w:ftr ' + XMLNS + '><w:p><w:r><w:t>公司页脚 FOOTER-MARK</w:t></w:r></w:p></w:ftr>');
-      return new Uint8Array(await zip.generateAsync({ type: "arraybuffer" }));
-    };
-    // 模拟插件导出：总带自己的页眉页脚
-    const exportZip = new window.JSZip();
-    exportZip.file("[Content_Types].xml", CONTENT_TYPES_HEAD + FOOTER_OVERRIDE + HEADER_OVERRIDE + "</Types>");
-    exportZip.file(
-      "word/document.xml",
-      '<w:document ' + XMLNS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId6"/><w:footerReference w:type="default" r:id="rId7"/></w:sectPr></w:body></w:document>',
-    );
-    exportZip.file("word/footer1.xml", '<w:ftr ' + XMLNS + '><w:p><w:r><w:t>PAGE</w:t></w:r></w:p></w:ftr>');
-    exportZip.file("word/header1.xml", '<w:hdr ' + XMLNS + '><w:p/></w:hdr>');
-    const exported = encode(new Uint8Array(await exportZip.generateAsync({ type: "arraybuffer" })));
-
-    return {
-      plain: await window.__preserveHeaderFooter(encode(await buildSource(false)), exported),
-      withFooter: await window.__preserveHeaderFooter(encode(await buildSource(true)), exported),
-    };
-  };
-
-  /** 页眉页脚保留：给源文档与导出文档的字节，返回处理后的 zip 结构摘要。 */
-  window.__preserveHeaderFooter = async (sourceB64, exportedB64) => {
-    const toBuffer = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
-    const result = await preserveHeaderFooter(toBuffer(sourceB64), toBuffer(exportedB64));
-    const zip = await window.JSZip.loadAsync(result.bytes);
-    const document = await zip.file("word/document.xml")?.async("string");
-    const footer = await zip.file("word/footer1.xml")?.async("string");
-    return {
-      note: result.note,
-      parts: Object.keys(zip.files).filter((n) => new RegExp("word/(header|footer)[0-9]*[.]xml$").test(n)),
-      headerRefs: (document?.match(new RegExp("<w:headerReference", "g")) ?? []).length,
-      footerRefs: (document?.match(new RegExp("<w:footerReference", "g")) ?? []).length,
-      footerText: footer ?? "",
-    };
-  };
-
-  /** 写能力探测：老远端抛 Method not found 判为不支持；版本不匹配（新服务端）判为支持。 */
-  window.__probeWrite = async (mode) => {
-    const fileService =
-      mode === "old-remote"
-        ? { writeBinaryFile: async () => { throw new Error("Method not found: fileService.writeBinaryFile"); } }
-        : mode === "new-remote"
-          ? { writeBinaryFile: async () => { throw new Error("File revision mismatch: /x (disk 10B/1 vs expected -1B/-1)"); } }
-          : { writeBinaryFile: async () => ({ path: "/x", bytes: 0, revision: { size: 0, mtimeMs: 0 } }) };
-    return await probeWriteSupport(fileService, "/x");
-  };
-
-  /** 批注框排版（纯函数，见 commentBalloons.ts）：重叠让位、按锚点排序、无锚点的排最后。 */
-  window.__balloonCase = () =>
-    layoutBalloons(
-      [
-        { id: "b", anchorTop: 40, height: 60 },
-        { id: "a", anchorTop: 10, height: 60 },
-        { id: "c", anchorTop: 60, height: 40 },
-        { id: "d", anchorTop: null, height: 30 },
-      ],
-      { minTop: 0 },
-    );
-
+${CASE_SNIPPETS}
   /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
   window.__zoomScroll = (input) => scrollAfterZoom(input);
 
@@ -389,7 +310,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
-      `export { applyRevisionView, restoreRevisions, buildRevisionView } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
+      `export { applyRevisionView, restoreRevisions, buildRevisionView, removeCommentAnchorsInDocx, stripCommentsFromPreservation } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
       `export { listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxReview.ts"))};`,
       `export { layoutBalloons } from ${JSON.stringify(join(editorDir, "commentBalloons.ts"))};`,
     ].join("\n"),

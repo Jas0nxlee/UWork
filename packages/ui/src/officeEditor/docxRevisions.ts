@@ -300,3 +300,65 @@ export async function restoreRevisions(
     edited: result.edited,
   };
 }
+
+/**
+ * 删除批注标记（Word 的"删除批注"）：去掉 `w:commentRangeStart/End` 与对应 run 里的 `w:commentReference`，
+ * **正文一个字不动**。返回值同时给"改了什么"，供状态栏与回归检查用。
+ */
+export function removeCommentMarkup(
+  documentXml: string,
+  ids: Iterable<string>,
+): { xml: string; removed: number } {
+  const targets = new Set(ids);
+  let removed = 0;
+  let out = documentXml;
+  for (const id of targets) {
+    const before = out;
+    out = out
+      .replace(new RegExp(`<w:commentRangeStart[^>]*w:id="${id}"[^>]*/>`, "g"), "")
+      .replace(new RegExp(`<w:commentRangeEnd[^>]*w:id="${id}"[^>]*/>`, "g"), "")
+      // 引用所在的那个 run 整个去掉（它只承载锚点，没有文字）
+      .replace(
+        new RegExp(
+          `<w:r(?:\\s[^>]*)?>(?:(?!</w:r>)[\\s\\S])*?<w:commentReference[^>]*w:id="${id}"[^>]*/>(?:(?!</w:r>)[\\s\\S])*?</w:r>`,
+          "g",
+        ),
+        "",
+      );
+    if (out !== before) removed += 1;
+  }
+  return { xml: out, removed };
+}
+
+/** zip 层面删除批注标记（保存后文件里真的没有这条批注）。 */
+export async function removeCommentAnchorsInDocx(
+  bytes: ArrayBuffer,
+  ids: Iterable<string>,
+): Promise<{ bytes: ArrayBuffer; removed: number }> {
+  const zip = await JSZip.loadAsync(bytes);
+  const entry = zip.file("word/document.xml");
+  if (!entry) return { bytes, removed: 0 };
+  const result = removeCommentMarkup(await entry.async("string"), ids);
+  if (result.removed === 0) return { bytes, removed: 0 };
+  zip.file("word/document.xml", result.xml);
+  return { bytes: await zip.generateAsync({ type: "arraybuffer" }), removed: result.removed };
+}
+
+/** 从"段落原件"里也去掉这些批注（否则保存时 restoreRevisions 会把锚点又写回去）。 */
+export function stripCommentsFromPreservation(
+  preservation: RevisionPreservationState,
+  ids: Iterable<string>,
+): RevisionPreservationState {
+  const targets = new Set(ids);
+  return {
+    comments: preservation.comments.filter((comment) => !targets.has(comment.id)),
+    paragraphs: preservation.paragraphs.map((paragraph) => {
+      const hasTarget = preservation.comments.some(
+        (comment) => targets.has(comment.id) && comment.paragraph === paragraph.index,
+      );
+      if (!hasTarget) return paragraph;
+      const stripped = removeCommentMarkup(paragraph.originalXml, targets).xml;
+      return { ...paragraph, originalXml: stripped, comments: 0 };
+    }),
+  };
+}

@@ -153,6 +153,17 @@ async function main() {
     `批注框排版正确（按锚点排序且重叠让位：a=${byId.a} b=${byId.b} c=${byId.c} 无锚点=${byId.d} 在最后）`,
   );
 
+  // 删除批注：正文不动、这条的锚点真的没了、另一条不受影响、段落原件同步（保存不会带回来）
+  const deleted = await page.evaluate(() => window.__deleteCommentCase());
+  check(
+    deleted.removed === 1 && deleted.goneFirst && deleted.keepSecond && deleted.bodyKept,
+    "删除批注：这条锚点从字节里去掉、另一条保留、正文一个字没动",
+  );
+  check(
+    deleted.preservationGoneFirst && deleted.preservationKeepSecond && deleted.commentsLeft === 1,
+    "段落原件也同步去掉（否则保存时会被写回，表现为「删不掉」）",
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(

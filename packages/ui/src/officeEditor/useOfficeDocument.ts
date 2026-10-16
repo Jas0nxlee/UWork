@@ -17,6 +17,8 @@ import {
 } from "./docxReview.js";
 import {
   applyRevisionView,
+  removeCommentAnchorsInDocx,
+  stripCommentsFromPreservation,
   type DocumentComment,
   type RevisionPreservationState,
 } from "./docxRevisions.js";
@@ -310,16 +312,56 @@ export function useOfficeDocument({
     [comments, editorRef, locateComment],
   );
 
-  /** 删除某条批注（官方 demo 的做法：`executeDeleteGroup`；正文保留，保存时写回文件）。 */
+  /**
+   * 删除某条批注（Word 的"删除批注"）：正文一个字不动，但要做三件事，否则用户会看到"点了没反应"：
+   *   ① 去掉正文里这段的**批注底纹**（我们导入时加的 `w:shd`，在引擎里是 highlight 属性）；
+   *   ② 删掉引擎里的 group（`executeDeleteGroup`，官方 demo 同款）；
+   *   ③ 从字节层去掉 `w:commentRangeStart/End` 与 `commentReference`，**并同步更新"段落原件"**——
+   *      否则保存时 restoreRevisions 会把锚点原样写回去（批注"删不掉"）。
+   */
   const deleteComment = useCallback(
     (index: number) => {
       const comment = comments[index];
       const editor = editorRef.current;
       if (!comment || !editor) return Promise.resolve();
+      // ① 去掉底纹：先按锚点文字定位，再执行"高亮＝无"
+      const commands = editor.command as Record<string, unknown>;
+      if (comment.anchorText.trim()) {
+        const ranges = (
+          commands.getKeywordRangeList as
+            | ((value: string) => Array<{ startIndex: number; endIndex: number }>)
+            | undefined
+        )?.(comment.anchorText);
+        const range = ranges?.[0];
+        if (range) {
+          (
+            commands.executeReplaceRange as ((payload: Record<string, unknown>) => void) | undefined
+          )?.({
+            ...range,
+            startIndex: Math.max(0, range.startIndex - 1),
+            endIndex: range.endIndex,
+          });
+          (commands.executeHighlight as ((value: unknown) => void) | undefined)?.(null);
+        }
+      }
+      // ② 删组
       forgetComment(editor, comment);
+      // ③ 字节层去掉锚点（异步，失败也要让列表先更新）
+      const base = normalizedBytesRef.current;
+      if (base) {
+        void removeCommentAnchorsInDocx(base, [comment.id])
+          .then((result) => {
+            normalizedBytesRef.current = result.bytes;
+            sourceBytesRef.current = result.bytes;
+            revisionsRef.current = stripCommentsFromPreservation(revisionsRef.current, [
+              comment.id,
+            ]);
+          })
+          .catch((error) => setStatus(`删除批注时写回失败：${String(error)}`));
+      }
       setComments((current) => current.filter((_item, at) => at !== index));
       setCurrentComment(-1);
-      setStatus(`已删除第 ${comment.index} 条批注（正文保留，保存时写回文件）`);
+      setStatus(`已删除第 ${comment.index} 条批注（正文保留，底纹已去掉，保存时写回文件）`);
       return Promise.resolve();
     },
     [comments, editorRef, forgetComment],
