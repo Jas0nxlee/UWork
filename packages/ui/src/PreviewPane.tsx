@@ -4,6 +4,8 @@ import {
   Fragment,
   type CSSProperties,
   type SyntheticEvent,
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -48,6 +50,16 @@ import { getPathLeaf, isAbsoluteFilePath } from "@/lib/path.js";
 import { decodeBase64ToArrayBuffer, getOfficeFilePreviewKind } from "@/lib/officeFilePreview.js";
 // 编辑位：canvas-editor 引擎（区分于下面的只读预览）。
 import { CanvasOfficeEditorPane } from "@/officeEditor/CanvasOfficeEditorPane.js";
+
+/**
+ * Excel 编辑位**按需加载**：fortune-sheet + exceljs 合起来是个大包（几百 KB 起步），
+ * 不进主包，只在真的点开表格编辑时才拉（Word 那条路与冷启动都不该为它买单）。
+ */
+const ExcelEditorPane = lazy(() =>
+  import("@/officeEditor/ExcelEditorPane.js").then((module) => ({
+    default: module.ExcelEditorPane,
+  })),
+);
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
@@ -586,6 +598,14 @@ export function PreviewPane({
     () => (source?.type === "file" ? getOfficeFilePreviewKind(source.path) : null),
     [source],
   );
+  /**
+   * 界内编辑的入口条件：docx 走 canvas-editor；xlsx/xlsm 走 fortune-sheet。
+   * 老的 .xls（二进制格式）不在其中——它根本不是 zip，exceljs 读不了，只能走只读预览。
+   */
+  const canEditOfficeInPlace =
+    source?.type === "file" &&
+    (officePreviewKind === "docx" ||
+      (officePreviewKind === "excel" && /\.xls[xm]$/i.test(source.path)));
   const pptxSource = useMemo(() => resolvePreviewPanePptxSource(source), [source]);
   const showDocumentHeaderDivider = shouldShowPreviewPaneHeaderDivider(source);
   const pptxSourcePath = pptxSource?.path ?? null;
@@ -1711,7 +1731,7 @@ export function PreviewPane({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          {officePreviewKind === "docx" && source?.type === "file" ? (
+          {canEditOfficeInPlace ? (
             <Button
               type="button"
               size="icon-md"
@@ -1759,16 +1779,36 @@ export function PreviewPane({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        {officeEditing && officePreviewKind === "docx" && source?.type === "file" ? (
-          <CanvasOfficeEditorPane
-            fileService={fileService}
-            path={source.path}
-            remote={isRemoteSource}
-            onDirtyChange={(value) => {
-              officeEditorDirtyRef.current = value;
-            }}
-            onExit={() => setOfficeEditing(false)}
-          />
+        {officeEditing && canEditOfficeInPlace ? (
+          officePreviewKind === "excel" ? (
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-xs text-foreground-subtle">
+                  正在加载表格编辑器…
+                </div>
+              }
+            >
+              <ExcelEditorPane
+                fileService={fileService}
+                path={source.path}
+                remote={isRemoteSource}
+                onDirtyChange={(value) => {
+                  officeEditorDirtyRef.current = value;
+                }}
+                onExit={() => setOfficeEditing(false)}
+              />
+            </Suspense>
+          ) : (
+            <CanvasOfficeEditorPane
+              fileService={fileService}
+              path={source.path}
+              remote={isRemoteSource}
+              onDirtyChange={(value) => {
+                officeEditorDirtyRef.current = value;
+              }}
+              onExit={() => setOfficeEditing(false)}
+            />
+          )
         ) : renderHeavyContent ? (
           <PreviewPaneContent
             source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}

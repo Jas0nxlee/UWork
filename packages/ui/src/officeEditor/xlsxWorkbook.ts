@@ -214,12 +214,36 @@ function applySizeDiff(pair: SheetPair): number {
   return changed;
 }
 
+/**
+ * 表级显示设置（网格线 + 冻结窗格）。
+ * 冻结在 fortune-sheet 里是 `sheet.frozen`，写回时要翻成 exceljs 的 `views[0]`（state/xSplit/ySplit），
+ * 否则用户点了"冻结首行"、保存后再打开就没有了——那种"点了没反应"的观感是明确要避免的。
+ */
 function applyViewDiff(pair: SheetPair): number {
-  const view = pair.worksheet.views?.[0];
+  const worksheet = pair.worksheet;
+  const view = worksheet.views?.[0];
   if (!view) return 0;
-  const wanted = pair.current.showGridLines === false ? false : true;
-  if (view.showGridLines === wanted) return 0;
-  view.showGridLines = wanted;
+  const wantedLines = pair.current.showGridLines === false ? false : true;
+  const beforeFrozen = JSON.stringify(pair.baseline?.frozen ?? null);
+  const afterFrozen = pair.current.frozen;
+  const frozenChanged = beforeFrozen !== JSON.stringify(afterFrozen ?? null);
+  if (view.showGridLines === wantedLines && !frozenChanged) return 0;
+
+  const next = { ...view, showGridLines: wantedLines } as Record<string, unknown>;
+  if (frozenChanged) {
+    const xSplit = afterFrozen?.range?.column_focus ?? 0;
+    const ySplit = afterFrozen?.range?.row_focus ?? 0;
+    if ((xSplit || ySplit) && (afterFrozen?.type === "row" || afterFrozen?.type === "column" || afterFrozen?.type === "both")) {
+      next.state = "frozen";
+      next.xSplit = xSplit;
+      next.ySplit = ySplit;
+    } else {
+      next.state = "normal";
+      delete next.xSplit;
+      delete next.ySplit;
+    }
+  }
+  worksheet.views = [next as (typeof worksheet.views)[number]];
   return 1;
 }
 

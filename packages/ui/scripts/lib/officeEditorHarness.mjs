@@ -78,8 +78,15 @@ export async function startOfficeHarness(options) {
   const page = await browser.newPage({
     viewport: options.viewport ?? { width: 900, height: 700 },
   });
-  // 页面自身的报错必须浮上来：否则失败会表现成"某个 click 超时"，看不出真正原因
-  page.on("pageerror", (error) => console.log("[pageerror]", error.message));
+  // 页面自身的报错必须浮上来：否则失败会表现成"某个 click 超时"，看不出真正原因。
+  // 带几行栈：引擎内部的报错（例如 fortune-sheet 的 deleteRowCol）只有栈能定位。
+  page.on("pageerror", (error) => {
+    const frames = String(error.stack ?? "")
+      .split("\n")
+      .slice(1, 5)
+      .join("\n");
+    console.log("[pageerror]", error.message, frames ? `\n${frames}` : "");
+  });
   page.on("console", (message) => {
     if (message.type() === "error") console.log("[console.error]", message.text());
   });

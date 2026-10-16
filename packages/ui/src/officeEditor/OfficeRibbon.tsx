@@ -35,8 +35,13 @@ import type {
 
 export interface OfficeRibbonProps {
   style: RibbonStyle | null;
-  inTable: boolean;
+  /** 光标在表格内：只影响 Word 那套的「表格工具」标签是否出现。 */
+  inTable?: boolean;
   run: RunCommand;
+  /** 标签数据：默认 Word 那套；Excel 编辑位传自己的（外壳的宽度取舍对两边都适用）。 */
+  tabs?: RibbonTab[];
+  /** 右上角的一句话（例如"光标在表格内"/"只读"）。 */
+  hint?: string;
 }
 
 /**
@@ -221,7 +226,7 @@ function planGroups(
   return states;
 }
 
-export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
+export function OfficeRibbon({ style, inTable = false, run, tabs: customTabs, hint }: OfficeRibbonProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const groupNodes = useRef(new Map<string, HTMLDivElement>());
@@ -253,7 +258,7 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
     return () => observer.disconnect();
   }, []);
 
-  const tabs = RIBBON_TABS.filter((tab) => !tab.contextual || inTable);
+  const tabs = (customTabs ?? RIBBON_TABS).filter((tab) => !tab.contextual || inTable);
   const activeTab: RibbonTab | undefined = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const groups = activeTab?.groups ?? [];
 
@@ -305,8 +310,10 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
               {tab.label}
             </button>
           ))}
-          {inTable ? (
-            <span className="ml-2 pb-2 text-[11px] text-foreground-subtle">光标在表格内</span>
+          {hint ? (
+            <span className="ml-2 min-w-0 truncate pb-2 text-[11px] text-foreground-subtle">
+              {hint}
+            </span>
           ) : null}
           <span className="ml-auto pb-2 text-[10px] text-foreground-subtlest">
             {hiddenGroups.length > 0 ? `${hiddenGroups.length} 组收在 »` : "全部展开"}

@@ -191,14 +191,17 @@ export function writeCell(target: ExcelCell, cell: Cell): void {
       italic: cell.it === 1,
       underline: cell.un === 1,
       strike: cell.cl === 1,
-      ...(typeof cell.ff === "string" ? { name: cell.ff } : {}),
-      ...(typeof cell.fs === "number" ? { size: cell.fs } : {}),
+      // null 表示"这一位被清掉了"（引擎清除格式写的就是 null）→ 从文件里也去掉
+      name: typeof cell.ff === "string" ? cell.ff : undefined,
+      size: typeof cell.fs === "number" ? cell.fs : undefined,
       // 颜色只有认得出来才改：主题色/索引色原样留着
-      ...(color ? { color } : {}),
+      ...(color ? { color } : cell.fc === null ? { color: undefined } : {}),
     };
   }
-  if (cell.bg && /^#[0-9a-f]{6}$/i.test(cell.bg)) {
+  if (typeof cell.bg === "string" && /^#[0-9a-f]{6}$/i.test(cell.bg)) {
     target.fill = { type: "pattern", pattern: "solid", fgColor: hexToColor(cell.bg) };
+  } else if (cell.bg === null) {
+    target.fill = { type: "pattern", pattern: "none" };
   }
   const hasAlignField = cell.ht !== undefined || cell.vt !== undefined || cell.tb !== undefined;
   if (hasAlignField) {
@@ -233,7 +236,9 @@ export function sameCell(a: Cell | undefined, b: Cell | undefined): boolean {
   if (!a && !b) return true;
   if (!a || !b) return false;
   if ((a.ct?.fa ?? "") !== (b.ct?.fa ?? "")) return false;
-  return COMPARED.every((key) => a[key] === b[key]);
+  // null 与 undefined 视为同一件事：引擎"清除格式"写的是 null，而适配层没映射的字段是 undefined，
+  // 不这样归一的话，清一次格式会把每个格子都误判成"改过"
+  return COMPARED.every((key) => (a[key] ?? null) === (b[key] ?? null));
 }
 
 // —— 尺寸换算：fortune-sheet 用像素，exceljs 用"字符宽 / 磅" ——

@@ -166,7 +166,10 @@ export function optionsCommand(title: string): string {
       return "executeColor";
     case "高亮（底纹）":
     case "单元格底色":
+    case "单元格填充色":
       return "executeHighlight";
+    case "数字格式":
+      return "executeNumberFormat";
     case "单元格垂直对齐":
       return "executeSetTableCellVerticalAlign";
     case "纸张大小":

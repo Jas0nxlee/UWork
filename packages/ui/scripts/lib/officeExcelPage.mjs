@@ -61,7 +61,13 @@ window.__excel = {
     window.__changeCount = 0;
     window.__opCount = 0;
     root?.unmount();
-    root = createRoot(host);
+    // 必须换一个干净的容器：引擎把画布画在容器里，React 卸载**不会**清掉它自己的 DOM，
+    // 留着旧画布的话，后面用鼠标点的其实是上一个实例的残骸（断言会变成"点了没反应"的假通过）
+    host.replaceChildren();
+    const container = document.createElement("div");
+    container.style.height = "100%";
+    host.append(container);
+    root = createRoot(container);
     root.render(
       createElement(Harness, {
         data: options.data ?? window.app.sampleSheets(),
@@ -79,6 +85,26 @@ window.__excel = {
   cell: (row, column, type) =>
     apiRef.current?.getCellValue(row, column, type ? { type } : undefined),
   sheets: () => apiRef.current?.getAllSheets(),
+  /** 设选区（行列都是零基、含端点），用于驱动功能区命令。 */
+  select: async (range) => {
+    apiRef.current?.setSelection([range]);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  },
+  /** 走**我们自己的**命令调度（excelCommands.ts），把状态栏消息带回来。 */
+  async run(command, args) {
+    const messages = [];
+    const handled = window.app.runExcelCommand(
+      {
+        api: () => apiRef.current,
+        setStatus: (message) => messages.push(message),
+        getSheets: () => apiRef.current?.getAllSheets() ?? [],
+      },
+      command,
+      args ?? [],
+    );
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return { handled, messages };
+  },
   /** exceljs 能不能在浏览器里跑（读 + 写 + 公式）——Excel 编辑位的 I/O 全靠它。 */
   excelRoundTrip: async () => {
     const wb = new ExcelJS.Workbook();
