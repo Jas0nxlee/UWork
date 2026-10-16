@@ -9,6 +9,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
 import { preserveHeaderFooter } from "./docxHeaderFooter.js";
+import {
+  applyRevisionView,
+  restoreRevisions,
+  type RevisionPreservationState,
+} from "./docxRevisions.js";
 import { applyTrackedChanges, type TrackedChangeStats } from "./docxTrackChanges.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
@@ -40,6 +45,8 @@ export interface UseOfficeDocumentInput {
 }
 
 export interface UseOfficeDocumentResult {
+  /** 文档里检测到的修订/批注数（按 Word 的方式显示，不再用横幅告知）。 */
+  revisionSummary: { inserted: number; deleted: number; comments: number };
   /** 修订模式开关（保存时是否把改动记成 w:ins/w:del）。 */
   trackChangesEnabled: boolean;
   setTrackChangesEnabled: (value: boolean) => void;
@@ -69,6 +76,9 @@ export function useOfficeDocument({
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
   /** 源文件字节：保存时要用它把原页眉页脚还给导出结果（编辑器不编辑页眉页脚）。 */
   const sourceBytesRef = useRef<ArrayBuffer | null>(null);
+  /** 导入时保留下来的"修订/批注段落原件"：保存时按段落写回，避免静默接受或丢失。 */
+  const revisionsRef = useRef<RevisionPreservationState>({ paragraphs: [] });
+  const [revisionSummary, setRevisionSummary] = useState({ inserted: 0, deleted: 0, comments: 0 });
   const [status, setStatus] = useState("正在加载文档…");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -171,7 +181,17 @@ export function useOfficeDocument({
           return;
         }
       }
-      await importBytes(editor, raw, label, options.reset !== false);
+      // 修订与批注：按 Word 的样子显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝上标标记），
+      // 原件留起来，保存时按段落原样写回（见 docxRevisions.ts）。
+      const view = await applyRevisionView(raw);
+      revisionsRef.current = view.preservation;
+      setRevisionSummary(view.summary);
+      await importBytes(editor, view.bytes, label, options.reset !== false);
+      if (view.summary.inserted || view.summary.deleted || view.summary.comments) {
+        setStatus(
+          `已载入 ${label} · 修订 ${view.summary.inserted} 插入 / ${view.summary.deleted} 删除 · 批注 ${view.summary.comments} 处（按 Word 的方式显示在正文里，保存时原样写回）`,
+        );
+      }
     },
     [editorRef, fileService, importBytes, path, remote],
   );
@@ -214,9 +234,11 @@ export function useOfficeDocument({
         trackedStats = tracked.stats;
       }
       // 页眉页脚不属于本次编辑范围：原样保留（没有就别让插件默认页脚留下来）
+      // 修订/批注写回：没被编辑过的段落换回原件（标记不丢、不被静默接受）
+      const revisions = await restoreRevisions(withTracked, revisionsRef.current);
       const restored = sourceBytesRef.current
-        ? await preserveHeaderFooter(sourceBytesRef.current, withTracked)
-        : { bytes: withTracked, note: "" };
+        ? await preserveHeaderFooter(sourceBytesRef.current, revisions.bytes)
+        : { bytes: revisions.bytes, note: "" };
       const bytes = new Uint8Array(restored.bytes);
       setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
       const result = await fileService.writeBinaryFile({
@@ -228,13 +250,18 @@ export function useOfficeDocument({
       revisionRef.current = result.revision;
       markDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
+      const revisionNote = revisions.restored
+        ? ` · 保留原修订/批注 ${revisions.restored} 段${
+            revisions.edited ? `（${revisions.edited} 段被编辑过，其原有标记按你的改动处理）` : ""
+          }`
+        : "";
       const trackedNote = trackedStats
         ? ` · 已记为修订（插入 ${trackedStats.inserted} 段 / 删除 ${trackedStats.deleted} 段 / 修改 ${trackedStats.modified} 段）`
         : "";
       setStatus(
         `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}${
           restored.note ? ` · ${restored.note}` : ""
-        }${trackedNote}`,
+        }${revisionNote}${trackedNote}`,
       );
       // 保存后基线要更新：否则第二次保存会把上一次的改动又标一遍
       sourceBytesRef.current = withTracked.slice(0);
@@ -251,6 +278,7 @@ export function useOfficeDocument({
   }, [busy, editorRef, fileService, path, trackChangesEnabled]);
 
   return {
+    revisionSummary,
     trackChangesEnabled,
     setTrackChangesEnabled,
     status,

@@ -91,60 +91,32 @@ export function normalizeDocumentXml(xml: string): NormalizeResult {
   const changes: string[] = [];
   let out = xml;
 
-  const drop = (pattern: RegExp) => {
-    out = out.replace(pattern, "");
-  };
   const unwrap = (tag: string): number => {
     let count = 0;
-    const open = new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g");
-    const close = new RegExp(`</${tag}>`, "g");
     for (;;) {
-      const match = open.exec(out);
+      const match = new RegExp(`<${tag}(?:\\s[^>]*)?>`).exec(out);
       if (!match) break;
-      const start = match.index;
-      const end = out.indexOf(`</${tag}>`, start);
+      const end = out.indexOf(`</${tag}>`, match.index);
       if (end < 0) break;
       out =
-        out.slice(0, start) +
-        out.slice(start + match[0].length, end) +
+        out.slice(0, match.index) +
+        out.slice(match.index + match[0].length, end) +
         out.slice(end + `</${tag}>`.length);
-      open.lastIndex = 0;
-      close.lastIndex = 0;
       count += 1;
     }
     return count;
   };
 
-  const inserted = countOf(out, /<w:ins[ >]/g) + countOf(out, /<w:moveTo[ >]/g);
-  unwrap("w:ins");
-  unwrap("w:moveTo");
-  if (inserted > 0) changes.push(`修订：接受 ${inserted} 处插入（文字保留，修订标记不再写回）`);
-
-  const deleted = countOf(out, /<w:(del|moveFrom)[ >]/g);
-  drop(/<w:del(?:\s[^>]*)?>[\s\S]*?<\/w:del>/g);
-  drop(/<w:moveFrom(?:\s[^>]*)?>[\s\S]*?<\/w:moveFrom>/g);
-  if (deleted > 0) changes.push(`修订：接受 ${deleted} 处删除（被删文字不再保留）`);
-
-  const formatChanges = countOf(out, /<w:\w+PrChange[ >]/g);
-  drop(/<w:\w+PrChange(?:\s[^>]*)?>[\s\S]*?<\/w:\w+PrChange>/g);
-  drop(/<w:\w+PrChange(?:\s[^>]*)?\/>/g);
-  if (formatChanges > 0) changes.push(`修订：接受 ${formatChanges} 处格式修改（保留当前格式）`);
-
+  // 修订与批注**不在这里动**：由 docxRevisions 按 Word 的样子显示并在保存时原样写回。
   const links = countOf(out, /<w:hyperlink[ >]/g);
   unwrap("w:hyperlink");
   if (links > 0) changes.push(`${links} 处超链接变成普通文字（链接地址不会写回）`);
-
-  const commentAnchors = countOf(out, /<w:commentReference[ >]/g);
-  drop(
-    /<w:r(?:\s[^>]*)?>(?:(?!<\/w:r>)[\s\S])*?<w:commentReference(?:\s[^>]*)?\/>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/g,
-  );
-  if (commentAnchors > 0) changes.push(`${commentAnchors} 处批注锚点会去掉（批注内容不会写回）`);
 
   const formulas = countOf(out, /<m:oMath[ >]/g);
   if (formulas > 0) {
     out = out.replace(/<m:oMath(?:\s[^>]*)?>[\s\S]*?<\/m:oMath>/g, (block) => {
       const text = [...block.matchAll(/<m:t(?:\s[^>]*)?>([\s\S]*?)<\/m:t>/g)]
-        .map((match) => match[1])
+        .map((m) => m[1])
         .join("");
       return text ? `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>` : "";
     });
@@ -153,19 +125,15 @@ export function normalizeDocumentXml(xml: string): NormalizeResult {
 
   const controls = countOf(out, /<w:sdt[ >]/g);
   for (;;) {
-    const start = out.indexOf("<w:sdt>");
-    const startWithAttrs = start >= 0 ? start : out.search(/<w:sdt\s[^>]*>/);
-    if (startWithAttrs < 0) break;
-    const contentStart = out.indexOf("<w:sdtContent", startWithAttrs);
-    const end = out.indexOf("</w:sdt>", startWithAttrs);
+    const start = out.search(/<w:sdt[\s>]/);
+    if (start < 0) break;
+    const contentStart = out.indexOf("<w:sdtContent", start);
+    const end = out.indexOf("</w:sdt>", start);
     if (contentStart < 0 || end < 0) break;
-    const closeTag = out.indexOf(">", contentStart) + 1;
-    const contentEnd = out.indexOf("</w:sdtContent>", closeTag);
+    const openEnd = out.indexOf(">", contentStart) + 1;
+    const contentEnd = out.indexOf("</w:sdtContent>", openEnd);
     if (contentEnd < 0 || contentEnd > end) break;
-    out =
-      out.slice(0, startWithAttrs) +
-      out.slice(closeTag, contentEnd) +
-      out.slice(end + "</w:sdt>".length);
+    out = out.slice(0, start) + out.slice(openEnd, contentEnd) + out.slice(end + "</w:sdt>".length);
   }
   if (controls > 0) changes.push(`${controls} 处内容控件变成普通文字`);
 
@@ -179,7 +147,9 @@ export interface DocxPreflightResult {
   changes: string[];
 }
 
-/** 解 zip → 统计特性 → 归一化 document.xml → 重新打包。 */
+/**
+ * 解 zip → 统计特性 → 归一化 document.xml（只做"保住文字"的变换；修订/批注交给 docxRevisions）→ 重新打包。
+ */
 export async function preprocessDocx(bytes: ArrayBuffer): Promise<DocxPreflightResult> {
   const zip = await JSZip.loadAsync(bytes);
   const documentEntry = zip.file("word/document.xml");

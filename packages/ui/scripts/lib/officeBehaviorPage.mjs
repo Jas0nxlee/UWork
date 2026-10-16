@@ -14,7 +14,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText } from "/dispatcher.js";
+  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -80,7 +80,56 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   window.__elements = () => window.__editor.command.getValue().data.main;
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
-  window.__trackedApi = { applyTrackedChanges, acceptedText, rejectedText };
+  window.__trackedApi = {
+    applyTrackedChanges,
+    acceptedText,
+    rejectedText,
+    applyRevisionView,
+    restoreRevisions,
+    buildRevisionView,
+  };
+
+  /**
+   * 修订的"正文内显示 + 保存写回"：① 插入文字着色下划线、删除文字红色删除线、批注变上标标记；
+   * ② 保存时未编辑的段落换回原件（w:ins/w:del/commentReference 都在）。
+   */
+  window.__revisionViewCase = async () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const document =
+      '<w:document ' + XMLNS + '><w:body>' +
+      '<w:p><w:r><w:t>AAA 普通正文</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>BBB</w:t></w:r><w:ins w:id="1" w:author="审阅者"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:r><w:t>CCC</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>DDD</w:t></w:r><w:del w:id="2" w:author="审阅者"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:r><w:t>EEE</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>被批注的文字</w:t></w:r><w:r><w:commentReference w:id="3"/></w:r></w:p>' +
+      '</w:body></w:document>';
+    const zip = new window.JSZip();
+    zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+    zip.file("word/document.xml", document);
+    const sourceBytes = await zip.generateAsync({ type: "arraybuffer" });
+
+    const view = await window.__trackedApi.applyRevisionView(sourceBytes);
+    const viewZip = await window.JSZip.loadAsync(view.bytes);
+    const viewXml = await viewZip.file("word/document.xml").async("string");
+    // 用我们自己的归一化把它导进引擎，看正文里显示了什么
+    const engine = await window.__preflight.normalizeDocumentXml(viewXml);
+    // 保存路径：导出（这里用同一份"显示版"模拟用户没编辑）→ 写回原件
+    const saved = await window.__trackedApi.restoreRevisions(view.bytes, view.preservation);
+    const savedZip = await window.JSZip.loadAsync(saved.bytes);
+    const savedXml = await savedZip.file("word/document.xml").async("string");
+    return {
+      summary: view.summary,
+      engineText: engine.xml,
+      bodyShowsInserted: /INSERTED/.test(viewXml),
+      insertedUnderlined: new RegExp('<w:u w:val="single"/>').test(viewXml) && viewXml.includes("1A73E8"),
+      deletedStruck: new RegExp("<w:strike/>").test(viewXml) && viewXml.includes("D93025"),
+      commentMark: viewXml.includes("[1]"),
+      savedHasIns: new RegExp("<w:ins[ >]").test(savedXml),
+      savedHasDel: new RegExp("<w:del[ >]").test(savedXml),
+      savedHasCommentRef: new RegExp("<w:commentReference[ >]").test(savedXml),
+      restored: saved.restored,
+      edited: saved.edited,
+    };
+  };
 
   /**
    * 修订模式用例：基线文档 → "编辑后"文档（改一段、加一段、删一段）→ 落成 w:ins/w:del。
@@ -234,6 +283,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
+      `export { applyRevisionView, restoreRevisions, buildRevisionView } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
     ].join("\n"),
     "utf8",
   );

@@ -61,6 +61,25 @@ async function main() {
     `拒绝全部修订 == 基线（得到 ${JSON.stringify(tracked.rejected)}）`,
   );
 
+  // 修订/批注：正文里按 Word 的样子显示，保存时原样写回（不再用横幅告知）
+  const revisionView = await page.evaluate(() => window.__revisionViewCase());
+  check(
+    revisionView.summary.inserted === 1 &&
+      revisionView.summary.deleted === 1 &&
+      revisionView.summary.comments === 1,
+    `识别修订/批注（插入 ${revisionView.summary.inserted} / 删除 ${revisionView.summary.deleted} / 批注 ${revisionView.summary.comments}）`,
+  );
+  check(
+    revisionView.bodyShowsInserted && revisionView.insertedUnderlined,
+    "插入的正文看得见且按 Word 的样子标出（下划线 + 蓝色）",
+  );
+  check(revisionView.deletedStruck, "被删除的正文按 Word 的样子显示（红色删除线，文字不消失）");
+  check(revisionView.commentMark, "批注锚点在正文里显示为上标标记 [1]");
+  check(
+    revisionView.savedHasIns && revisionView.savedHasDel && revisionView.savedHasCommentRef,
+    `保存时原样写回修订与批注（w:ins/w:del/commentReference 都在，写回 ${revisionView.restored} 段）`,
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(
@@ -104,22 +123,26 @@ async function main() {
       f.comments === 1,
     `预检认出文档特性：插入 ${f.revisions.inserted} / 删除 ${f.revisions.deleted} / 超链接 ${f.hyperlinks} / 公式 ${f.formulas} / 批注 ${f.comments}`,
   );
+  // 修订/批注**不再**进清单：它们按 Word 的样子显示在正文里、保存时原样写回（真机口径：
+  // "这种修改直接通过插件就可以实现，editor 应该按 office 的批注显示和修改方式"）
+  const notices = preflight.changes.join(" | ");
   check(
-    preflight.changes.length >= 4,
-    `预检给出了会说清楚的改动清单（${preflight.changes.length} 条，例：${preflight.changes[0] ?? ""}）`,
+    preflight.changes.length <= 3 &&
+      !notices.includes("修订") &&
+      !notices.includes("批注") &&
+      notices.includes("超链接"),
+    `预检只列"真会丢内容/形态"的项、不含修订与批注（${preflight.changes.length} 条：${notices}）`,
   );
   await page.evaluate(
     (bytes) => window.__loadPreprocessed(new Uint8Array(bytes).buffer),
     preflight.bytes,
   );
   const trickyText = (await state()).text;
+  // 这一段只验「归一化」：超链接/公式/结构项的文字保住；修订与批注由下面的 revision view 用例负责
   check(
-    trickyText.includes("INSERTED") &&
-      trickyText.includes("LINKTEXT") &&
-      trickyText.includes("E=mc^2"),
-    `归一化后插入文字/超链接文字/公式文字都还在（文本：${JSON.stringify(trickyText.slice(0, 80))}）`,
+    trickyText.includes("LINKTEXT") && trickyText.includes("E=mc^2"),
+    `归一化后超链接与公式的文字都还在（文本：${JSON.stringify(trickyText.slice(0, 80))}）`,
   );
-  check(!trickyText.includes("DELETED"), "被删除的文字没有复活（w:del 按「接受删除」处理）");
 
   const shot = await page.screenshot();
   writeFileSync(join(harness.dir, "docx.png"), shot);
