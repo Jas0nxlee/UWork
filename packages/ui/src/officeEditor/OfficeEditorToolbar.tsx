@@ -28,7 +28,11 @@ export function OfficeEditorToolbar({
   extra,
 }: OfficeEditorToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 text-xs">
+    // 必须 nowrap：状态文字长度会随导航/保存变化，一旦换行整块菜单栏就会"跳一下"（真机反馈）
+    <div
+      data-office-toolbar
+      className="flex flex-nowrap items-center gap-1 overflow-hidden border-b border-border px-2 py-1.5 text-xs"
+    >
       <button
         type="button"
         className="rounded border border-border px-2 py-1 font-medium hover:border-accent disabled:opacity-50"
@@ -59,7 +63,10 @@ export function OfficeEditorToolbar({
         </button>
       ) : null}
       {extra}
-      <span className="ml-auto text-foreground-subtle">
+      <span
+        className="ml-auto min-w-0 flex-1 truncate text-right text-foreground-subtle"
+        title={status}
+      >
         {dirty ? "● 未保存 · " : ""}
         {status}
       </span>

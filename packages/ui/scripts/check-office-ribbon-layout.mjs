@@ -37,6 +37,7 @@ const CHECK_WIDTHS = (process.env.RIBBON_CHECK_WIDTHS ?? "1600,1280,1040,900,760
 const ENTRY = `
 import { createRoot } from "react-dom/client";
 import { OfficeRibbon } from ${JSON.stringify(join(editorDir, "OfficeRibbon.js"))};
+import { OfficeEditorToolbar } from ${JSON.stringify(join(editorDir, "OfficeEditorToolbar.js"))};
 
 const style = {
   bold: false,
@@ -58,7 +59,19 @@ const style = {
 // 记录回调，供"需要填值的命令"断言（图片/链接/公式走对话框取值）
 window.__calls = [];
 function App() {
-  return <OfficeRibbon style={style} inTable run={(command, args) => window.__calls.push([command, args])} />;
+  // 顶栏也渲染：状态文字会随导航变化，它必须不改变高度（否则整块菜单栏会跳）
+  return (
+    <>
+      <OfficeEditorToolbar
+        busy={false}
+        dirty
+        status={"已载入 3 KiB · 修订 12 插入 / 12 删除 · 批注 6 处（按 Word 的方式显示在正文里，保存时原样写回）"}
+        onSave={() => {}}
+        onReload={() => {}}
+      />
+      <OfficeRibbon style={style} inTable run={(command, args) => window.__calls.push([command, args])} />
+    </>
+  );
 }
 
 createRoot(document.getElementById("root")).render(<App />);
@@ -161,7 +174,7 @@ async function main() {
   const harness = await startOfficeHarness({
     prefix: "office-ribbon-layout-",
     pages: { "index.html": HTML },
-    viewport: { width: CHECK_WIDTHS[0], height: 400 },
+    viewport: { width: CHECK_WIDTHS[0], height: 700 },
     // 组件包与 CSS 都是现场构建的，必须在页面加载前写好
     prepareDir: async (dir) => {
       const code = await bundle(dir);
@@ -176,7 +189,7 @@ async function main() {
     );
 
   const measureAllTabs = async (width) => {
-    await page.setViewportSize({ width, height: 400 });
+    await page.setViewportSize({ width, height: 700 });
     await page.waitForTimeout(80);
     const labels = await tabButtons();
     const rows = [];
@@ -223,7 +236,7 @@ async function main() {
   }
 
   // ② 极窄宽度（460px，比侧栏最窄还窄）下放不下的分组要能从「»」里点到，不是凭空消失。
-  await page.setViewportSize({ width: 460, height: 400 });
+  await page.setViewportSize({ width: 460, height: 700 });
   await page.waitForTimeout(120);
   await page.click('[data-office-ribbon-tab="home"]');
   await page.waitForTimeout(120);
@@ -246,7 +259,7 @@ async function main() {
   }
 
   // ③ 单一打开源：点开第二个下拉时，第一个必须已经关掉。
-  await page.setViewportSize({ width: 1280, height: 400 });
+  await page.setViewportSize({ width: 1280, height: 700 });
   await page.waitForTimeout(120);
   await page.click('[data-office-ribbon-tab="home"]');
   await page.waitForTimeout(120);
@@ -287,7 +300,7 @@ async function main() {
   if (panelBox && !panelBox.insideWindow) failures.push("下拉面板横向超出窗口");
 
   // ④ 两个"不是普通按钮"的面板：表格网格与查找替换（真机反馈后新做的）
-  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.setViewportSize({ width: 1280, height: 760 });
   await page.waitForTimeout(120);
   await page.click('[data-office-ribbon-tab="insert"]');
   await page.waitForTimeout(120);
@@ -327,8 +340,19 @@ async function main() {
   const findShot = await page.screenshot();
   writeFileSync(join(harness.dir, "ribbon-find.png"), findShot);
 
+  // ④b 顶栏高度必须与状态文字长度无关（真机反馈：点上下箭头时"最上面的菜单栏会跳一下"）
+  const toolbarHeights = await page.evaluate(() => {
+    const toolbar = document.querySelector("[data-office-toolbar]");
+    return toolbar ? Math.round(toolbar.getBoundingClientRect().height) : null;
+  });
+  console.log(
+    `顶栏高度：${toolbarHeights}px（状态很长时也必须单行——真机反馈"点上下箭头菜单栏会跳一下"）`,
+  );
+  if (!toolbarHeights || toolbarHeights > 48)
+    failures.push(`顶栏高度 ${toolbarHeights}px：状态文字变长时换行了（整块菜单栏会跳）`);
+
   // ⑤ 需要填值的命令（图片/链接/公式）：Electron 没有 window.prompt，必须走我们的对话框
-  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.setViewportSize({ width: 1280, height: 760 });
   await page.waitForTimeout(120);
   await page.click('[data-office-ribbon-tab="insert"]');
   await page.waitForTimeout(120);
