@@ -15,6 +15,7 @@ export interface SidePaneTabPresentationLabels {
   subagentDirectoryTitle: string;
   selectionChatTitle: string;
   planTitle: string;
+  imTitle: string;
   workflowRunTitle: string;
   workflowDirectoryTitle: string;
   workflowActorTitle: string;
@@ -71,7 +72,11 @@ export function getSidePaneTabSearchHint(tab: WorkspaceSidePaneTab): string {
   }
   if (tab.type === "terminal" || tab.type === "bash-output")
     return `${tab.title} terminal shell command`;
-  return tab.source.path ?? tab.source.title;
+  if (tab.type === "messages") return "im messages chat conversation 消息";
+  // 兜底只对真有 source 的 tab 成立：无 source 的新类型走到这里会读 undefined.path 抛错
+  // （browser-use 与本轮的 messages 都踩过同一个坑），所以这里必须防御。
+  if ("source" in tab && tab.source) return tab.source.path ?? tab.source.title;
+  return "";
 }
 
 export function getLocalizedSidePaneTabTitle(
@@ -92,6 +97,7 @@ export function getLocalizedSidePaneTabTitle(
       "sidePane.subagent": labels.subagentTypeLabel,
       "sidePane.subagentDirectory": labels.subagentDirectoryTitle,
       "sidePane.selectionChat": labels.selectionChatTitle,
+      "im.title": labels.imTitle,
       "planTool.panel.planTab": labels.planTitle,
       "sidePane.workflowRun": labels.workflowRunTitle,
       "sidePane.workflowActor": labels.workflowActorTitle,
@@ -126,5 +132,6 @@ export function getSidePaneTabTypeLabel(
   if (tab.type === "model-trajectory") return labels.modelTrajectoryTitle;
   if (tab.type === "developer-tools") return labels.developerToolsTitle;
   if (tab.type === "terminal" || tab.type === "bash-output") return labels.terminalTitle;
+  if (tab.type === "messages") return labels.imTitle;
   return labels.codeViewerTitle;
 }

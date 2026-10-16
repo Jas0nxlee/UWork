@@ -416,6 +416,15 @@ export function useOfficeDocument({
           date: new Date().toISOString(),
         },
       });
+      if (!composed.validation.ok) {
+        // 校验不过就不写盘：宁可让用户看到明确的失败原因，也不能写坏文件
+        setStatus(
+          `已拒绝写入：产出的 docx 没通过校验 —— ${composed.validation.issues
+            .map((issue) => issue.message)
+            .join("；")}（文档仍在编辑器里，未保存）`,
+        );
+        return;
+      }
       const bytes = new Uint8Array(composed.bytes);
       const notes = composed.notes;
       setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);

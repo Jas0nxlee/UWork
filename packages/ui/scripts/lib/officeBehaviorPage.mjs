@@ -16,7 +16,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { layoutBalloons, scrollTopForRect } from "/dispatcher.js";
+  import { layoutBalloons, scrollTopForRect, validateDocxCandidate } from "/dispatcher.js";
   import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions, removeCommentAnchorsInDocx, stripCommentsFromPreservation } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings } from "/dispatcher.js";
 
@@ -203,6 +203,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     };
   };
 
+  window.__validateApi = validateDocxCandidate;
   window.__trackedApi = {
     applyTrackedChanges,
     acceptedText,
@@ -322,6 +323,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxReview.ts"))};`,
       `export { layoutBalloons } from ${JSON.stringify(join(editorDir, "commentBalloons.ts"))};`,
       `export { scrollTopForRect } from ${JSON.stringify(join(editorDir, "officeReviewNavigation.ts"))};`,
+      `export { validateDocxCandidate } from ${JSON.stringify(join(editorDir, "docxValidate.ts"))};`,
     ].join("\n"),
     "utf8",
   );

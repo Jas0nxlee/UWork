@@ -4,6 +4,44 @@
  */
 export const CASE_SNIPPETS = `
   /**
+   * 写回前校验：好产物通过；坏产物（缺部件 / XML 截断 / 断关系 / 内容塌陷）必须被拦下。
+   */
+  window.__validateCase = async () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const build = async (options = {}) => {
+      const zip = new window.JSZip();
+      if (!options.dropContentTypes)
+        zip.file(
+          "[Content_Types].xml",
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+        );
+      zip.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+      const body = options.collapsed
+        ? "<w:p><w:r><w:t>只剩一点</w:t></w:r></w:p>"
+        : "<w:p><w:r><w:t>" + "这是用于校验的正文内容。".repeat(20) + "</w:t></w:r></w:p>";
+      const drawing = options.dangling ? '<w:r><w:drawing><a:blip r:embed="rIdMissing"/></w:drawing></w:r>' : "";
+      const document = options.truncated
+        ? '<w:document ' + XMLNS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>截断'
+        : '<w:document ' + XMLNS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>' + body + drawing + "</w:body></w:document>";
+      zip.file("word/document.xml", document);
+      zip.file("word/_rels/document.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+      return await zip.generateAsync({ type: "arraybuffer" });
+    };
+    const source = await build();
+    const run = async (candidate) => {
+      const result = await window.__validateApi(candidate, source);
+      return { ok: result.ok, codes: result.issues.map((issue) => issue.code) };
+    };
+    return {
+      good: await run(await build()),
+      collapsed: await run(await build({ collapsed: true })),
+      dangling: await run(await build({ dangling: true })),
+      truncated: await run(await build({ truncated: true })),
+      missingPart: await run(await build({ dropContentTypes: true })),
+    };
+  };
+
+  /**
    * 修订模式用例：基线文档 → "编辑后"文档（改一段、加一段、删一段）→ 落成 w:ins/w:del。
    * 判据：接受全部修订 == 编辑后的样子；拒绝全部修订 == 基线（与 Word 口径一致）。
    */

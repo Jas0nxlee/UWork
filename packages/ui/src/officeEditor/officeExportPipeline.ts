@@ -6,6 +6,7 @@
  * 每一步都返回一句给用户看的话（状态栏），避免"保存完了但不知道文档变成什么样"。
  */
 import { preserveHeaderFooter } from "./docxHeaderFooter.js";
+import { validateDocxCandidate, type DocxValidationIssue } from "./docxValidate.js";
 import { restoreRevisions, type RevisionPreservationState } from "./docxRevisions.js";
 import { applyTrackedChanges } from "./docxTrackChanges.js";
 
@@ -21,6 +22,8 @@ export interface ComposeExportInput {
 export interface ComposeExportResult {
   bytes: ArrayBuffer;
   notes: string[];
+  /** 产物校验结果；`ok === false` 时调用方**不得写盘**（否则用户拿到的是打不开的文件）。 */
+  validation: { ok: boolean; issues: DocxValidationIssue[]; textLength: number };
 }
 
 export async function composeExportedDocx(input: ComposeExportInput): Promise<ComposeExportResult> {
@@ -60,5 +63,10 @@ export async function composeExportedDocx(input: ComposeExportInput): Promise<Co
     if (restored.note) notes.push(restored.note);
   }
 
-  return { bytes, notes };
+  // ④ 产物校验（轻量：只用 JSZip + DOMParser，不依赖 Office/LibreOffice）
+  const validation = await validateDocxCandidate(bytes, input.source);
+  if (!validation.ok) {
+    notes.push(`产物校验未通过（${validation.issues.map((issue) => issue.message).join("；")}）`);
+  }
+  return { bytes, notes, validation };
 }

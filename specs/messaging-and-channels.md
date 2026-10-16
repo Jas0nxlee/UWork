@@ -1,0 +1,561 @@
+# UWork 基础 IM：单聊 / 群组 / 频道实现规划
+
+本文规划在 UWork 里实现**基础 IM**：单聊（点对点）、群组、频道，以及未读与历史漫游。
+第一版的主体是**人 ↔ 人**；agent 作为「频道成员」是后续叠加的差异化能力（见 §4 P2），不阻塞第一版。
+
+**结论先行**：
+
+1. **服务端新建独立服务 `msgbus`，不放进 ucas-proxy、也不复用 relay。**
+   ucas-proxy 是 Express + `better-sqlite3` 同步单进程、全仓无 WebSocket，且已因事件循环卡顿
+   配了 `loopWatchdog` + `autoheal`（卡住即重启容器）——实时连接与聊天写量压进去是已知会翻车的方向；
+   relay 是「1:1 隧道且不解析 payload」，做群组会把业务语义塞进一个刻意保持中立的组件。
+   msgbus 与自建 relay 同域不同 path，**身份复用 ucas-proxy 的 JWT**。
+2. **客户端进内核，不走插件。** IM 要常驻、要未读角标、要系统通知；而插件交互页面只在桌面本地
+   工作区且随会话挂载（`UI_PLUGIN.md`），做不到常驻。插件只能当 UX 原型，不是产品路径。
+3. **有一个硬前置**：企业网关必须先提供**员工可用的用户目录**——现在只有 admin 权限的
+   `GET /api/admin/users`，且没有 `/api/me`。没有花名册就无法选人建单聊，这是 P0 的第一个阻塞项，
+   且它属于 ucas-proxy 侧改动（独立仓库、独立发布流程）。
+4. **第一版不做**：逐条已读回执、语音/视频、端到端加密、外部联系人、表情回应、消息搜索。
+
+> 状态：规划稿，尚未实现。事实核对基于 UWork `origin/uwork` = `c898562c`（2026-10-16）与本地
+> `chore/upstream-v3.15.1-sync` = `62d1155f`；ucas-proxy `main` = `406e77e`（2026-10-09）。
+
+## 一、功能范围
+
+| 能力 | 第一版（P0） | 说明 |
+| --- | --- | --- |
+| 单聊 | ✅ | 两人 DM；重复发起幂等（同一对用户只有一个会话） |
+| 群聊 | ✅ | 建群、拉人、退群、改群名；成员上限不设硬限但默认建议 ≤ 200 |
+| 频道 | ⏳ P1 | `kind='channel'`：组织/团队内的主题流，可只读公告；与群共用同一套模型 |
+| 消息 | ✅ 文本 | `kind`: `text`；消息 append-only，编辑/撤回留 tombstone |
+| 未读 | ✅ | 每成员一行 `last_read_seq`（**不做逐条已读**，写放大差一个数量级） |
+| 历史漫游 | ✅ | 按 `seq` 正序增量 + `before` 反向分页 |
+| 多端同步 | ✅ | 同一用户多连接（桌面 + 手机），按 user 扇出 |
+| 附件 | ⏳ P1 | 图片/文件走对象存储，**不要把 blob 塞进 SQLite** |
+| 通知 | ✅ 应用内 | 桌面用现有通知通道；移动端兜底见 P2 |
+| 搜索 | ⏳ P1 | 会话内搜索 |
+
+## 二、服务端：msgbus
+
+### 2.1 为什么是新服务
+
+| 候选 | 结论 | 依据 |
+| --- | --- | --- |
+| ucas-proxy 内加 | ❌ | Express + 同步 better-sqlite3 单进程；`loopWatchdog` + autoheal 表明事件循环卡顿已在生产发生过；单实例无横向扩展；`authenticate` 只认 Bearer 头，无 WS 鉴权路径 |
+| relay（web-remote-control） | ❌ | 语义是「device/terminal 1:1 配对 + 不解析 payload」；群组/持久化会破坏它的中立性。它继续负责「手机 ↔ 我的桌面 agent」这类 1:1 隧道 |
+| 新建 msgbus | ✅ | 连接、存储、限流自己扛；只复用 ucas-proxy 的 JWT 与组织模型 |
+
+### 2.2 数据模型（SQLite WAL 起步）
+
+```sql
+conversations(
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  kind TEXT NOT NULL,              -- 'dm' | 'group' | 'channel'
+  title TEXT,                      -- group/channel 名；dm 不用（前端显示对方名字）
+  created_by TEXT NOT NULL,
+  dm_key TEXT,                     -- dm 专用：两个 user_id 排序拼接，保证同对用户唯一
+  last_seq INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME, updated_at DATETIME
+);
+-- UNIQUE(org_id, dm_key) WHERE dm_key IS NOT NULL
+
+conversation_members(
+  conversation_id TEXT, user_id TEXT,
+  role TEXT DEFAULT 'member',      -- 'owner' | 'member'
+  last_read_seq INTEGER DEFAULT 0,
+  muted INTEGER DEFAULT 0,
+  joined_at DATETIME, left_at DATETIME,   -- left_at 支持退群/被移除，保留历史
+  PRIMARY KEY (conversation_id, user_id)
+);
+
+messages(
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,            -- 会话内单调递增，IM 的硬要求
+  sender_id TEXT NOT NULL,
+  kind TEXT NOT NULL,              -- 'text' | 'attachment' | 'system'
+  body TEXT NOT NULL,
+  client_msg_id TEXT,              -- 发送方生成，幂等去重
+  created_at DATETIME, edited_at DATETIME, deleted_at DATETIME
+);
+-- UNIQUE(conversation_id, seq)；UNIQUE(conversation_id, sender_id, client_msg_id)
+```
+
+- **seq 分配必须在写事务内**：`BEGIN IMMEDIATE` → `UPDATE conversations SET last_seq = last_seq + 1
+  … RETURNING last_seq` → 插消息 → `COMMIT`。SQLite 单写者、WAL 读不阻塞写；**写路径批量提交**，
+  不要长事务（ucas-proxy 的教训）。
+- 附件表 P1 再加（`attachments(id, message_id, blob_key, mime, size, sha256)`）。
+
+### 2.3 协议
+
+**WS（长连接，用于实时投递）**：`GET /ws`
+
+- 连接后**首帧鉴权**：`{type:"auth", token}` → `{type:"ready", userId, serverTime}`。
+  令牌**不放 URL**（会进 nginx/代理日志）。
+- 上行：`{type:"send", conversationId, clientMsgId, kind, body}`；
+  下行：`{type:"message", conversationId, message}`；
+  回执：`{type:"sent", clientMsgId, message}`（客户端据此把"发送中"置为"已发送"）。
+- 心跳 30s ping/pong；断线重连后用 REST `since` 补洞，客户端按 `message.id` + `client_msg_id` 去重。
+- 多端：一个 user 可有多个连接，投递按 `user_id` 扇出到其全部连接。
+
+**REST（拉取与写操作）**：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/conversations` | 会话列表（含 `last_read_seq` / `last_seq` / 最后一条消息，未读数由前两者相减得到） |
+| POST | `/api/conversations` | 创建 dm/group（`kind` + `memberIds`；dm 幂等返回既有会话） |
+| GET | `/api/conversations/:id/messages?since=<seq>` | 增量补洞（正序） |
+| GET | `/api/conversations/:id/messages?before=<seq>&limit=` | 历史分页（反向） |
+| POST | `/api/conversations/:id/read` | 上报 `last_read_seq`（取 max，防回退） |
+| PATCH | `/api/conversations/:id` | 改群名等 |
+| POST/DELETE | `/api/conversations/:id/members[/:userId]` | 拉人 / 移除 / 退群 |
+| GET | `/api/directory/users` | **企业网关侧新增**（见 §2.5） |
+
+WS 只做投递与实时事件；**所有状态都能从 REST 重建**——这样离线、重连、冷启动都不依赖长连接是否稳定。
+
+### 2.4 鉴权与组织隔离
+
+- HTTP 用 `Authorization: Bearer <JWT>`（ucas-proxy 签的 `{userId, orgId, role}`）；WS 用首帧 auth。
+- **每个查询带 `org_id` 硬约束**，成员校验在服务端做（不是前端过滤）。内部 UUID 为主键，
+  `wecom_userid` 可猜、不作键——照抄 ucas-proxy 的隔离测试范式（`orgIsolationGuards.test.ts`）。
+- 一期只允许组织内会话；跨组织（哪怕同名部门）一律拒绝。
+
+### 2.5 硬前置：员工目录端点（在 ucas-proxy 侧）
+
+单聊要先能选人，而现在**员工拿不到任何用户列表**（只有 `GET /api/admin/users`，admin 权限；
+前端把个人资料缓存在 localStorage，也没有 `/api/me`）。需要在 control-plane 新增：
+
+```
+GET /api/directory/users?q=<可选搜索>       # 仅本 org，返回 id/name/avatar/department/position
+```
+
+字段在 `users` 表里已经齐（`config/database.ts:40-55`），不需要新表；要点是**权限收敛**：
+只返回本组织、不含 `wecom_userid`/email 等可用于外部枚举的字段、支持按姓名/部门搜索。
+这属于 ucas-proxy 独立仓库的改动，走它自己的发布流程。
+
+### 2.6 部署形态：并入已有的 ucas-proxy 部署单元（同机、同 nginx、独立容器）
+
+已核对的既有形态（`docker-compose.yml`、`nginx/nginx.conf`）：7 个服务（new-api / postgres /
+audit-proxy / control-plane / mcp-gateway / autoheal / nginx），三段网络（`internal`（`internal: true`，
+入向隔离）、`edge`（nginx 与对外服务）、`egress`（new-api 出网））；nginx 是唯一对外的容器，
+且 `location /` 与 `/newapi/` 已经转发 `Upgrade`/`Connection`
+（`nginx.conf:142-143, 211-212, 259-260, 319-320`）。
+
+**结论**：msgbus 作为**同一台机器上的独立服务**（进同一个 compose 就是第 8 个服务，或同机独立 compose），
+共用 nginx、证书与部署流程；但**独立容器、独立进程、独立数据库**，身份只复用 `JWT_SECRET`
+（`auth/jwt.ts` 的 `signToken/verifyToken`，payload `{userId, orgId, role}`）。若放进 ucas-proxy 仓库，
+还能直接 import `@ucas-proxy/shared` 的 `UserId/OrgId/Role` 类型。
+
+**为什么不能与 control-plane 同进程（有事故为证，不是理论担忧）**：compose 里 control-plane 的 autoheal
+注释记着 2026-09-09 的 SQLite pread D-state 冻结把整个 admin console 挂住，靠 autoheal 1–2 分钟自恢复。
+对网关那是一次"控制台暂时打不开"；对 IM 就是**全员掉线 + 在线状态清零 + 推送积压**。加上
+`better-sqlite3` 是同步单连接——聊天写路径会和 usageSync（30s 一轮）、console 聚合、审计查询争用
+同一个连接。另外网关的 `authenticate` 只认 `Authorization` 头，WS 要首帧鉴权，属于新增旁路；
+IM 的消息内容也比用量数据更敏感，放进同一个库等于继承同一批多组织越权风险。
+
+**接线清单**：
+
+1. **容器**：挂 `edge`（供 nginx 反代）；若连已有的 `postgres:16-alpine` 还需挂 `internal`
+   （control-plane 就是 `internal` + `edge` 双挂）。
+2. **nginx 是两层，这点最容易漏**：compose 里的 nginx 只是内层，它把应用入口监听在
+   `127.0.0.1:23080-23082`（明文 HTTP；`docker-compose.yml` 的 nginx ports 注释写明"只绑回环，
+   由公网反代转发"），宿主机上的外层反代（1Panel/openresty，见
+   `docs/1panel-openresty-status-2026-08-26.md`）才终结 TLS 并对外。**两层都要做**：新增 location、
+   补 `proxy_http_version 1.1` + `Upgrade`/`Connection`、调大 `proxy_read_timeout`。
+   心跳间隔必须小于所有中间层的最小空闲超时（心跳 30s + 两层各 ≥ 90s 才稳）。
+3. **身份**：同 `JWT_SECRET`；组织隔离从第一行代码就带 `org_id` 硬约束。
+4. **目录端点** `GET /api/directory/users` 加在 control-plane（只读、轻量，放既有进程可接受）。
+5. **发布解耦**：`docker compose -p ucas-proxy-prod up -d --build msgbus` 单独重建，不牵动网关的
+   发布节奏（注意项目名必须带 `-p`，漏了会另起一套并行容器）。
+6. **存储**：P0 用自带 volume 的 SQLite（零新依赖、贴合团队习惯），表结构别用 SQLite 特有语法；
+   触发迁移到已有 Postgres 的信号是"需要跑两个实例（滚动更新不中断）"或写路径出现争用。
+7. **入口是端口不是 443**（生产实测：`apiBaseUrl = https://pivot.ucas.com.cn:23090`，TLS 由外层
+   反代终结，证书是 `*.keepsilent.xyz`）。三个后果：
+   ① 桌面端能用（现有登录流程已经在用这个入口），**浏览器页面不能**——用 `pivot.ucas.com.cn`
+   访问会主机名不匹配被拒，手机页必须走证书覆盖的名字（`*.keepsilent.xyz`）或另配证书；
+   ② `pivot.ucas.com.cn` 解析到内网 `192.168.100.143`，**校外不可达**，手机端要么接受"仅校内可用"，
+   要么另做公网入口（与 `specs/mobile-web-control-self-hosted.md` 的公网 relay 决策一起定）；
+   ③ 非 443 端口在访客网络/公共网络上可能被防火墙拦。
+
+**加固（自建就要自己扛）**：连接数上限、1 MiB 帧上限、心跳超时断开、Origin 校验、按 user/IP 限流、
+消息体长度上限、单会话成员上限——清单照抄 `specs/mobile-web-control-self-hosted.md` §4.2。
+
+**endpoint 下发**：用运行时配置（参照 `config/enterprise-identity.json` 的加载方式），不要只靠环境变量
+——与 `mobile-web-control` 的 P3 结论保持一致。
+
+## 三、客户端（UWork 内核）
+
+| 层 | 位置 | 职责 |
+| --- | --- | --- |
+| 协议 | `packages/shared/src/im.ts`（新） | 类型单一来源：会话/消息/WS 信封；两套实现（桌面、手机）都从这里取 |
+| 服务 | `packages/services/src/im/`（新） | `IImService` + `ServiceChannels.Im`；方法 `listConversations / openConversation / sendMessage / markRead / createDm / createGroup`，事件 `onMessage` / `onConversationUpdated` |
+| 主进程 | `packages/desktop/src/main/im/`（新） | WS 客户端：连接、首帧 auth、心跳、退避重连、`since` 补洞、离线发送队列。**照抄 `webRemoteControlTransport.ts` 的重连/心跳/帧上限模式**（它已经过真机打磨） |
+| UI | `packages/ui/src/im/`（新） + `workspaceSidePane.ts:530` 的 union 加 `"messages"` | 会话列表 + 消息时间线 + 输入框；渲染分派在 `app-shell/AnimatedSidePanePanel.tsx`；`selection-side-chat` 是同类面板先例 |
+| 通知/角标 | 复用 `PlatformChannels` | 未读角标 `SyncWindowUnreadCount`（`channels.ts:263`）；新消息通知 `ShowTaskNotification`（`:404`） |
+| 手机 | `packages/ui/src/WebRemoteControlMobileShell.tsx` 加第三页（P2） | 手机页只维护一份独立站点（`mobile-web-control-self-hosted.md` §7.6） |
+
+服务层放在 `packages/services` 而不是直接写在 UI 里，是为了让手机页与未来的 agent provider 复用同一套
+读写逻辑（bot provider 也走 REST + WS，见 P2）。
+
+**P0 验收**：两台机器上两个账号互相单聊、建群三条消息往返；断网 30 秒重连后消息**不丢不重**；
+未读数与 `last_read_seq` 一致；冷启动能完整重建会话列表。
+
+## 四、分期与灰度
+
+**灰度范围（2026-10-16 定）：北京组织 + 部门白名单——一期只开放「测试与服务保障部」。**
+生产只读核对：北京 `org_id=a1d155cb-7e9f-46ef-babb-ac296faac7a0`，205 个用户 / 197 个活跃 Key
+（南京 24、厦门 29，另有一行 admin 组织）；`users.department = '测试与服务保障部'` 的行是
+**14 条**，且北京只有这一个部门名含"测试"。205 人的量级让 §2.2 的单实例 SQLite 余量很大，P0 不需要
+为容量做任何特殊设计；14 人的试点规模意味着**门禁的正确性比性能重要得多**。
+
+**两级门禁**：org 白名单（`IM_ENABLED_ORG_IDS=beijing`）+ 部门白名单
+（`IM_ALLOWED_DEPARTMENTS=测试与服务保障部`），后者才是真正的准入。
+
+**配置与匹配（三处复用同一个判定函数）**：
+
+```
+IM_ENABLED_ORG_IDS=beijing
+IM_ALLOWED_DEPARTMENTS=测试与服务保障部     # 逗号分隔，可列多个部门
+IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_userid，给不在该部门的人显式开白
+```
+
+- 判定：把 `users.department` 按 `/[,，、;；]/` 切分 → trim → **按 token 精确相等**匹配白名单；
+  命中 `IM_ALLOWED_USER_IDS`（内部 id 或 `wecom_userid`）也放行。
+- **不做整串比较、也不用 `LIKE '%测试%'`**：多部门时 `department` 会写成
+  `"总经办, 市场营销部"` 这种逗号串（北京有 4 行），整串比较会漏人，模糊匹配会误放。
+- 白名单必须与 org 绑定（同名部门可能在别的组织也存在）；一期靠 `IM_ENABLED_ORG_IDS` 先兜住。
+- 建议用 `IM_ALLOWED_USER_IDS` 显式给管理员/演示账号开白，**不做角色隐式放行**——否则会出现
+  "为什么管理员能进我不能"的意外。
+
+**三个执行点（客户端只是渲染，服务端才是权限）**：
+
+1. **目录**（control-plane `GET /api/directory/users`）：调用者不在白名单 → 403；返回集合 = 白名单
+   内的人。于是**你能聊的人 = 能聊你的人**（对称），不会出现单向可见的怪状态。
+2. **msgbus（权威）**：WS 首帧鉴权、建会话、加成员、发消息四处都校验，且**校验会话全体成员**都在
+   白名单内；失败返回 403 并记日志。
+3. **客户端**：`GET /api/im/entitlement`（放在 control-plane，客户端已有到网关的连接，不必新开链路）
+   返回 `{enabled:false}` 时不渲染 IM 入口；下发走运行时配置。
+
+**两个会静默失效的运维陷阱**：
+
+- **部门名是显示串**：企微里改名后 `users.department` 会被下次登录/同步覆盖 → 白名单静默失配 →
+  **所有人同时失去 IM**。对策：msgbus 启动时打印 `IM allowlist matched N users`，**N=0 时 WARN 并
+  拒绝提供 IM 服务**（fail loud，别静默变成空功能）；改名要同步改 `.env` 并重启两个容器。
+- **`department` 有两个写入源**（登录时 `upsertFromWeCom` 刷新 + 管理员 `setDepartment` 手改），
+  判定要用读时的当前值，不要长期缓存。
+
+**验收（14 人试点）**：测试与服务保障部的用户能看到入口、目录里只有这 14 人、能互发单聊与建群；
+非白名单用户入口不渲染、直连 `GET /api/directory/users` 得 403、手工连 msgbus 的 WS 鉴权失败；
+`"总经办, 市场营销部"` 这类多部门行（北京 4 人）必须被正确拦下——这是防误放的现成样本。
+
+**升级路径**：部门多起来后应把白名单从"部门名"换成企微部门 ID（数字）。现在 `users` 只存了名字
+（`wecom.ts` 的 `getDepartmentNames` 把 `number[]` 换成了名字），需要加列或加表并改 `wecom.ts` /
+`directorySync`。14 人试点用名字够用，但上面三条（token 精确匹配、与 org 绑定、fail loud）必须做到。
+
+**"只做北京 + 只做测试部"是灰度范围，不是架构简化**：`conversations` / `conversation_members` /
+`messages` 仍然每行带 `org_id`，每条查询仍然强制 org 约束。这是 ucas-proxy 那批越权缺口的直接教训
+——它们几乎都源自"反正只有一个组织/一个域名"的假设。收窄范围靠加开关，不是去掉隔离。
+
+**北京组织的三个特定约束**（均为生产事实）：
+
+1. **用户池 = 北京企微应用的可见范围**：北京应用是**标签授权（20 个部门）**，`directorySync` 的
+   注释明确写着"在该组织口径里这就是在职名单"。一期 `GET /api/directory/users` 返回的是其中被白名单
+   命中的 14 人。
+2. **企微应用消息的可见范围**：P2 的离线推送用北京 `agentId=1000083` 与其 secret，
+   **推送目标必须在该应用的可见范围内**，否则企微侧会拒——它决定了"哪些人能收到离线提醒"。
+3. **用户目录要与离职对账口径一致**：`directorySync`（每天 03:30，report/enforce 两模式）已有在职
+   判定；IM 的用户目录不能只按 `users` 表取（表里可能留着已离职账号），否则会出现"给离职的人建会话"。
+   离职自动退群同理挂在这条线上（P3）。
+
+### P0 基础可用（服务端最小 + 目录端点 + 桌面单聊/群聊）
+
+- msgbus：`conversations` / `conversation_members` / `messages`、WS 投递、REST 拉取与补洞、鉴权与 org 隔离。
+- ucas-proxy：`GET /api/directory/users`（独立仓库，需单独排期与发布）。
+- 客户端：服务层 + 主进程 WS 客户端 + side-pane 面板（单聊、建群、文本、未读）。
+
+### P1 完整性
+
+频道（`kind='channel'`，与群共用模型）、附件（对象存储 + 直传）、会话内搜索、通知打磨
+（免打扰、@提醒）、消息 tombstone 的编辑/撤回语义。
+
+### P2 差异化与移动端
+
+- **agent 作为成员**：`packages/services/src/bots/providers/` 新增 native `uwork` provider，
+  把「频道/话题」映射成语用 `[botId, chatId, threadId]` 的会话键（`groupSessions.ts:4-17`），
+  直接复用已验证的 @解析、流式回复、任务结果投递与话题续接。`docs/bots.md:197` 早已把
+  Discord/WeCom 列为预留 provider，模式一致。
+- 手机页第三页 + 企微应用消息兜底（`message/send` + `touser`，现状只有群机器人 webhook）。
+
+### P3 治理
+
+保留策略与合规导出、审计/DLP 接入、群管理权限（谁能建频道、成员上限、离职自动退群
+——后者可挂现有 `directorySync` 的离职对账）。
+
+## 五、需要拍板的决策点
+
+1. **msgbus 放公网还是内网**：决定"手机/校外是否可用"与加固清单的严格程度（一期若只办公网内使用，可先内网）。
+2. **移动端形态**：Web + 企微推送兜底（最快）还是 Android 壳（`packages/android` 已有骨架）先做。
+3. **是否需要"已读"**：建议只做 `last_read_seq` 未读，不做逐条已读回执。
+4. **组织边界（已定）**：一期只对北京开放（见 §4 灰度范围），跨组织会话不做；南京/厦门登录后
+   不渲染 IM 入口。
+5. **服务端起步存储**：SQLite WAL（快）还是直接 Postgres（省一次迁移）。
+
+## 六、风险与对策
+
+| 风险 | 对策 |
+| --- | --- |
+| 无推送时移动端体验缺口 | 一期用企微应用消息兜底；桌面端本来就是常驻进程，通知够用 |
+| 把 ucas-proxy 的单进程卡顿教训复制过来 | msgbus 独立进程；写路径批量提交；压测后再谈扩容 |
+| fork 上游同步冲突 | 新文件为主（`shared/src/im.ts`、`services/src/im/`、`desktop/src/main/im/`、`ui/src/im/`），接缝只改 side-pane union 与渲染分派两处 |
+| 多组织越权 | 服务端强制 org 约束 + 成员校验；隔离测试与 ucas-proxy 同范式 |
+| 数据出境 | 自建 msgbus 使消息不出境；同时复核 `mobile-web-control-self-hosted.md` 的出境清单 |
+| 目录端点被滥用枚举 | 只返回本 org、最小字段、按姓名搜索需登录态与频率限制 |
+
+## 七、本次未验证 / 实现时需确认
+
+- `better-sqlite3` 在 msgbus 写路径上的并发上限（需压测；P0 单组织量级预期够用）。
+- WS 在办公网代理/防火墙下的连通性（公网部署必须 443 + wss）。
+- ucas-proxy 侧目录端点的权限模型细节（是否要给"仅本部门可见"等选项）。
+- 手机页第三页与实际 UI 壳的耦合度（`WebRemoteControlMobileShell` 的页面状态机是否适合挂 IM）。
+- 若引 Centrifugo：它的 history 是**有界缓存不是消息存储**，永久历史仍必须落在自己的库里；
+  多节点需要 Redis，是否值得为 P0 引入要按并发规模判断。
+- 若引 ntfy 做推送：iOS 的即时送达依赖 APNs，自托管实例需要配置 `upstream-base-url` 指回官方
+  `ntfy.sh`（消息会经官方服务器一跳），Android 走自己的长连接不受影响——上线前需按目标机型实测。
+
+## 八、参考实现（活跃度与许可均于 2026-10-16 用 GitHub API 核对）
+
+先分清三种「参考」的含义：**整包当服务端**、**只引实时层/推送层**、**只抄协议与数据模型**。
+三者的代价差一个数量级，混着选是这类项目最常见的翻车方式。
+
+| 项目 | 语言 | 许可 | 活跃度 | 对 UWork 的定位 |
+| --- | --- | --- | --- | --- |
+| [`centrifugal/centrifugo`](https://github.com/centrifugal/centrifugo) | Go | Apache-2.0 | 10.9k★，2026-10-14 | **推荐直接引**：自托管实时层（WS/SSE 订阅、history、presence、JWT 鉴权、Redis 多节点）。自研只留会话/成员/消息持久化 |
+| [`binwiederhier/ntfy`](https://github.com/binwiederhier/ntfy) | Go | Apache-2.0 | 34.9k★，日更 | **推荐直接引**：自托管推送，Android/iOS 有官方 App，绕开国内 FCM 不可用；补 §2 里"移动端推送"的短板 |
+| [`element-hq/synapse`](https://github.com/element-hq/synapse) | Python+Rust | AGPL-3.0 | 4.7k★（旧 `matrix-org/synapse` 已归档） | Matrix 官方 homeserver。**抄同步协议**：`/sync` 的 since token、`m.read` / `m.fully_read`；整包太重 |
+| [`element-hq/element-web`](https://github.com/element-hq/element-web) | TS | AGPL-3.0 | 13.6k★ | 多端同步与未读状态的 UI 参考 |
+| [`zulip/zulip`](https://github.com/zulip/zulip) | Python | Apache-2.0 | 26.1k★ | **抄模型**：stream + topic 两级结构，是"频道 + 话题"最成熟的设计，也正好是 agent 派活的粒度 |
+| [`mattermost/mattermost`](https://github.com/mattermost/mattermost) | TS + Go | MIT + 企业版 | 39.4k★ | **抄 API 形状**：REST 分页 + WS 事件命名（`posted` / `channel_viewed` / `typing`）。整包会把"替代企微"变成"再造一个平台" |
+| [`RocketChat/Rocket.Chat`](https://github.com/RocketChat/Rocket.Chat) | TS | MIT + 企业版 | 46.3k★ | 同上，Node 栈但 Meteor/Mongo 重心与 UWork 不同 |
+| [`tinode/chat`](https://github.com/tinode/chat) | Go | GPL-3.0 | 13.5k★，2026-10-10 | **整包备选**：带 iOS/Android/Web 客户端与 chatbot，协议文档完整；代价是第三套技术栈 + 账号体系适配 |
+| [`openimsdk/open-im-server`](https://github.com/openimsdk/open-im-server) | Go | Apache-2.0 | 16.7k★，日更 | **整包备选**：中文生态、多端 SDK 与推送齐全，最接近"微信式"能力面 |
+| [`wildfirechat/im-server`](https://github.com/wildfirechat/im-server) | Java | 混合 | 8.6k★ | 国内企业常用整包（野火 IM），同类取舍 |
+| [`msgbyte/tailchat`](https://github.com/msgbyte/tailchat) | TS | Apache-2.0 | 3.6k★ | **TS 参考实现**：插件化 Discord-like，代码可读，适合当"TypeScript 怎么写频道/成员/权限"的样本 |
+| [`stoatchat/stoatchat`](https://github.com/stoatchat/stoatchat)（原 Revolt） | Rust | 混合 | 3.4k★，日更 | 开源 Discord 复刻，权限/频道模型可参考；成熟度中等 |
+| [`processone/ejabberd`](https://github.com/processone/ejabberd) | Erlang | GPL-2.0 | 6.7k★ | XMPP 栈（MAM 归档、多端 carbons、推送 XEP），极稳但生态老旧、团队要学 Erlang |
+| [`spacebarchat/server`](https://github.com/spacebarchat/server) | TS | AGPL-3.0 | 2.2k★ | Discord 兼容 API；成熟度不足，不建议 |
+| [`discourse/discourse`](https://github.com/discourse/discourse) | Ruby | GPL-2.0 | 48k★ | 论坛 + Chat，方向不符 |
+| [`yinxin630/fiora`](https://github.com/yinxin630/fiora) | TS | MIT | 7.2k★，**最后提交 2024-02** | 已停止维护，不要选 |
+
+**推荐组合（与 §2、§3 的方案一致）**：会话/成员/消息的持久化与 UWork 集成自研，
+实时层用 Centrifugo，推送用 ntfy，协议抄 Matrix 的 `/sync`（since token）与 Zulip 的 topic 模型。
+这样既不引入第三套技术栈和另一个产品，又不自己重写多端同步、连接治理与推送。
+
+**整包路线成立的前提**：如果目标变成"公司要有一个自研 IM 平台"（而不是"IM 长在 UWork 里"），
+那么 Synapse（协议正统、E2EE、Application Service 模型正好承载 agent 成员）或 OpenIM（中文生态、
+推送与多端齐）是更省时间的起点——但要接受账号体系与 ucas-proxy JWT 的适配成本。
+
+## 九、实现进度（2026-10-16 起）
+
+### 已完成：服务端门禁 + msgbus 存储核心（代码在 ucas-proxy 仓库，未部署）
+
+| 文件（ucas-proxy 仓库） | 作用 |
+| --- | --- |
+| `services/control-plane/src/im/allowlist.ts` | 三级白名单判定（org + 部门 + 用户）：部门按分隔符切分后**按 token 精确相等**；两白名单皆空 ⇒ fail closed；显式 `'*'` 才整组织开放 |
+| `services/control-plane/src/im/registry.ts` | 判定主体取数（含 org slug）、目录条目（带切好的 `departments`）、给 msgbus 的白名单快照（只含判定标识，不带姓名等 PII） |
+| `services/control-plane/src/routes/directory.ts` | `GET /api/directory/users`：白名单外 403；列表与调用者**对称可见**；支持 `q` 搜索 |
+| `services/control-plane/src/routes/im.ts` | `GET /api/im/entitlement`（客户端渲染开关）与 `GET /api/im/internal/allowlist`（msgbus 拉快照；`IM_INTERNAL_TOKEN` 独立令牌，未配置返回 503 而不是放行） |
+| `services/msgbus/src/config/database.ts` | 新服务的表结构（conversations / conversation_members / messages；seq 唯一索引；时间戳为 epoch 毫秒） |
+| `services/msgbus/src/store/messaging.ts` | 存储核心：DM 幂等、会话内 seq 单调、`client_msg_id` 幂等、`since` 补洞、`before` 分页、未读=`last_seq-last_read_seq`、退群留痕、撤回 tombstone、跨组织按"不存在"处理 |
+| `.env.example` / `docker-compose.yml` | 新增 `IM_ENABLED_ORG_IDS` / `IM_ALLOWED_DEPARTMENTS` / `IM_ALLOWED_USER_IDS` / `IM_INTERNAL_TOKEN`（默认全空 = 不对任何人开放） |
+
+**验证记录（本次实际执行）**：
+
+- control-plane 全量 `npx jest`：**39 套件 / 331 用例通过**，1 套件按设计跳过（需要生产库快照的 `prodDbGuards.verify`）。
+- 新增用例：白名单单测 11 条 + 路由端到端 16 条，专门覆盖三条关键防线——多部门串（`"总经办, 市场营销部"`）不误放、跨组织同名部门被组织门禁拦下、白名单皆空时 fail closed；另测快照 `matchedCount=0` 供 msgbus fail loud。
+- msgbus `npx jest`：**22 条通过**；`tsc --noEmit` 干净；shared / control-plane / msgbus 三个 workspace 的 `npm run build` 均通过。
+- **未执行**：任何部署动作（未构镜像、未碰生产、未改 nginx）；UWork 客户端尚未动工。
+
+### 实现中定型的两处设计（与初稿不同）
+
+1. **msgbus 不读 control.db**：白名单由 control-plane 经 `/api/im/internal/allowlist` 以**快照**下发，msgbus 本地缓存判定——既不跨容器共享 SQLite 文件，也不在每条消息上打一次 HTTP。快照带 `matchedCount`，为 0 时 msgbus 必须 fail loud（WARN + 拒绝提供 IM 服务）。
+2. **时间戳存 epoch 毫秒**：SQLite `CURRENT_TIMESTAMP` 只到秒，同一秒内更新的两个会话在"最近会话"排序里会抖动（实现时被测试抓到）。store 支持注入时钟，测试因此可以精确控制"谁更近"。
+
+### 第二轮（同日）：HTTP + WS 层与部署接线
+
+| 文件（msgbus） | 作用 |
+| --- | --- |
+| `src/auth/allowlist.ts` | 白名单快照缓存：周期从 control-plane 拉取；**三条 fail loud**——首次拉不到就拒绝服务、快照命中 0 人就拒绝服务、刷新持续失败超过 `IM_ALLOWLIST_MAX_STALE_MS` 就拒绝服务（未超时则继续用最后一份好快照，避免网络抖动让 IM 整体不可用） |
+| `src/auth/identity.ts` | JWT（复用 `JWT_SECRET`）+ 白名单门禁；**403 与 503 分工**：403 = 明确不在名单（客户端不渲染入口），503 = IM 暂不可用（客户端提示稍后重试） |
+| `src/routes/conversations.ts` | REST 面 9 条：会话列表/建会话/拉消息(`since`/`before`)/发消息/已读/改名/加人/退群/撤回；**会话全体成员都必须在白名单内**（防把灰度外的人拉进来） |
+| `src/ws.ts` | 首帧 `auth`（令牌不放 URL）、心跳 30s、1 MiB 帧上限、自定义关闭码 4400/4401/4403/4503；只做投递，正确性在 store |
+| `src/hub.ts` | 用户→多连接映射（同一用户多端在线），按会话成员扇出 |
+| `src/app.ts` / `src/index.ts` | 装配与启动；`/health` 只看进程存活（白名单失配不该被 autoheal 反复重启掩盖，状态放在响应体里） |
+| `services/msgbus/Dockerfile` + compose `msgbus` 服务 | 独立容器 + `msgbus-data` 卷；只挂 `edge`（nginx 反代 + 访问 control-plane 拉快照） |
+
+**验证记录（本轮实际执行）**：
+
+- msgbus `npx jest`：**4 套件 / 50 用例通过**（存储 22、快照缓存 7、REST 11、WS 10），覆盖 DM 幂等、seq 单调、`client_msg_id` 幂等、`since` 补洞、跨组织 404、非成员 403、撤回 tombstone、WS 关闭码语义、以及"白名单不可用时 503 而不是放行"。
+- `tsc --noEmit` 与 `npm run build` 通过；`docker compose config` 解析通过。
+- **进程级 smoke（真进程 + 真实 SQLite 文件 + 存根 control-plane）**：启动即拉到快照（命中 2 人）→ `/health` 报 `allowlistUsers: 2` → 建单聊返回会话 → 发消息 `seq=1` → 会话列表 `unreadCount=1` → 白名单外 403 → 无令牌 401；`msgbus.db` 与 `-wal`/`-shm` 正常落盘（WAL 生效）。
+- **仍未执行**：nginx 接线（msgbus 目前只在 docker 网络内可达，属预期）、任何部署动作、客户端实现。
+
+### 第三轮（同日）：UWork 客户端协议与服务层
+
+| 文件（UWork 仓库） | 作用 |
+| --- | --- |
+| `packages/shared/src/im.ts` | 协议单一来源：会话/消息/通讯录/准入类型、WS 客户端帧与服务端帧（**用 zod 校验**，认不出的帧丢弃）、`IM_CLOSE_CODES`、`buildImWsUrl()` |
+| `packages/services/src/im/contract.ts` | `IImService` 契约 + `ServiceChannels.Im` descriptor；`ImView` 的 `entitlement: null` 表示"还查不到"而不是"没权限" |
+| `packages/services/src/im/imHttpClient.ts` | REST 面（9 条），403/503 语义原样上抛（`ImHttpError` 带 code） |
+| `packages/services/src/im/imTransport.ts` | WS 连接管理：首帧 auth、心跳兼存活探针、指数退避重连、关闭码分派（4403 终态 / 4503 慢重连 / 4401 重取令牌） |
+| `packages/services/src/im/imService.ts` | 门面：准入 + 会话列表 + 消息缓存 + 未读 + 实时事件；发送"WS 优先、超时回退 HTTP"，两条路共用同一个 `clientMsgId` |
+| `packages/services/test/im.test.ts` | 14 条用例（连接 6 + 门面 8），用假 socket 与假 HTTP 客户端驱动 |
+
+**注册点共 7 处**（比"新增服务改 4 处"的既有说法多，因为类型入口既要从 `index.ts` 再导出、又要声明子路径别名）：
+`shared/package.json` 的 `exports["./im"]`、`shared/src/index.ts` 的再导出、`shared/src/channels.ts` 的
+`ServiceChannels.Im`、`apps/zcode-cli/packages/cli/scripts/build.mjs` 的 alias 表、
+`services/src/index.ts` 的导出、`services/src/node.ts` 的 `.register(IImService, …)`、
+`client/src/remoteServiceAccess.ts` 的 ProxyChannel 代理。
+
+**实现中定型的两处（都是被测试抓出来的）**：
+
+1. **心跳探活不能每次 tick 重置 `lastPongAt`**：初版在每轮心跳里刷新它，"两个周期没 pong 就重建"的条件
+   永远不成立——半开连接（对端消失但 TCP 未断）永远发现不了。现在只在鉴权完成与收到 pong 时更新，
+   `lastPongAt` 才是真的存活时间戳。
+2. **补洞发独立事件 `catch_up`，不冒充 `message`**：重连补回来的历史消息若按新消息广播，
+   一次断线重连会给用户刷一屏通知。UI 对 `catch_up` 做静默插入。
+
+**验证记录（本轮实际执行）**：
+
+- `pnpm exec vitest run packages/services/test/im.test.ts`：**14/14 通过**，覆盖 auth 帧在 open 之后才发、
+  心跳续命与超时重建、4403 不重连、4503 退避重连、脏帧被忽略、503 不等于没权限、在线走 WS、
+  离线回退 HTTP 且带同一 `clientMsgId`、未读递增、补洞事件类型。
+- `tsc --noEmit`：`packages/shared`、`packages/services`、`packages/client` 三包**全绿**
+  （注意 `@zcode/shared` / `@zcode/services` 解析的是 dist，改完要先 `tsc -b` 重建再验 client）。
+- `oxfmt --check`：改动文件全部符合格式（仓库硬约束）。
+- **未执行**：桌面真机联调、UI 面板、desktop main 的 socket 注入（当前 `node.ts` 用运行时全局 WebSocket 兜底，
+  Node 22+ 自带；桌面若要更稳可注入 `ws`）。
+
+### 第四轮（同日）：UI 入口 + 默认背景与 AIHub 对齐
+
+**IM 面板与入口**（UWork 仓库）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `packages/ui/src/im/useIm.ts` | 两个 hook：`useIm`（订阅 `onDidChange` + 取初值 + 进面板刷新一次）与 `useImConversation`（打开会话拉最新页、实时事件合并、`catch_up` 静默插入、撤回改 tombstone、向上翻页） |
+| `packages/ui/src/im/MessagesSidePane.tsx` | 面板：头部（连接状态徽标 + 发起单聊 + 刷新）、会话列表（未读角标）、通讯录选人、空/未开通/不可用三种状态分开显示 |
+| `packages/ui/src/im/ImConversationPanel.tsx` | 时间线（气泡按 `selfUserId` 对齐、撤回留占位、时间用系统 locale 格式化）与输入框（Enter 发送 / Shift+Enter 换行） |
+| `packages/ui/src/lib/workspaceSidePane.ts` | 新增 `messages` tab 类型/union/`createMessagesSidePaneTab`/`openMessagesSidePane`；登记为**工作区全局 tab**（IM 不随会话生灭） |
+| `packages/ui/src/app-shell/*`、`WorkspaceSidebar*`、`App.tsx`、`hooks/useAppPanels.ts`、`services/src/accessor.ts` | 接线：渲染分派、tab 图标与标题、`handleOpenMessages` 一路从 `useAppPanels` 传到侧栏页脚的消息按钮；`IServiceAccessor` 暴露可选 `imService` |
+| `i18n/locales/{zh-CN,en-US}.ts` | 新增 25 个 `im.*` 文案（两套语言同步） |
+
+入口位置：侧栏页脚设置按钮左侧的「消息」按钮（`data-testid="sidebar-messages-button"`），点击打开/聚焦同一个面板。
+`ImView` 增加了 `selfUserId`（由 WS 的 `ready` 帧带回），UI 用它对齐自己发的消息气泡。
+
+**默认背景与 AIHub 对齐**：取值来源是 AIHub（SkillHub）前端的主题文件
+`skills/skillhub/web/src/index.css`（"UCAS 黑白企业风：纯黑白反相，语义色仅表状态"）：
+
+- 深色页底 `#0f0f0f`、面板 `#171717`（原先 UWork 默认主题 `zai-dark` 是 `#161616` / `#2b2b2b`）；
+- 浅色页底 `#f5f5f5`、面板 `#ededed`（原 `#f8f8f8` / `#ececee`）。
+
+改动点：`packages/ui/src/styles.css` 的 `.theme-zai-light` 与 `.theme-zai-dark` 两组 token、
+`packages/web/index.html`（`theme-color`、启动壳主题常量与 CI 兜底色）、
+`packages/desktop/src/renderer/index.html` 的启动闪屏渐变末端、设置页主题预览卡片的硬编码值。
+
+> 注意：AIHub **线上**的 SkillHub bundle 还是旧品牌（紫），黑白风在仓库里（commit `5dec7eb` 之后）
+> 但尚未部署；这里按仓库正在推的那套对齐，下次 SkillHub 部署后两边才完全一致。
+
+**验证记录（本轮实际执行）**：
+
+- `pnpm exec tsc --noEmit`：`packages/ui` 与 `packages/services` 中**本轮改动的文件零错误**
+  （改动共享包后先 `tsc -b packages/services packages/shared` 重建 dist，否则下游会报假错）。
+- `oxfmt --check`：改动文件全部符合格式。
+- `vitest run packages/services/test/im.test.ts`：**14/14 通过**（`ImView` 新增字段未破坏契约）。
+- 侧栏相关单测 **5 套件 / 62 条通过**（含本轮新增的 2 条回归，见下）。
+
+**真机 Smoke 发现的崩溃（已修）**：首次运行时 `Cannot read properties of undefined (reading 'path')`。
+根因是 `sidePaneTabPresentation.ts` 的 `getSidePaneTabSearchHint` **兜底分支**直接写
+`return tab.source.path ?? tab.source.title`，而 `messages` tab 没有 `source` 字段 →
+读 `undefined.path` 抛错、整棵 workspace 子树挂掉。
+
+- **同一个坑这个仓库踩过第二次**：`getSidePaneTabTitle` 里还留着上一轮 browser-use 的同款注释。
+  两处兜底现在都改成防御式（`if ("source" in tab && tab.source)`，否则给中性标题 `sidePane.unknown`），
+  并补上 `messages` 分支（搜索提示 / 类型标签 / 标题三处）。
+- **为什么类型检查没拦住**：本仓 `tsconfig.base.json` **没开 `strictNullChecks`**（只开了
+  `noUncheckedIndexedAccess`），所以 `tab.source.path` 是合法 TS——这类崩溃只能靠运行或测试发现。
+- **回归测试**：`packages/ui/test/sidePaneTabPresentation.test.ts` 新增 2 条——`messages` 三处展示可用；
+  **完全未知的类型**兜底不抛错、只返回中性结果。这条钉住的是"未来再加 tab 类型不会重演"。
+
+**仍未验证**：面板没有做完整的真机交互验证（单聊/群聊往返、断线重连补洞、未读角标）。
+`packages/ui/test/*.e2e.mjs` 需要 browser-harness 在 Chrome 里手动允许远程调试，无人值守跑不了，
+按仓库约定记为未验证——本次只做到"启动不再崩、侧栏展示三件套有测试"。
+
+### 第五轮（同日）：生产上线（北京 + 测试部 + 三位负责人）
+
+**上线内容**（全部在 ucas-proxy 生产 `192.168.100.143`，项目名 `ucas-proxy-prod`）：
+
+- control-plane：新增 `im/allowlist.ts`、`im/registry.ts`、`routes/directory.ts`、`routes/im.ts`，`index.ts` 挂两条路由；
+- msgbus：新容器（独立 SQLite `msgbus-data` 卷）；
+- 内层 nginx：新增 `location /api/conversations` 与 `location /ws` → `msgbus:3010`（`/ws` 的 read/send timeout 600s）；
+- `.env`：`IM_ENABLED_ORG_IDS=beijing`、`IM_ALLOWED_DEPARTMENTS=测试与服务保障部`（14 人）、
+  `IM_ALLOWED_USER_IDS=xiaohua.xin,jingping.li,yueyang.lv`、`IM_INTERNAL_TOKEN`（新生成）→ 快照 **matchedCount=17**。
+
+**外层反代不需要改**：1Panel 的 `pivot.ucas.com.cn:23090` 站点（`/opt/1panel/www/conf.d/pivot.ucas.com.cn.conf`
+→ `sites/pivot.ucas.com.cn/proxy/root.conf`）本来就是 `location /` 直通 `127.0.0.1:23080`，
+且已带 `proxy_read_timeout 600s` 与 `Upgrade`/`Connection` 转发——两层 WS 的 timeout 都够。
+客户端的 `wss://pivot.ucas.com.cn:23090/ws` 因此直接生效。
+
+**验证记录（生产实测，逐条执行）**：
+
+- 回退探针 `POST /api/auth/handoff/start` = **201**（确认 control-plane 重建没有回退既有功能）；
+  `auth/orgs`=200、`health`=200；
+- 新路由存在且要鉴权：`/api/directory/users`、`/api/im/entitlement`、`/api/im/internal/allowlist` 无令牌均 **401**；
+- 白名单快照 `matchedCount=17`，msgbus 日志 `白名单快照就绪：命中 17 人`；
+- 经外网入口 23090：`/api/im/entitlement` → `{"enabled":true,"via":"user"}`（辛晓华），`/api/conversations` → `{"conversations":[]}`；
+- **WS 经 nginx 握手拿到 `{"type":"ready",...}`**（在 msgbus 容器内连 `ws://nginx:80/ws`）；
+- 非白名单用户 → `{"enabled":false,"reason":"not_in_allowlist"}`；
+- `docker ps` 8 个服务、无多余容器；网关自身全部正常。
+
+**两个上线坑（都踩到了，记在这里省下次的时间）**：
+
+1. **`nginx.conf` 是单文件 bind mount，绑的是 inode**：用 tar/替换方式更新宿主机文件后，容器里看到的
+   仍是旧 inode（`grep msgbus` 计数 0），`nginx -t` 与 `reload` 都会"成功"但配置其实没生效。
+   → 更新单文件挂载的配置后必须 `docker compose -p ucas-proxy-prod restart nginx`。
+2. **msgbus 首拉快照会失败**：与 control-plane 同批 `up -d` 时，msgbus 先起来，日志报
+   `白名单快照首次拉取失败 { message: 'fetch failed' }` → 这是启动次序而非配置问题，按 TTL 重试即恢复
+   （重启 msgbus 可立即拉取）。日志刻意区分"首次失败"与"继续用旧快照"两种措辞。
+
+**回滚**：改动前的 5 个文件备份在 `/home/services/ucas-proxy/backups/im-20261017-011848/`；
+只想关掉 IM 而不回退网关：`docker compose -p ucas-proxy-prod down msgbus`（前端会显示"不可用"），
+或把 `.env` 的 `IM_ALLOWED_DEPARTMENTS`/`IM_ALLOWED_USER_IDS` 清空 = fail closed（谁都不放行）。
+**注意：生产不是 git 检出**，本地仓库的改动仍未提交（两个仓库都没有 commit）。
+
+### 第六轮（同日）：消息撤回
+
+服务端本来就有（store 的 `deleteMessage`：只有发送者能撤回、置 `deleted_at` 并清空正文 = tombstone；
+REST `DELETE /api/conversations/:id/messages/:messageId` 成功后向会话成员广播 `message_deleted`）。
+本轮补的是**触发入口与更新路径的一致性**：
+
+- **服务层**：本地撤回也发同一条 `message_deleted` 实时事件。UI 因此只有一条更新路径
+  （自己撤回、另一台设备撤回、别人撤回都是它）；否则"自己撤回"要在每个组件各打一次补丁，迟早漏一处。
+- **UI**：自己发的、未撤回的消息，悬停时出现「撤回」；**两步确认**（第一次点击变成「确认撤回」）——
+  正文清空后不可恢复，防误点；失败时在输入框上方就地提示，不静默吞掉。
+
+验证：服务层测试 **16 条**（新增两条：撤回成功后发事件；撤回失败向上抛且本地状态不变）；
+生产用不存在的 id 探 `DELETE /api/conversations/.../messages/...` → 结构正确的 **404**
+（证明撤回这条路经外层 23090 已通到 msgbus，且没有写入任何数据）。
+
+**未定项**：撤回是否要时间窗（微信是 2 分钟）。服务端目前允许发送者随时撤回；要加只是
+`deleteMessage` 里一条时间判断——这是产品决策，不是技术限制。
+
+### 下一步（按依赖顺序）
+
+1. 桌面真机联调：起本地 msgbus（可配存根 control-plane，或与真网关同机）→ 打开侧栏「消息」→ 单聊/群聊往返、断线重连补洞、未读角标。
+2. UI 的 e2e：按仓库约定补 `packages/ui/test/*.e2e.mjs`（需要 browser-harness 授权）。
+3. 两层 nginx 接线与上线（`Upgrade` + `proxy_read_timeout`），属部署范围。
+
+## 相关文档
+
+- `specs/mobile-web-control-self-hosted.md`（relay 自建、加固清单、出境连接清单、手机页托管）
+- `docs/bots.md`、`docs/bots-feishu-group-collaboration.md`（P2 的 agent 成员复用点）
+- `UI_PLUGIN.md`（为什么 IM 不走插件路径）

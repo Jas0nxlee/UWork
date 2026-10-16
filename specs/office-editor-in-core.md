@@ -36,6 +36,32 @@ ONLYOFFICE/Collabora（服务端重型）。许可按仓库口径核查（`scrip
 （特殊形态：`executePainter` 要 `{isDblclick}`、`executeInsertElementList` 的日期/复选框元素形状、
 `executeImage/Hyperlink/Latex/AddWatermark` 收对象、撤销/重做前先 `focus()`）。
 
+## 3.4 不做 LibreOffice 内置（2026-10-16 决定）
+
+**决定**：不把 LibreOffice（soffice）作为内置预览/转换路径。理由：安装体量太大（macOS 约 284 MB、
+Linux 207 MB），且是 MPL 旁挂、要管进程/超时/profile 隔离；而我们要的是**轻量 + 覆盖基础功能**。
+参照物 PilotDeck（OpenBMB）虽然用 `soffice --headless --convert-to pdf` 做高保真预览，但那与"轻量内置"
+冲突，所以这条只保留为**可选旁挂**（谁本地装了 sofce 就多一档保真预览），不进安装包、不作为依赖。
+
+轻量路线的分工（现在的实现）：只读预览用客户端渲染（`docx-preview` / `@aiden0z/pptx-renderer` /
+`@extend-ai/react-xlsx`，与 PilotDeck 同一批库），编辑用内核 canvas-editor，**产物校验**用自研的
+JSZip + DOMParser（见下节）——都在"不装外部程序"的前提下把基础功能做扎实。
+
+## 3.45 写回前产物校验（轻量版 deliver）
+
+保存路径上有大量"外科手术"（归一化、修订/批注标记视图与回写、页眉页脚回填、修订模式落 `w:ins`/`w:del`），
+任何一步把包结构改坏，用户拿到的就是一个**打不开的 docx**。所以写盘前先过 `docxValidate.ts`：
+
+| 检查                                                                                      | 拦什么                                                              |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 能当 zip 解开 + 必备部件齐全（`[Content_Types].xml`、`_rels/.rels`、`word/document.xml`） | 半个包、错包                                                        |
+| 每个 `.xml`/`.rels` 都能被 XML 解析                                                       | 截断、标签不闭合                                                    |
+| 正文引用的 `r:id`/`r:embed` 在 `document.xml.rels` 里存在                                 | 回填/删部件时最容易断的关系                                         |
+| **接受视图下的正文文字量不低于源文件的 80%**                                              | 正是"修订被静默丢掉"那类事故（当时丢了 2.7 万字符却一路"保存成功"） |
+
+校验不过就**拒绝写入**并在状态栏给出逐条原因（文档仍在编辑器里，改动不丢）。对应 PilotDeck `deliver`
+"拒绝结构不安全或不可读的产物"的原则，只是不依赖外部程序。
+
 ## 3.5 修订模式（C2）：改动落成 w:ins/w:del（2026-10-16）
 
 顶栏「修订模式」开关**默认开**：保存时把本次改动与**打开时的文件**做对比，写成 Word 修订，

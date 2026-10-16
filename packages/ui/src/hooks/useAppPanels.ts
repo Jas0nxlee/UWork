@@ -27,6 +27,7 @@ import {
   openSubagentDirectorySidePane,
   openSelectionSideChatPane,
   openPlanDetailSidePane,
+  openMessagesSidePane,
   openWorkflowRunSidePane,
   replaceWorkflowRunSidePane,
   openWorkflowRunDirectorySidePane,
@@ -66,6 +67,7 @@ import {
   type OpenScopedSubagentDirectorySideTabRequest,
   type OpenSelectionSideChatRequest,
   type OpenScopedPlanDetailSideTabRequest,
+  type OpenMessagesSidePaneRequest,
   type OpenScopedWorkflowRunSideTabRequest,
   type OpenScopedWorkflowRunDirectorySideTabRequest,
   type OpenScopedWorkflowActorSessionSideTabRequest,
@@ -937,6 +939,21 @@ export function useAppPanels(options: {
     [commitOpenedSidePaneState, revealSidePaneForCurrentOwner],
   );
 
+  /** IM 面板是应用级的：同 workspace 只保留一个 tab，重复点入口就是聚焦它。 */
+  const handleOpenMessages = useCallback(
+    (request: OpenMessagesSidePaneRequest) => {
+      const workspaceKey = request.workspaceIdentity?.trim() || request.workspacePath;
+      revealSidePaneForCurrentOwner();
+      commitOpenedSidePaneState((current) =>
+        openMessagesSidePane(current, {
+          ...request,
+          workspaceKey,
+        }),
+      );
+    },
+    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner],
+  );
+
   const handleOpenPlanDetail = useCallback(
     (request: OpenScopedPlanDetailSideTabRequest) => {
       const workspaceKey = request.workspaceIdentity?.trim() || request.workspacePath;
@@ -1630,6 +1647,7 @@ export function useAppPanels(options: {
     handleOpenSubagentDirectory,
     handleSyncSubagentSessionTabs,
     handleOpenSelectionSideChat,
+    handleOpenMessages,
     handleOpenPlanDetail,
     handleOpenPluginUi,
     handleOpenWorkflowRun,

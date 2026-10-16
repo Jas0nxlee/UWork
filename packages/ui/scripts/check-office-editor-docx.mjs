@@ -174,6 +174,29 @@ async function main() {
     `审阅导航的滚动判定正确（视野内→不动；下方 1700→1676；上方 100→76；缩放 1.5 时 500→726）`,
   );
 
+  // 写回前校验：好产物放行；四类坏产物必须被拦下（这是"写坏用户文件"的最后一道闸）
+  const validation = await page.evaluate(() => window.__validateCase());
+  check(
+    validation.good.ok,
+    `产出的 docx 通过校验（问题码：${JSON.stringify(validation.good.codes)}）`,
+  );
+  check(
+    !validation.collapsed.ok && validation.collapsed.codes.includes("content-collapsed"),
+    `正文塌陷被拦下（${JSON.stringify(validation.collapsed.codes)}）`,
+  );
+  check(
+    !validation.dangling.ok && validation.dangling.codes.includes("dangling-relationship"),
+    `断关系被拦下（${JSON.stringify(validation.dangling.codes)}）`,
+  );
+  check(
+    !validation.truncated.ok && validation.truncated.codes.includes("invalid-xml"),
+    `XML 截断被拦下（${JSON.stringify(validation.truncated.codes)}）`,
+  );
+  check(
+    !validation.missingPart.ok && validation.missingPart.codes.includes("missing-part"),
+    `缺必备部件被拦下（${JSON.stringify(validation.missingPart.codes)}）`,
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(

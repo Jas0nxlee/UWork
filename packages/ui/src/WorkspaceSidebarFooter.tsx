@@ -16,7 +16,16 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { PencilRuler, Globe, Maximize, Palette, Settings, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  PencilRuler,
+  Globe,
+  Maximize,
+  MessagesSquare,
+  Palette,
+  Settings,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
@@ -33,6 +42,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onLocaleChange,
   onThemeChange,
   onSettingsButtonClick,
+  onMessagesButtonClick,
   settingsButtonMode = "settings",
   isDesktop = false,
   className,
@@ -42,6 +52,8 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onLocaleChange: (value: string) => void;
   onThemeChange: (value: string) => void;
   onSettingsButtonClick?: () => void;
+  /** 打开 IM 侧边面板；Host 没注册消息服务时由外层不传（按钮自动隐藏）。 */
+  onMessagesButtonClick?: () => void;
   settingsButtonMode?: "settings" | "back";
   isDesktop?: boolean;
   className?: string;
@@ -233,6 +245,20 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
+          {onMessagesButtonClick ? (
+            <ControlHintTooltip title={intl.formatMessage({ id: "im.title" })}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                data-testid="sidebar-messages-button"
+                aria-label={intl.formatMessage({ id: "im.title" })}
+                onClick={onMessagesButtonClick}
+              >
+                <MessagesSquare className="size-4" />
+              </Button>
+            </ControlHintTooltip>
+          ) : null}
           <ControlHintTooltip title={settingsButtonLabel}>
             <Button
               type="button"
