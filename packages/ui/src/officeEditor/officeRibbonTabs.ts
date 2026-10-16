@@ -133,13 +133,7 @@ export const RIBBON_TABS: RibbonTab[] = [
       {
         label: "表格",
         essential: true,
-        items: [
-          button("3×3 表格", "插入 3×3 表格", "executeInsertTable", {
-            args: [3, 3],
-            icon: "TableSimple24Regular",
-          }),
-          button("5×4 表格", "插入 5×4 表格", "executeInsertTable", { args: [5, 4] }),
-        ],
+        items: [{ kind: "table", label: "表格", title: "插入表格（拖动选行列，或直接填数字）" }],
       },
       {
         label: "插图与链接",
@@ -175,14 +169,10 @@ export const RIBBON_TABS: RibbonTab[] = [
               { label: "数字控件", args: ["number"] },
             ],
           },
-          button("日期", "插入当前日期", "executeInsertElementList", {
-            args: [
-              { type: "date", value: "", dateFormat: "yyyy-MM-dd", valueList: [{ value: "日期" }] },
-            ],
+          button("日期控件", "插入日期控件（点开选日期）", "executeInsertDateControl", {
             icon: "CalendarLtr24Regular",
           }),
-          button("复选框", "插入复选框", "executeInsertElementList", {
-            args: [{ type: "checkbox", checkbox: { value: false }, value: "" }],
+          button("复选框控件", "插入复选框控件", "executeInsertCheckboxControl", {
             icon: "CheckboxChecked24Regular",
           }),
         ],
@@ -272,8 +262,9 @@ export const RIBBON_TABS: RibbonTab[] = [
             label: "纸张",
             title: "纸张大小",
             icon: "DocumentFit24Regular",
+            // 值就是引擎的像素口径（96dpi），见 engineCommands.PAPER_PRESETS
             options: [
-              { label: "A4", args: ["A4"] },
+              { label: "A4（默认）", args: ["A4"] },
               { label: "A3", args: ["A3"] },
               { label: "A5", args: ["A5"] },
               { label: "B5", args: ["B5"] },
@@ -321,23 +312,33 @@ export const RIBBON_TABS: RibbonTab[] = [
         label: "显示",
         essential: true,
         items: [
-          button("缩小", "缩小", "executePageScaleMinus", { icon: "ZoomOut24Regular" }),
-          button("100%", "恢复缩放", "executePageScaleRecovery"),
-          button("放大", "放大", "executePageScaleAdd", { icon: "ZoomIn24Regular" }),
+          button("缩小", "缩小（⌘-）", "executePageScaleMinus", { icon: "ZoomOut24Regular" }),
+          {
+            kind: "select",
+            label: "缩放",
+            title: "显示比例",
+            icon: "ZoomIn24Regular",
+            options: [0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => ({
+              label: `${Math.round(value * 100)}%`,
+              args: [value],
+            })),
+            current: (style) => `${Math.round((style.scale ?? 1) * 100)}%`,
+          },
+          button("放大", "放大（⌘+）", "executePageScaleAdd", { icon: "ZoomIn24Regular" }),
           button("标尺", "显示/隐藏标尺", "executeToggleRuler", { icon: "Ruler24Regular" }),
-          button("连页/分页", "切换连页与分页视图", "executePageMode", {
+          button("分页/连页", "切换分页与连页视图", "executePageMode", {
             icon: "DocumentOnePage24Regular",
           }),
-          button("痕迹", "显示/隐藏修订与格式痕迹", "executeToggleTrace", { icon: "Eye24Regular" }),
+          button("痕迹", "显示/隐藏修订痕迹", "executeToggleTrace", { icon: "Eye24Regular" }),
           button("只读", "切换只读模式", "executeMode", { icon: "LockClosed24Regular" }),
         ],
       },
       {
         label: "工具",
         items: [
-          button("字数统计", "字数统计", "executeWordTool", { icon: "TextWordCount24Regular" }),
-          button("查找替换", "查找替换 (⌘F)", "executeSearch", { icon: "Search24Regular" }),
-          button("打印", "打印 (⌘P)", "executePrint", { icon: "Print24Regular" }),
+          button("字数统计", "字数统计", "executeWordCount", { icon: "TextWordCount24Regular" }),
+          { kind: "find", label: "查找替换", title: "查找与替换" },
+          button("打印", "打印（⌘P）", "executePrint", { icon: "Print24Regular" }),
         ],
       },
     ],

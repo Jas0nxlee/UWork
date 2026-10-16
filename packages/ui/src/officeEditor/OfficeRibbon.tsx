@@ -16,16 +16,22 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DropdownPanel, RibbonDropdownProvider, useRibbonDropdown } from "./RibbonDropdown.js";
+import { RibbonFindView, RibbonTablePickView } from "./RibbonPickViews.js";
 import {
   RibbonButton,
   RibbonItemRows,
   RibbonMenuView,
   RibbonSelectView,
   StyleGalleryView,
-  type RunCommand,
 } from "./RibbonItemViews.js";
 import { RIBBON_TABS } from "./officeRibbonTabs.js";
-import type { RibbonGroup, RibbonItem, RibbonStyle, RibbonTab } from "./officeRibbonModel.js";
+import type {
+  RibbonGroup,
+  RibbonItem,
+  RibbonStyle,
+  RibbonTab,
+  RunCommand,
+} from "./officeRibbonModel.js";
 
 export interface OfficeRibbonProps {
   style: RibbonStyle | null;
@@ -62,6 +68,8 @@ function renderItem(item: RibbonItem, style: RibbonStyle | null, run: RunCommand
     return <RibbonSelectView key={item.title} item={item} style={style} run={run} />;
   if (item.kind === "menu")
     return <RibbonMenuView key={item.title} item={item} style={style} run={run} />;
+  if (item.kind === "table") return <RibbonTablePickView key={item.title} item={item} run={run} />;
+  if (item.kind === "find") return <RibbonFindView key={item.title} item={item} run={run} />;
   return <StyleGalleryView key={item.title} gallery={item} style={style} run={run} />;
 }
 

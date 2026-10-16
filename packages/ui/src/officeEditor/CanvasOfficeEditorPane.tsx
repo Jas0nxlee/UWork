@@ -17,6 +17,7 @@ import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OfficeRibbon } from "./OfficeRibbon.js";
+import { createFindSession, runEngineCommand } from "./officeEditorCommands.js";
 import type { RibbonStyle } from "./officeRibbonModel.js";
 import { logger } from "@/logger.js";
 
@@ -46,7 +47,19 @@ type CanvasEditor = InstanceType<typeof Editor> & {
   executeExportDocx?: (options: { fileName: string }) => Promise<Blob>;
   listener: { contentChange?: () => void };
   command: Record<string, (...args: unknown[]) => unknown>;
+  /** 引擎内部元素表：`getValue()` 会把同格式的连续文字合并，替换要靠真实下标（见 engineCommands）。 */
+  draw?: unknown;
 };
+
+/** 引擎 getOptions() 里我们用到的字段（纸张尺寸、缩放、模式、痕迹开关）。 */
+interface EngineOptions {
+  width?: number;
+  height?: number;
+  scale?: number;
+  mode?: string;
+  pageMode?: string;
+  trace?: { disabled?: boolean };
+}
 
 export interface CanvasOfficeEditorPaneProps {
   fileService: IFileService;
@@ -126,13 +139,7 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     }) as unknown as CanvasEditor;
     editor.use(docxPlugin);
     editor.listener.contentChange = () => setDirty(true);
-    const options = (
-      editor.command as { getOptions?: () => { width?: number; scale?: number } }
-    ).getOptions?.();
-    setPageSize({ width: options?.width ?? 794, scale: options?.scale ?? 1 });
-    (editor.listener as { pageScaleChange?: (scale: number) => void }).pageScaleChange = (
-      scale: number,
-    ) => setPageSize((current) => ({ ...current, scale }));
+    syncLayoutState(editor);
     // 官方 demo 的做法：选中态由 rangeStyleChange 驱动，工具栏据此高亮 B/I/U/对齐/列表等。
     editor.listener.rangeStyleChange = (payload: RibbonStyle) => {
       setRangeStyle(payload as RibbonStyle);
@@ -195,105 +202,56 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
    * 功能区命令入口：把 ribbon 的语义命令映射到引擎命令。
    * 参数形态全部照抄 canvas-editor 官方 demo（见 officeRibbonModel.ts 顶部注释），不自己发明。
    */
-  const runRibbon = useCallback((command: string, args?: unknown[]) => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const commands = editor.command as Record<
-      string,
-      ((...params: unknown[]) => unknown) | undefined
-    >;
-    const status = (message: string) => setStatus(message);
-    try {
-      switch (command) {
-        case "executeInsertControlByType": {
-          const type = args?.[0];
-          commands.executeInsertControl?.({ type: "control", value: "", control: { type } });
-          return;
-        }
-        case "executeSetTableCellBackgroundColor": {
-          commands.executeTableTdBackgroundColor?.(args?.[0]);
-          return;
-        }
-        case "executeSetTableCellVerticalAlign": {
-          commands.executeTableTdVerticalAlign?.(args?.[0]);
-          return;
-        }
-        case "executeImage": {
-          // 官方 demo 从 <img> 载入宽高；这里给一个稳妥的默认尺寸，用户可在文档里拖拽调整。
-          commands.executeImage?.({ value: args?.[0] ?? "", width: 320, height: 240 });
-          return;
-        }
-        case "executeHyperlink": {
-          const url = String(args?.[0] ?? "");
-          if (!url) return;
-          commands.executeHyperlink?.({ url, valueList: [{ value: url, size: 16 }] });
-          return;
-        }
-        case "executeLatex": {
-          const value = String(args?.[0] ?? "");
-          if (!value) return;
-          commands.executeLatex?.({ value });
-          return;
-        }
-        case "executeAddWatermark": {
-          const data = String(args?.[0] ?? "") || "UWork";
-          commands.executeAddWatermark?.({
-            data,
-            color: "#d0d0d0",
-            size: 100,
-            opacity: 0.3,
-            repeat: true,
-          });
-          return;
-        }
-        case "executeMode": {
-          commands.executeMode?.(
-            editor.command.getOptions?.()?.mode === "readonly" ? "edit" : "readonly",
-          );
-          return;
-        }
-        case "executePageMode": {
-          const current = editor.command.getOptions?.()?.pageMode;
-          commands.executePageMode?.(current === "continuous" ? "paging" : "continuous");
-          return;
-        }
-        case "executeUndo":
-        case "executeRedo": {
-          // 先确保画布有焦点/游标，再走引擎的历史栈（与 Ctrl+Z 行为一致）。
-          commands.focus?.();
-          commands[command]?.();
-          return;
-        }
-        case "executePainter": {
-          // 引擎的 executePainter 读 payload.isDblclick；无参会直接抛错（回归检查发现的真 bug）。
-          commands.executePainter?.({ isDblclick: false });
-          return;
-        }
-        case "executeSeparator": {
-          commands.executeSeparator?.();
-          return;
-        }
-        case "executePageBreak": {
-          commands.executePageBreak?.();
-          return;
-        }
-        case "executeToggleTrace": {
-          commands.executeToggleTrace?.();
-          return;
-        }
-        default: {
-          const fn = commands[command];
-          if (typeof fn !== "function") {
-            status(`该功能不可用：${command}`);
-            return;
-          }
-          fn.apply(editor.command, args ?? []);
-        }
-      }
-    } catch (error) {
-      status(`${command} 执行失败：${error instanceof Error ? error.message : String(error)}`);
-    }
+  /**
+   * 引擎没有"布局变了"的统一事件（纸张/页边距/模式切换都不发通知），所以每次命令后主动读一次
+   * `getOptions()`：纸张宽度决定编辑区宽度（居中靠它），缩放/模式/痕迹决定功能区的显示状态。
+   */
+  const syncLayoutState = useCallback((editor: CanvasEditor) => {
+    const options = (editor.command as { getOptions?: () => EngineOptions }).getOptions?.();
+    if (!options) return;
+    setPageSize({
+      width: options.width ?? 794,
+      scale: options.scale ?? 1,
+    });
+    setEngineState({
+      mode: options.mode ?? "edit",
+      pageMode: options.pageMode ?? "paging",
+      traceDisabled: options.trace?.disabled ?? true,
+    });
   }, []);
+
+  const [engineState, setEngineState] = useState({
+    mode: "edit",
+    pageMode: "paging",
+    traceDisabled: true,
+  });
+
+  /**
+   * 功能区入口：命令交给 officeEditorCommands 调度，命令后统一同步一次布局状态
+   * （纸张/缩放/模式都没有引擎事件，不主动读就会显示旧值）。
+   */
+  const runRibbon = useCallback(
+    (command: string, args?: unknown[]) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      runEngineCommand(
+        {
+          editor: editor as unknown as { command: Record<string, unknown>; draw?: unknown },
+          commands: editor.command as import("./engineCommands.js").EngineCommand,
+          status: setStatus,
+          engineState,
+          findRef: findRef.current,
+        },
+        command,
+        args,
+      );
+      syncLayoutState(editor);
+    },
+    [engineState, syncLayoutState],
+  );
+
+  /** 查找会话：功能区发起的查找/替换要在多条命令之间记住关键词与当前位置。 */
+  const findRef = useRef({ current: createFindSession() });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -339,7 +297,17 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       </div>
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
           之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
-      <OfficeRibbon style={rangeStyle} inTable={inTable} run={runRibbon} />
+      <OfficeRibbon
+        style={{
+          ...rangeStyle,
+          mode: engineState.mode,
+          pageMode: engineState.pageMode,
+          traceDisabled: engineState.traceDisabled,
+          scale: pageSize.scale,
+        }}
+        inTable={inTable}
+        run={runRibbon}
+      />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
       <div id="office-editor-scroll" className="min-h-0 flex-1 overflow-auto bg-surface">
         <div

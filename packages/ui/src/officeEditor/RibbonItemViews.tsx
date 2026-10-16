@@ -12,6 +12,8 @@
 import { useRef } from "react";
 import { DropdownPanel, useRibbonDropdown } from "./RibbonDropdown.js";
 import { iconOf, isActive, isDisabled, optionsCommand } from "./ribbonItemSupport.js";
+import { RibbonFindView, RibbonTablePickView } from "./RibbonPickViews.js";
+import type { RunCommand } from "./officeRibbonModel.js";
 import type {
   RibbonCommand,
   RibbonGallery,
@@ -20,8 +22,6 @@ import type {
   RibbonSelect,
   RibbonStyle,
 } from "./officeRibbonModel.js";
-
-export type RunCommand = (command: string, args?: unknown[]) => void;
 
 /** 图标按钮：`prompt` 非空时先弹输入框，把答案填进指定位参数再执行。 */
 export function RibbonButton({
@@ -311,6 +311,8 @@ export function RibbonItemRows({
               <RibbonItemRows items={item.items} style={style} run={run} />
             </div>
           ) : null}
+          {item.kind === "table" ? <RibbonTablePickView item={item} run={run} /> : null}
+          {item.kind === "find" ? <RibbonFindView item={item} run={run} /> : null}
           {item.kind === "gallery" ? (
             <StyleGalleryView gallery={item} style={style} run={run} onDone={dropdown.close} />
           ) : null}

@@ -333,6 +333,47 @@ async function main() {
   if (panelBox && !panelBox.insideViewport) failures.push("下拉面板超出视口（应该被夹取在视口内）");
   if (panelBox && !panelBox.insideWindow) failures.push("下拉面板横向超出窗口");
 
+  // ④ 两个"不是普通按钮"的面板：表格网格与查找替换（真机反馈后新做的）
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.waitForTimeout(120);
+  await page.click('[data-office-ribbon-tab="insert"]');
+  await page.waitForTimeout(120);
+  await page.click("button[data-office-ribbon-table]");
+  await page.waitForTimeout(100);
+  const tablePanel = await page.evaluate(() => {
+    const cells = document.querySelectorAll("[data-office-ribbon-table-cell]");
+    const panel = document.querySelector("[data-ribbon-dropdown]");
+    const box = panel?.getBoundingClientRect();
+    return {
+      cells: cells.length,
+      rows: new Set([...cells].map((cell) => cell.getAttribute("aria-label"))).size,
+      inside: Boolean(box && box.top >= 0 && box.bottom <= window.innerHeight + 1),
+    };
+  });
+  console.log(`表格网格：${tablePanel.cells} 个格子 · 面板在视口内 ${tablePanel.inside}`);
+  if (tablePanel.cells < 80)
+    failures.push(`表格网格只有 ${tablePanel.cells} 个格子，应该是 10×8=80`);
+  if (!tablePanel.inside) failures.push("表格网格面板超出视口");
+  const tableShot = await page.screenshot();
+  writeFileSync(join(dir, "ribbon-table.png"), tableShot);
+
+  await page.click('[data-office-ribbon-tab="view"]');
+  await page.waitForTimeout(120);
+  await page.click("button[data-office-ribbon-find]");
+  await page.waitForTimeout(100);
+  const findPanel = await page.evaluate(() => {
+    const panel = document.querySelector("[data-ribbon-dropdown]");
+    return {
+      inputs: panel ? panel.querySelectorAll("input").length : 0,
+      buttons: panel ? panel.querySelectorAll("button").length : 0,
+    };
+  });
+  console.log(`查找替换面板：${findPanel.inputs} 个输入框 · ${findPanel.buttons} 个按钮`);
+  if (findPanel.inputs < 2) failures.push(`查找替换面板输入框不足（${findPanel.inputs}）`);
+  if (findPanel.buttons < 5) failures.push(`查找替换面板按钮不足（${findPanel.buttons}）`);
+  const findShot = await page.screenshot();
+  writeFileSync(join(dir, "ribbon-find.png"), findShot);
+
   const shot = await page.screenshot();
   writeFileSync(join(dir, "ribbon.png"), shot);
   console.log(`截图：${join(dir, "ribbon.png")}（${shot.byteLength} 字节）`);

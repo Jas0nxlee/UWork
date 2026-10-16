@@ -16,7 +16,7 @@
   "scripts": {
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "check:office-editor": "node scripts/check-office-editor-commands.mjs",
+    "check:office-editor": "node scripts/check-office-editor-commands.mjs && node scripts/check-office-editor-behavior.mjs",
     "check:office-ribbon": "node scripts/check-office-ribbon-layout.mjs"
   },
   "dependencies": {

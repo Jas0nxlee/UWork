@@ -14,6 +14,14 @@
  * 所以对标 WPS 时那一排缩进按钮我们没有做（用列表层级与行距代之）。
  */
 import type { CSSProperties } from "react";
+/** 功能区命令回调：`args` 是模型里声明的参数（形态由 runRibbon 负责解释）。 */
+export type RunCommand = (command: string, args?: unknown[]) => void;
+
+/**
+ * 功能区要显示的状态：**选区样式**（来自引擎的 rangeStyleChange）＋**编辑器级状态**
+ * （缩放/模式/页面模式/痕迹，由编辑位在命令后主动读 getOptions 补上）。
+ * 放一个载荷里传是因为它们是同一个"当前长什么样"的问题，分开传只会让渲染层到处拼对象。
+ */
 export interface RibbonStyle {
   bold?: boolean;
   italic?: boolean;
@@ -29,6 +37,14 @@ export interface RibbonStyle {
   size?: number;
   color?: string | null;
   highlight?: string | null;
+  /** 缩放倍数（1 = 100%）。 */
+  scale?: number;
+  /** edit / readonly。 */
+  mode?: string;
+  /** paging / continuity。 */
+  pageMode?: string;
+  /** 痕迹是否隐藏（true＝不显示修订痕迹）。 */
+  traceDisabled?: boolean;
 }
 
 export interface RibbonCommand {
@@ -65,6 +81,26 @@ export interface RibbonMenu {
   items: RibbonCommand[];
 }
 
+/**
+ * 表格插入器：Word/WPS 点「表格」是**网格拖动选几乘几**（外带自定义行列）。
+ * 数据层只声明"这里有个表格插入器"，网格与输入框在视图件里。
+ */
+export interface RibbonTable {
+  kind: "table";
+  label: string;
+  title: string;
+}
+
+/**
+ * 查找替换器：引擎只提供"设置关键词/高亮/上下一个"，替换与计数得宿主自己做
+ * （`executeReplace` 实测无效：默认 trace 开着时不走替换分支）。所以这里是一整块交互，不是一个按钮。
+ */
+export interface RibbonFind {
+  kind: "find";
+  label: string;
+  title: string;
+}
+
 export interface RibbonGallery {
   kind: "gallery";
   label: string;
@@ -73,7 +109,13 @@ export interface RibbonGallery {
   current?: (style: RibbonStyle) => string | null;
 }
 
-export type RibbonItem = RibbonCommand | RibbonSelect | RibbonGallery | RibbonMenu;
+export type RibbonItem =
+  | RibbonCommand
+  | RibbonSelect
+  | RibbonGallery
+  | RibbonMenu
+  | RibbonTable
+  | RibbonFind;
 
 export interface RibbonGroup {
   label: string;

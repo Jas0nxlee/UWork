@@ -16,11 +16,22 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../.."); // scripts/ → ui/ → packages/ → 仓库根
 const modelPath = join(repoRoot, "packages/ui/src/officeEditor/officeRibbonTabs.ts");
+const dispatcherPath = join(repoRoot, "packages/ui/src/officeEditor/officeEditorCommands.ts");
+
+/**
+ * 由我们自己的调度器（officeEditorCommands.ts）实现的命令：引擎里当然没有这些名字。
+ * 从源码里读 case 标签，避免"脚本里的白名单"与实际调度脱节。
+ * 这些命令的**行为**由 check-office-editor-behavior.mjs 断言（那才是真正会出错的地方）。
+ */
+function dispatcherCommands() {
+  const source = readFileSync(dispatcherPath, "utf8");
+  return new Set([...source.matchAll(/case "(execute[A-Za-z0-9]+)":/g)].map((match) => match[1]));
+}
 const fixture = join(repoRoot, "packages/ui/test/fixtures/office-editor-check.docx");
 
 /** 从模型里抽出按钮命令（label/command/args）。 */
@@ -28,9 +39,7 @@ function commandsFromModel() {
   const source = readFileSync(modelPath, "utf8");
   const items = [];
   // 用花括号配对扫出 button(...) 的选项对象（参数里含嵌套对象，正则会提前截断）
-  for (const start of [
-    ...source.matchAll(/button\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{/gs),
-  ]) {
+  for (const start of source.matchAll(/button\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{/gs)) {
     const label = start[1];
     const command = start[3];
     const openBrace = start.index + start[0].length - 1;
@@ -99,6 +108,8 @@ function writeHarness(dir) {
     const editor = new Editor(host, { main: [{ value: "" }], pageMode: "paging", scrollContainerSelector: "#host" });
     editor.use(docxPlugin);
     await editor.command.executeImportDocx({ arrayBuffer: await (await fetch(url)).arrayBuffer() });
+    // 程序化插入需要游标（引擎在无 range 时直接不插，看起来就像"命令不起作用"）
+    editor.command.executeSetRange(0, 0);
     window.__editor = editor;
   };
   window.__text = () => {
@@ -108,13 +119,22 @@ function writeHarness(dir) {
   };
   window.__run = (name, args) => {
     const list = Array.isArray(args) ? args : [];
+    // 命令不存在时"什么都没发生"最容易被当成通过——这里必须报出来（真机反馈"点了一堆按钮都没用"）。
+    if (typeof window.__editor.command[name] !== "function")
+      return { missing: true, before: 0, after: 0 };
     const before = window.__text().length;
+    const beforeElements = window.__elementCount();
     try {
-      window.__editor.command[name]?.(...list);
+      window.__editor.command[name](...list);
     } catch (error) {
       return { error: String(error).slice(0, 120) };
     }
-    return { before, after: window.__text().length };
+    return { before, after: window.__text().length, beforeElements, afterElements: window.__elementCount() };
+  };
+  window.__elementCount = () => {
+    const value = window.__editor.command.getValue?.();
+    const data = value?.data?.main ?? value?.main ?? [];
+    return data.length;
   };
 </script>`,
     "utf8",
@@ -186,7 +206,21 @@ async function main() {
     executePainter: [{ isDblclick: false }],
   };
   const commands = commandsFromModel();
+  const ownCommands = dispatcherCommands();
   const failures = [];
+  // 这些命令的职责就是"往文档里加东西"：插入数为 0 说明参数或命令名不对（真机反馈过"插入控件没反应"）。
+  const INSERTING = new Set([
+    "executeSeparator",
+    "executePageBreak",
+    "executeImage",
+    "executeHyperlink",
+    "executeLatex",
+    "executeInsertTable",
+    "executeInsertControlByType",
+    "executeInsertDateControl",
+    "executeInsertCheckboxControl",
+    "executeAddWatermark",
+  ]);
   // 条数下限：删命令时"少了一条"最难发现（检查只跑它读到的东西）。掉到 40 条以下就说明有命令被删了。
   const MIN_COMMANDS = 40;
   if (commands.length < MIN_COMMANDS)
@@ -202,12 +236,25 @@ async function main() {
       );
       continue;
     }
+    // 我们自己调度的命令在这里跑没有意义（引擎没有这个名字），行为覆盖在 behavior 脚本里
+    if (ownCommands.has(item.command)) {
+      console.log(
+        `--   ${item.label} [${item.command}] 由我们自己的调度器实现，行为检查见 behavior 脚本`,
+      );
+      continue;
+    }
     const shape = PARAM_SHAPES[item.command];
     const result = await page.evaluate(
       ([name, args]) => window.__run(name, args),
       [item.command, shape ?? item.args],
     );
-    if (result.error) failures.push(`${item.label} [${item.command}] 抛错：${result.error}`);
+    if (result.missing)
+      failures.push(`${item.label} [${item.command}] 引擎没有这条命令（点了不会有反应）`);
+    else if (result.error) failures.push(`${item.label} [${item.command}] 抛错：${result.error}`);
+    else if (INSERTING.has(item.command) && !(result.afterElements > result.beforeElements))
+      failures.push(
+        `${item.label} [${item.command}] 什么都没插进去（元素 ${result.beforeElements} → ${result.afterElements}）`,
+      );
     else if (result.after < result.before * 0.5)
       failures.push(
         `${item.label} [${item.command}] 内容大幅减少 ${result.before}→${result.after}`,
