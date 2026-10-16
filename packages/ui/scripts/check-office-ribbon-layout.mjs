@@ -18,6 +18,7 @@ import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { checkSurfaceCentering, SURFACE_PROBE_SOURCE } from "./lib/officeSurfaceProbe.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -35,9 +36,11 @@ const CHECK_WIDTHS = (process.env.RIBBON_CHECK_WIDTHS ?? "1600,1280,1040,900,760
 
 /** 渲染入口：真实组件 + 一份够用的 style（下拉要显示当前值，所以给上 font/size）。 */
 const ENTRY = `
+import React from "react";
 import { createRoot } from "react-dom/client";
 import { OfficeRibbon } from ${JSON.stringify(join(editorDir, "OfficeRibbon.js"))};
 import { OfficeEditorToolbar } from ${JSON.stringify(join(editorDir, "OfficeEditorToolbar.js"))};
+import { OfficeEditorSurface } from ${JSON.stringify(join(editorDir, "OfficeEditorSurface.js"))};
 
 const style = {
   bold: false,
@@ -58,6 +61,7 @@ const style = {
 
 // 记录回调，供"需要填值的命令"断言（图片/链接/公式走对话框取值）
 window.__calls = [];
+${SURFACE_PROBE_SOURCE}
 function App() {
   // 顶栏也渲染：状态文字会随导航变化，它必须不改变高度（否则整块菜单栏会跳）
   return (
@@ -70,6 +74,7 @@ function App() {
         onReload={() => {}}
       />
       <OfficeRibbon style={style} inTable run={(command, args) => window.__calls.push([command, args])} />
+      <SurfaceProbe />
     </>
   );
 }
@@ -339,6 +344,8 @@ async function main() {
   if (findPanel.buttons < 5) failures.push(`查找替换面板按钮不足（${findPanel.buttons}）`);
   const findShot = await page.screenshot();
   writeFileSync(join(harness.dir, "ribbon-find.png"), findShot);
+
+  failures.push(...(await checkSurfaceCentering(page)));
 
   // ④b 顶栏高度必须与状态文字长度无关（真机反馈：点上下箭头时"最上面的菜单栏会跳一下"）
   const toolbarHeights = await page.evaluate(() => {

@@ -45,8 +45,12 @@ export function OfficeEditorSurface({
       ref={scrollRef}
       className="min-h-0 flex-1 overflow-auto bg-surface"
     >
-      {/* 纸张 + 右侧批注栏作为一个整体居中（拉宽/变窄面板时纸张跟着居中） */}
-      <div className="relative mx-auto" style={{ width: pageWidth + BALLOON_COLUMN_WIDTH + 12 }}>
+      {/*
+        纸张**保持居中**（与没有批注时同一个位置）：批注栏绝对定位挂在纸张右侧的页边距上，
+        允许溢出到滚动区右边——绝不能用"纸张+批注栏"的宽度去居中，那会把纸张整体推左
+        （真机反馈"批注显示把页面挤压到偏左了"）。Word 也是纸张居中、批注落右侧页边距。
+      */}
+      <div className="relative mx-auto" style={{ width: pageWidth }}>
         <div ref={hostRef} id="office-editor-host" style={{ width: pageWidth }} />
         <OfficeCommentBalloons
           comments={positioned}
