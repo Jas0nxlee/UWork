@@ -23,7 +23,9 @@ import type { RibbonCommand, RibbonFind, RibbonTable, RunCommand } from "./offic
 export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: RunCommand }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
+  const [hint, setHint] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const Icon = iconOf(item.icon);
   const prompt = item.prompt;
 
@@ -33,14 +35,44 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
 
   if (!prompt) return null;
 
-  const submit = () => {
-    const answer = value.trim();
-    if (!answer) return;
+  const submitWith = (answer: string) => {
+    const trimmed = answer.trim();
+    if (!trimmed) return;
     const args = [...(item.args ?? [])];
-    args[prompt.at] = answer;
+    args[prompt.at] = trimmed;
     run(item.command, args);
     setValue("");
+    setHint(null);
     setOpen(false);
+  };
+
+  const submit = () => submitWith(value);
+
+  /**
+   * 从本机选文件：读成 data URI 当参数（图片就是这样插进文档的）。
+   * 为什么不用文件路径：编辑器是浏览器环境，读不了本机路径；而 data URI 在导出 docx 时会被
+   * docx 插件写成文档里的图片部件，所以离线也成立。超过上限直接拒绝并说明原因，不做静默放大。
+   */
+  const onPickFile = (file: File | undefined) => {
+    if (!file || !prompt.pick) return;
+    if (file.size > prompt.pick.maxBytes) {
+      setHint(
+        `图片 ${(file.size / 1048576).toFixed(1)} MB，超过上限 ${Math.round(prompt.pick.maxBytes / 1048576)} MB——请先压缩或裁剪（图片要内嵌进 docx）`,
+      );
+      return;
+    }
+    setHint("读取中…");
+    const reader = new FileReader();
+    reader.onerror = () => setHint("读取失败，请重试或改用图片地址");
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result.startsWith("data:image/")) {
+        setHint("这个文件不是图片");
+        return;
+      }
+      submitWith(result);
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -86,6 +118,33 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
                   className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs"
                   onChange={(event) => setValue(event.target.value)}
                 />
+                {prompt.pick ? (
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      data-office-ribbon-prompt-pick
+                      className="rounded border border-border px-2 py-1 text-xs hover:border-sky-500 hover:text-sky-200"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      {prompt.pick.label}
+                    </button>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept={prompt.pick.accept}
+                      data-office-ribbon-prompt-file
+                      className="hidden"
+                      onChange={(event) => {
+                        onPickFile(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                    <span className="text-[11px] text-foreground-subtle">
+                      最大 {Math.round(prompt.pick.maxBytes / 1048576)} MB
+                    </span>
+                  </div>
+                ) : null}
+                {hint ? <div className="pt-1 text-[11px] text-amber-300">{hint}</div> : null}
                 <div className="flex justify-end gap-2 pt-3">
                   <button
                     type="button"

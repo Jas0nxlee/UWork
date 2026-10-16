@@ -13,15 +13,17 @@
  * 用法：node packages/ui/scripts/check-office-ribbon-layout.mjs
  * 依赖：仓库已装的 esbuild / tailwindcss / react / playwright-core 与无头 Chromium。
  */
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
 const editorDir = join(repoRoot, "packages/ui/src/officeEditor");
+/** 插入图片用的小样本（240×120 PNG，由 scripts/make-image-fixture.mjs 生成后入库）。 */
+const imageFixture = join(repoRoot, "packages/ui/test/fixtures/office-editor-image.png");
 
 /**
  * 要检查的宽度：从"宽到放得下全部"到"比侧栏最窄还窄"。功能区现在按实测宽度取舍分组，
@@ -121,16 +123,10 @@ async function bundle(dir) {
   return code;
 }
 
-function writeHtml(dir) {
-  writeFileSync(
-    join(dir, "index.html"),
-    `<!doctype html><meta charset="utf-8">
+const HTML = `<!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="/harness.css">
 <div id="root"></div>
-<script type="module" src="/harness.js"></script>`,
-    "utf8",
-  );
-}
+<script type="module" src="/harness.js"></script>`;
 
 /** 逐标签量"标签行下方那一条"的高度：就是用户看到的跳动来源。 */
 const MEASURE = () => {
@@ -162,62 +158,17 @@ const MEASURE = () => {
 };
 
 async function main() {
-  let chromium;
-  try {
-    ({ chromium } = await import("playwright-core"));
-  } catch {
-    console.error("缺少 playwright-core：先 pnpm install");
-    return 1;
-  }
-  const dir = mkdtempSync(join(tmpdir(), "office-ribbon-layout-"));
-  await mkdir(dir, { recursive: true });
-  const bundleCode = await bundle(dir);
-  await emitCss(dir, bundleCode);
-  writeHtml(dir);
-
-  const { createServer } = await import("node:http");
-  const server = createServer((request, response) => {
-    const path = (request.url ?? "/").split("?")[0];
-    try {
-      const body = readFileSync(join(dir, path === "/" ? "index.html" : path));
-      response.writeHead(200, {
-        "content-type": path.endsWith(".css")
-          ? "text/css"
-          : path.endsWith(".html")
-            ? "text/html"
-            : "text/javascript",
-      });
-      response.end(body);
-    } catch {
-      response.writeHead(404).end("not found");
-    }
+  const harness = await startOfficeHarness({
+    prefix: "office-ribbon-layout-",
+    pages: { "index.html": HTML },
+    viewport: { width: CHECK_WIDTHS[0], height: 400 },
+    // 组件包与 CSS 都是现场构建的，必须在页面加载前写好
+    prepareDir: async (dir) => {
+      const code = await bundle(dir);
+      await emitCss(dir, code);
+    },
   });
-  await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
-  const port = server.address().port;
-
-  const executablePath = process.env.OFFICE_CHECK_CHROMIUM ?? undefined;
-  const browser = await chromium.launch({
-    headless: true,
-    ...(executablePath ? { executablePath } : {}),
-  });
-  // 视口宽度直接决定功能区宽度（侧栏就是这个场景：可拖宽，窄时最难受）
-  const page = await browser.newPage({ viewport: { width: CHECK_WIDTHS[0], height: 400 } });
-  // 页面自身的报错要浮上来：否则渲染失败的表现是"某个 click 超时"，很难看出真正原因。
-  page.on("pageerror", (error) => console.log("[pageerror]", error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") console.log("[console.error]", message.text());
-  });
-  await page.goto(`http://127.0.0.1:${port}/index.html`);
-  const mountedRibbon = await page.evaluate(
-    () => document.querySelectorAll("[data-office-ribbon-layout]").length,
-  );
-  if (mountedRibbon === 0) {
-    const html = await page.evaluate(() => document.getElementById("root")?.innerHTML ?? "");
-    console.log(`功能区没有渲染出来（root 内容 ${html.length} 字符）：${html.slice(0, 300)}`);
-    await browser.close();
-    server.close();
-    return 1;
-  }
+  const page = harness.page;
   const failures = [];
   const tabButtons = async () =>
     page.$$eval("[data-office-ribbon-layout] > div:first-child button", (nodes) =>
@@ -357,7 +308,7 @@ async function main() {
     failures.push(`表格网格只有 ${tablePanel.cells} 个格子，应该是 10×8=80`);
   if (!tablePanel.inside) failures.push("表格网格面板超出视口");
   const tableShot = await page.screenshot();
-  writeFileSync(join(dir, "ribbon-table.png"), tableShot);
+  writeFileSync(join(harness.dir, "ribbon-table.png"), tableShot);
 
   await page.click('[data-office-ribbon-tab="view"]');
   await page.waitForTimeout(120);
@@ -374,15 +325,36 @@ async function main() {
   if (findPanel.inputs < 2) failures.push(`查找替换面板输入框不足（${findPanel.inputs}）`);
   if (findPanel.buttons < 5) failures.push(`查找替换面板按钮不足（${findPanel.buttons}）`);
   const findShot = await page.screenshot();
-  writeFileSync(join(dir, "ribbon-find.png"), findShot);
+  writeFileSync(join(harness.dir, "ribbon-find.png"), findShot);
 
   // ⑤ 需要填值的命令（图片/链接/公式）：Electron 没有 window.prompt，必须走我们的对话框
   await page.setViewportSize({ width: 1280, height: 520 });
   await page.waitForTimeout(120);
   await page.click('[data-office-ribbon-tab="insert"]');
   await page.waitForTimeout(120);
+  // 图片：必须能"从本机选文件"（真机反馈），选完把文件的 data URI 传进命令
+  await page.evaluate(() => {
+    window.__calls.length = 0;
+  });
+  await page.click('button[data-office-ribbon-prompt="executeImage"]');
+  await page.waitForTimeout(80);
+  const picker = await page.evaluate(() => ({
+    hasPicker: Boolean(document.querySelector("button[data-office-ribbon-prompt-pick]")),
+    hasFileInput: Boolean(document.querySelector("input[data-office-ribbon-prompt-file]")),
+  }));
+  if (!picker.hasFileInput)
+    failures.push("插入图片的对话框里没有文件选择控件（应该能从本机选图片）");
+  await page.setInputFiles("input[data-office-ribbon-prompt-file]", imageFixture);
+  await page.waitForTimeout(300);
+  const imageCall = await page.evaluate(() => window.__calls.at(-1) ?? null);
+  const dataUri = imageCall?.[1]?.[0] ?? "";
+  console.log(
+    `图片取值：选择控件 ${picker.hasPicker} · 文件框 ${picker.hasFileInput} · 传参 ${String(dataUri).slice(0, 32)}…（${String(dataUri).length} 字符）`,
+  );
+  if (!String(dataUri).startsWith("data:image/png;base64,"))
+    failures.push(`从本机选图片后没有传 data URI（拿到 ${String(dataUri).slice(0, 40)}）`);
+
   for (const [command, value] of [
-    ["executeImage", "https://example.com/a.png"],
     ["executeHyperlink", "https://example.com"],
     ["executeLatex", "E=mc^2"],
   ]) {
@@ -415,11 +387,10 @@ async function main() {
   }
 
   const shot = await page.screenshot();
-  writeFileSync(join(dir, "ribbon.png"), shot);
-  console.log(`截图：${join(dir, "ribbon.png")}（${shot.byteLength} 字节）`);
+  writeFileSync(join(harness.dir, "ribbon.png"), shot);
+  console.log(`截图：${join(harness.dir, "ribbon.png")}（${shot.byteLength} 字节）`);
 
-  await browser.close();
-  server.close();
+  await harness.close();
   console.log(`\n失败 ${failures.length} 条`);
   for (const failure of failures) console.log("FAIL", failure);
   return failures.length === 0 ? 0 : 1;

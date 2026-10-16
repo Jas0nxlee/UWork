@@ -14,16 +14,14 @@
  * 用法：node packages/ui/scripts/check-office-editor-behavior.mjs
  * 依赖：仓库已装的 esbuild + playwright-core + 无头 Chromium（OFFICE_CHECK_CHROMIUM）。
  */
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { engineAssetPaths, startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
 const editorDir = join(repoRoot, "packages/ui/src/officeEditor");
-const fixture = join(repoRoot, "packages/ui/test/fixtures/office-editor-check.docx");
 
 const HARNESS = `<!doctype html><meta charset="utf-8">
 <div id="host" style="height:100vh;overflow:auto"></div>
@@ -95,6 +93,23 @@ const HARNESS = `<!doctype html><meta charset="utf-8">
   };
 
   window.__elements = () => window.__editor.command.getValue().data.main;
+
+  /** 把服务端的图片转成 data URI：与"从本机选文件"读出来的形态完全一致。 */
+  window.__imageDataUri = async (url) => {
+    const blob = await (await fetch(url)).blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  /** 导出 docx（图片是否真的进了文件，用导出产物大小判断）。 */
+  window.__exportDocx = async () => {
+    // 与编辑位一致：插件把导出注册在 command 上
+    const blob = await window.__editor.command.executeExportDocx({ fileName: "check.docx" });
+    return blob.size;
+  };
 </script>`;
 
 async function bundleDispatcher(dir) {
@@ -124,58 +139,20 @@ async function bundleDispatcher(dir) {
 }
 
 async function main() {
-  let chromium;
-  try {
-    ({ chromium } = await import("playwright-core"));
-  } catch {
-    console.error("缺少 playwright-core：先 pnpm install");
-    return 1;
-  }
-  const dir = mkdtempSync(join(tmpdir(), "office-behavior-"));
-  await mkdir(join(dir, "ce"), { recursive: true });
-  writeFileSync(join(dir, "index.html"), HARNESS, "utf8");
-  const { cp } = await import("node:fs/promises");
-  await cp(
-    join(repoRoot, "node_modules/@hufe921/canvas-editor/dist/canvas-editor.js"),
-    join(dir, "ce/canvas-editor.js"),
-  );
-  await cp(
-    join(repoRoot, "node_modules/@hufe921/canvas-editor-plugin-docx/dist/docx.js"),
-    join(dir, "ce/docx.js"),
-  );
-  await cp(fixture, join(dir, "sample.docx"));
-  await bundleDispatcher(dir);
-
-  const { createServer } = await import("node:http");
-  const server = createServer((request, response) => {
-    const path = decodeURIComponent((request.url ?? "/").split("?")[0]);
-    try {
-      const body = readFileSync(join(dir, path === "/" ? "index.html" : path));
-      response.writeHead(200, {
-        "content-type": path.endsWith(".html")
-          ? "text/html"
-          : path.endsWith(".docx")
-            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            : "text/javascript",
-      });
-      response.end(body);
-    } catch {
-      response.writeHead(404).end("not found");
-    }
+  const assets = engineAssetPaths(repoRoot);
+  const harness = await startOfficeHarness({
+    prefix: "office-behavior-",
+    pages: { "index.html": HARNESS },
+    copies: {
+      [assets.engine]: "ce/canvas-editor.js",
+      [assets.docxPlugin]: "ce/docx.js",
+      [assets.docxFixture]: "sample.docx",
+      [assets.imageFixture]: "image.png",
+    },
+    // 调度器是 esbuild 现场打出来的，必须在页面加载前写好
+    prepareDir: (dir) => bundleDispatcher(dir),
   });
-  await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
-  const port = server.address().port;
-
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.OFFICE_CHECK_CHROMIUM
-      ? { executablePath: process.env.OFFICE_CHECK_CHROMIUM }
-      : {}),
-  });
-  const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
-  page.on("pageerror", (error) => console.log("[pageerror]", error.message));
-  await page.goto(`http://127.0.0.1:${port}/index.html`);
-
+  const page = harness.page;
   const failures = [];
   const reload = async (withFixture = true) => {
     await page.evaluate((url) => window.__load(url), withFixture ? "/sample.docx" : null);
@@ -375,6 +352,32 @@ async function main() {
     `打印路径跑通（${printResult.settled}，打印 iframe ${printResult.before} → ${printResult.after}）`,
   );
 
+  // 插入图片（从本机选文件＝data URI）：元素、尺寸、导出都要对
+  await reload(false);
+  const imageUri = await page.evaluate(() => window.__imageDataUri("/image.png"));
+  check(
+    typeof imageUri === "string" && imageUri.startsWith("data:image/png;base64,"),
+    `样本图片读成 data URI（${String(imageUri).slice(0, 24)}…，${String(imageUri).length} 字符）`,
+  );
+  const beforeImage = await page.screenshot();
+  await run("executeImage", [imageUri]);
+  await page.waitForTimeout(200);
+  const imageElement = (await elements()).find((element) => element?.type === "image");
+  const afterImage = await page.screenshot();
+  check(
+    Boolean(imageElement) && imageElement.width === 240 && imageElement.height === 120,
+    `图片按原图尺寸插入（240×120，实际 ${imageElement?.width}×${imageElement?.height}）`,
+  );
+  check(
+    afterImage.byteLength !== beforeImage.byteLength,
+    `插入图片后画布重绘（截图 ${beforeImage.byteLength} → ${afterImage.byteLength} 字节）`,
+  );
+  const exported = await page.evaluate(() => window.__exportDocx());
+  check(
+    exported > 60000,
+    `导出的 docx 里带上了图片（${Math.round(exported / 1024)} KiB ≥ 样本 59 KiB）`,
+  );
+
   // 版面撤销：分栏/纸张改动不在引擎的撤销栈里（引擎只存元素表），我们自己记快照
   await reload(false);
   const columnsOf = () => page.evaluate(() => window.__editor.command.getColumns());
@@ -410,9 +413,8 @@ async function main() {
   );
 
   const shot = await page.screenshot();
-  writeFileSync(join(dir, "behavior.png"), shot);
-  await browser.close();
-  server.close();
+  writeFileSync(join(harness.dir, "behavior.png"), shot);
+  await harness.close();
 
   console.log(`\n失败 ${failures.length} 条`);
   for (const failure of failures) console.log("FAIL", failure);

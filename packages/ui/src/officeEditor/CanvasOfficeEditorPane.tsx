@@ -51,7 +51,6 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 type CanvasEditor = InstanceType<typeof Editor> & {
   use: (plugin: unknown) => void;
-  executeExportDocx?: (options: { fileName: string }) => Promise<Blob>;
   listener: { contentChange?: () => void };
   command: Record<string, (...args: unknown[]) => unknown>;
   /** 引擎内部元素表：`getValue()` 会把同格式的连续文字合并，替换要靠真实下标（见 engineCommands）。 */
@@ -173,7 +172,13 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
     setBusy(true);
     try {
       setStatus("导出 docx…");
-      const exportDocx = editor.executeExportDocx?.bind(editor);
+      // docx 插件把导入/导出都注册在 `command` 上（不是编辑器实例本身）——之前按 SuperDoc 的写法
+      // 读 `editor.executeExportDocx`，拿到 undefined 就会报"编辑器没有返回文档内容"（保存直接失败）。
+      const exportDocx = (
+        editor.command as {
+          executeExportDocx?: (options: { fileName: string }) => Promise<Blob>;
+        }
+      ).executeExportDocx?.bind(editor.command);
       const blob = exportDocx
         ? await exportDocx({ fileName: path.split("/").pop() ?? "document.docx" })
         : null;

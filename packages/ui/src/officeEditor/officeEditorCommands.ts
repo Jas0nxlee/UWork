@@ -150,8 +150,11 @@ export function runEngineCommand(context: CommandContext, command: string, args?
         break;
       }
       case "executeImage": {
-        // 官方 demo 从 <img> 载入宽高；这里给一个稳妥的默认尺寸，用户可在文档里拖拽调整。
-        commands.executeImage?.({ value: args?.[0] ?? "", width: 320, height: 240 });
+        const value = String(args?.[0] ?? "");
+        if (!value) break;
+        // 官方 demo 从 <img> 载入宽高。这里也按图片**真实尺寸**插入，并夹到版心宽度以内
+        // （固定 320×240 会让竖图和照片变形/糊成一块——真机反馈"插入照片"要能选本机图片、看着正常）。
+        void insertImageWithNaturalSize(commands, status, value);
         break;
       }
       case "executeHyperlink": {
@@ -353,6 +356,54 @@ function selectMatch(commands: Record<string, unknown>, range: Record<string, un
     | ((payload: Record<string, unknown>) => void)
     | undefined;
   replaceRange?.({ ...range, startIndex: Math.max(0, start - 1), endIndex: end });
+}
+
+/**
+ * 插图片：量出图片真实尺寸 → 按版心（纸张宽 − 左右页边距）等比缩放 → 交给引擎。
+ *
+ * 为什么要异步量：`new Image()` 的宽高只有在 onload 之后才有效；引擎的 executeImage 只认现成的宽高。
+ * 量不出来（网络图片跨域/加载失败）就退回一个保守尺寸，不阻塞插入。
+ */
+async function insertImageWithNaturalSize(
+  commands: Record<string, unknown>,
+  status: (message: string) => void,
+  value: string,
+): Promise<void> {
+  const options = (
+    commands.getOptions as (() => { width?: number; margins?: number[] }) | undefined
+  )?.();
+  const width = options?.width ?? 794;
+  const margins = options?.margins ?? [100, 120, 100, 120];
+  const innerWidth = Math.max(120, width - (margins[1] ?? 0) - (margins[3] ?? 0));
+  try {
+    const size = await loadImageSize(value);
+    const ratio = Math.min(1, innerWidth / size.width);
+    const target = {
+      width: Math.round(size.width * ratio),
+      height: Math.round(size.height * ratio),
+    };
+    (commands.executeImage as ((payload: Record<string, unknown>) => void) | undefined)?.({
+      value,
+      ...target,
+    });
+    status(`已插入图片（${target.width}×${target.height}，原图 ${size.width}×${size.height}）`);
+  } catch {
+    (commands.executeImage as ((payload: Record<string, unknown>) => void) | undefined)?.({
+      value,
+      width: Math.round(innerWidth / 2),
+      height: Math.round(innerWidth / 3),
+    });
+    status("已插入图片（读不到原始尺寸，用了默认大小，可在文档里拖拽调整）");
+  }
+}
+
+function loadImageSize(value: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error("image load failed"));
+    image.src = value;
+  });
 }
 
 /** 取关键词在文档里的全部命中范围（引擎自带匹配器，表格命中带行列坐标）。 */

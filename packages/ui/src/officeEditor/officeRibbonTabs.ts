@@ -139,9 +139,14 @@ export const RIBBON_TABS: RibbonTab[] = [
         label: "插图与链接",
         essential: true,
         items: [
-          button("图片", "插入图片（图片地址）", "executeImage", {
+          button("图片", "插入图片（从本机选，或填图片地址）", "executeImage", {
             icon: "Image24Regular",
-            prompt: { message: "图片地址（http/https 或 data:）", at: 0 },
+            prompt: {
+              message: "从本机选择图片，或直接填图片地址（http/https 或 data:）",
+              at: 0,
+              // 8 MiB 与"可编辑文档"的上限同一量级：图片要内嵌进 docx，过大的文件会把文档吹爆
+              pick: { label: "从本机选择…", accept: "image/*", maxBytes: 8 * 1024 * 1024 },
+            },
           }),
           button("超链接", "插入/编辑超链接", "executeHyperlink", {
             icon: "Link24Regular",

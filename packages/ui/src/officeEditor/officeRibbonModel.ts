@@ -55,7 +55,15 @@ export interface RibbonCommand {
   args?: unknown[];
   icon?: string;
   /** 需要一句话参数的命令（图片/超链接/LaTeX/水印）：取到后填进 args 的 index。 */
-  prompt?: { message: string; at: number };
+  /**
+   * 需要一句话参数的命令（图片/超链接/LaTeX/水印）：取到后填进 args 的 index。
+   * `pick` 表示这个值还能"从本机选文件"（图片就是这种：读成 data URI 当参数）。
+   */
+  prompt?: {
+    message: string;
+    at: number;
+    pick?: { label: string; accept: string; maxBytes: number };
+  };
 }
 
 export interface RibbonSelect {
