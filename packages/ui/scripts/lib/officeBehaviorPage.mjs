@@ -81,6 +81,42 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
 
+  /**
+   * 页眉页脚用例：造"源无页脚"与"源有页脚"两份文档，各走一次 preserveHeaderFooter，
+   * 与"插件导出（总带自己的 PAGE 页脚）"对比。
+   */
+  window.__headerFooterCases = async () => {
+    const encode = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const CONTENT_TYPES_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>';
+    const FOOTER_OVERRIDE = '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>';
+    const HEADER_OVERRIDE = '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>';
+
+    const buildSource = async (withFooter) => {
+      const zip = new window.JSZip();
+      zip.file("[Content_Types].xml", CONTENT_TYPES_HEAD + (withFooter ? FOOTER_OVERRIDE : "") + "</Types>");
+      zip.file("word/document.xml", '<w:document ' + XMLNS + '><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p></w:body></w:document>');
+      if (withFooter)
+        zip.file("word/footer1.xml", '<w:ftr ' + XMLNS + '><w:p><w:r><w:t>公司页脚 FOOTER-MARK</w:t></w:r></w:p></w:ftr>');
+      return new Uint8Array(await zip.generateAsync({ type: "arraybuffer" }));
+    };
+    // 模拟插件导出：总带自己的页眉页脚
+    const exportZip = new window.JSZip();
+    exportZip.file("[Content_Types].xml", CONTENT_TYPES_HEAD + FOOTER_OVERRIDE + HEADER_OVERRIDE + "</Types>");
+    exportZip.file(
+      "word/document.xml",
+      '<w:document ' + XMLNS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId6"/><w:footerReference w:type="default" r:id="rId7"/></w:sectPr></w:body></w:document>',
+    );
+    exportZip.file("word/footer1.xml", '<w:ftr ' + XMLNS + '><w:p><w:r><w:t>PAGE</w:t></w:r></w:p></w:ftr>');
+    exportZip.file("word/header1.xml", '<w:hdr ' + XMLNS + '><w:p/></w:hdr>');
+    const exported = encode(new Uint8Array(await exportZip.generateAsync({ type: "arraybuffer" })));
+
+    return {
+      plain: await window.__preserveHeaderFooter(encode(await buildSource(false)), exported),
+      withFooter: await window.__preserveHeaderFooter(encode(await buildSource(true)), exported),
+    };
+  };
+
   /** 页眉页脚保留：给源文档与导出文档的字节，返回处理后的 zip 结构摘要。 */
   window.__preserveHeaderFooter = async (sourceB64, exportedB64) => {
     const toBuffer = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;

@@ -169,64 +169,7 @@ async function main() {
   );
 
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
-  const hfCases = await page.evaluate(async () => {
-    const encode = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
-    const JSZip = window.JSZip;
-    const buildZip = async (withFooter) => {
-      const zip = new JSZip();
-      zip.file(
-        "[Content_Types].xml",
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-          '<Default Extension="xml" ContentType="application/xml"/>' +
-          (withFooter
-            ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
-            : "") +
-          "</Types>",
-      );
-      zip.file(
-        "word/document.xml",
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p></w:body></w:document>',
-      );
-      if (withFooter)
-        zip.file(
-          "word/footer1.xml",
-          '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>公司页脚 FOOTER-MARK</w:t></w:r></w:p></w:ftr>',
-        );
-      return new Uint8Array(await zip.generateAsync({ type: "arraybuffer" }));
-    };
-    // 模拟插件导出：总带自己的页脚（PAGE 域）
-    const exportZip = new JSZip();
-    exportZip.file(
-      "[Content_Types].xml",
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-        '<Default Extension="xml" ContentType="application/xml"/>' +
-        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
-        '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
-        "</Types>",
-    );
-    exportZip.file(
-      "word/document.xml",
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>正文</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId6"/><w:footerReference w:type="default" r:id="rId7"/></w:sectPr></w:body></w:document>',
-    );
-    exportZip.file(
-      "word/footer1.xml",
-      '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>PAGE</w:t></w:r></w:p></w:ftr>',
-    );
-    exportZip.file(
-      "word/header1.xml",
-      '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>',
-    );
-    const exported = new Uint8Array(await exportZip.generateAsync({ type: "arraybuffer" }));
-    return {
-      plain: await window.__preserveHeaderFooter(encode(await buildZip(false)), encode(exported)),
-      withFooter: await window.__preserveHeaderFooter(
-        encode(await buildZip(true)),
-        encode(exported),
-      ),
-    };
-  });
+  const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(
     hfCases.plain.footerRefs === 0 && hfCases.plain.headerRefs === 0 && !hfCases.plain.footerText,
     `源文档没有页眉页脚时，导出的页脚被撤掉（引用 ${hfCases.plain.footerRefs}，部件 ${JSON.stringify(hfCases.plain.parts)}）`,
