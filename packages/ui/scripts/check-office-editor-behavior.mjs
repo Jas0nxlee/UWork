@@ -318,6 +318,23 @@ async function main() {
     `表格 3×4 插出来是 ${table?.trList?.length}×${table?.trList?.[0]?.tdList?.length}`,
   );
 
+  // 打印：引擎会把每页渲染成图片塞进隐藏 iframe 再 print()。无头里 print 是空操作，
+  // 所以这里断言"打印路径真的跑起来并建了打印 iframe"——对话框是否弹出只能真机看。
+  await reload();
+  const printResult = await page.evaluate(async () => {
+    const before = document.querySelectorAll("iframe").length;
+    const promise = window.__editor.command.executePrint();
+    const settled = await Promise.race([
+      promise.then(() => "resolved"),
+      new Promise((resolve) => setTimeout(() => resolve("pending"), 3000)),
+    ]);
+    return { settled, before, after: document.querySelectorAll("iframe").length };
+  });
+  check(
+    printResult.settled === "resolved" && printResult.after > printResult.before,
+    `打印路径跑通（${printResult.settled}，打印 iframe ${printResult.before} → ${printResult.after}）`,
+  );
+
   // 引擎没有这条命令时要明确报出来，不能静默无反应
   await reload(false);
   const unknown = await run("executeNotARealCommand");
