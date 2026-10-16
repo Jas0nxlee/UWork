@@ -7,8 +7,8 @@
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
-import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
-import { preserveHeaderFooter } from "./docxHeaderFooter.js";
+import type { DocxPreflightResult } from "./docxPreflight.js";
+import { MAX_DOCUMENT_XML_BYTES, prepareDocumentForImport } from "./officeLoadPipeline.js";
 import {
   listRevisions,
   resolveRevisionsInDocx,
@@ -17,11 +17,11 @@ import {
 } from "./docxReview.js";
 import {
   applyRevisionView,
-  restoreRevisions,
   type DocumentComment,
   type RevisionPreservationState,
 } from "./docxRevisions.js";
-import { applyTrackedChanges, type TrackedChangeStats } from "./docxTrackChanges.js";
+import { composeExportedDocx } from "./officeExportPipeline.js";
+import { useCommentGroups } from "./useCommentGroups.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
@@ -34,12 +34,6 @@ async function documentXmlOf(bytes: ArrayBuffer): Promise<string> {
 
 /** 应用内原地编辑的体积上限（docx 文件字节）。 */
 const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
-/**
- * document.xml 的上限：**这才是真正的体量口径**。实测 191 KB 的 docx 解出 2.35 MB document.xml
- * （约 12 倍）、95.7 万个文字元素、导入 4.4 秒；按文件大小限流会放进一个几十 MB 的 document.xml，
- * 面板会长时间卡死甚至 OOM。
- */
-const MAX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024;
 /** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
 const SLOW_PARSE_MS = 3000;
 
@@ -62,8 +56,10 @@ export interface UseOfficeDocumentResult {
   comments: DocumentComment[];
   /** 当前批注序号（-1＝没选）。 */
   currentComment: number;
-  /** 定位到下一条/第 n 条批注（选中正文里的 `[n]` 标记并把内容显示到状态栏）。 */
+  /** 定位到第 n 条批注（用引擎 group 的 `executeLocationGroup`，与官方 demo 一致）。 */
   gotoComment: (index: number) => void;
+  /** 删除第 n 条批注（去掉锚点，正文保留；保存时写回文件）。 */
+  deleteComment: (index: number) => Promise<void>;
   /** 修订清单（Word 的"审阅"是按这个列表逐条走的）。 */
   revisions: RevisionItem[];
   /** 当前选中的修订序号（-1＝没选）。 */
@@ -143,6 +139,9 @@ export function useOfficeDocument({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
+  const { groupComments, locateComment, forgetComment } = useCommentGroups();
+
+  /** 导入字节并回报解析耗时（超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug）。 */
   const importBytes = useCallback(
     async (editor: OfficeEditorHandle, bytes: ArrayBuffer, label: string, reset: boolean) => {
       setStatus(`解析文档（${label}）…`);
@@ -163,9 +162,15 @@ export function useOfficeDocument({
         `已载入 ${label} · 解析 ${(elapsedMs / 1000).toFixed(1)}s · 点「保存到文件」写回${slowHint}`,
       );
     },
-    [],
+    [markDirty],
   );
 
+  /**
+   * 读文件 → 护栏预检 → 修订/批注标记视图 → 导入。
+   *
+   * 三条安全线都在这里：① 远端先探写能力（老远端没有 writeBinaryFile）；② 真会丢内容的特性
+   * （脚注/尾注）先列清单让用户决定；③ 体积按**解压后的 document.xml** 限，而不是 docx 文件大小。
+   */
   const loadDocument = useCallback(
     async (options: { reset?: boolean; skipGuard?: boolean } = {}) => {
       const [preview, fileStat] = await Promise.all([
@@ -198,43 +203,40 @@ export function useOfficeDocument({
       const raw = base64ToArrayBuffer(preview.dataBase64);
       sourceBytesRef.current = raw;
       const label = `${Math.round(preview.totalBytes / 1024)} KiB`;
-      // 护栏：先看清这份文档里有什么是引擎**保不住**的。实测修订的插入文字、超链接文字、公式文字会直接消失；
-      // 批注/脚注在保存时丢——所以先把话说明白，用户确认后才按归一化字节导入。
-      let preflightBytes = raw;
-      if (!options.skipGuard) {
-        const preflight = await preprocessDocx(raw);
-        preflightBytes = preflight.bytes;
-        if (preflight.findings.documentXmlBytes > MAX_DOCUMENT_XML_BYTES) {
-          setStatus(
-            `文档解压后过大（document.xml ${(preflight.findings.documentXmlBytes / 1048576).toFixed(1)} MB，上限 ${MAX_DOCUMENT_XML_BYTES / 1048576} MB）：应用内编辑会卡到不可用，请用只读预览 + 对话卡片审阅。`,
-          );
-          return;
-        }
-        const notices = summarizeFindings(preflight.findings);
-        if (notices.length > 0) {
-          setPendingPreflight(preflight);
-          setStatus("这份文档有需要你确认的特性（见上方提示）——确认后才会打开");
-          return;
-        }
-      }
-      // 修订与批注：按 Word 的样子显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝上标标记），
-      // 原件留起来，保存时按段落原样写回（见 docxRevisions.ts）。
-      normalizedBytesRef.current = preflightBytes;
-      const view = await applyRevisionView(preflightBytes);
-      revisionsRef.current = view.preservation;
-      setRevisions(listRevisions(await documentXmlOf(preflightBytes)));
-      setCurrentRevision(-1);
-      setComments(view.comments);
-      setCurrentComment(-1);
-      setRevisionSummary(view.summary);
-      await importBytes(editor, view.bytes, label, options.reset !== false);
-      if (view.summary.inserted || view.summary.deleted || view.summary.comments) {
+      const prepared = await prepareDocumentForImport(
+        raw,
+        options.skipGuard === undefined ? {} : { skipGuard: options.skipGuard },
+      );
+      if (prepared.status === "tooLarge") {
         setStatus(
-          `已载入 ${label} · 修订 ${view.summary.inserted} 插入 / ${view.summary.deleted} 删除 · 批注 ${view.summary.comments} 处（按 Word 的方式显示在正文里，保存时原样写回）`,
+          `文档解压后过大（document.xml ${(prepared.findings.documentXmlBytes / 1048576).toFixed(1)} MB，上限 ${MAX_DOCUMENT_XML_BYTES / 1048576} MB）：应用内编辑会卡到不可用，请用只读预览 + 对话卡片审阅。`,
+        );
+        return;
+      }
+      if (prepared.status === "blocked") {
+        setPendingPreflight(prepared.preflight);
+        setStatus("这份文档有需要你确认的特性（见上方提示）——确认后才会打开");
+        return;
+      }
+      // 修订与批注：按 Word 的样子显示在正文里（插入＝下划线着色、删除＝红色删除线、批注＝锚点浅底纹），
+      // 原件留起来，保存时按段落原样写回（见 docxRevisions.ts）。
+      normalizedBytesRef.current = prepared.normalizedBytes;
+      revisionsRef.current = prepared.preservation;
+      setRevisions(listRevisions(await documentXmlOf(prepared.normalizedBytes)));
+      setCurrentRevision(-1);
+      setComments(prepared.comments);
+      setCurrentComment(-1);
+      setRevisionSummary(prepared.summary);
+      await importBytes(editor, prepared.bytes, label, options.reset !== false);
+      // 批注的建组要在导入之后（引擎按选区建组，官方 demo 同一套 API）
+      groupComments(editor, prepared.comments);
+      if (prepared.summary.inserted || prepared.summary.deleted || prepared.summary.comments) {
+        setStatus(
+          `已载入 ${label} · 修订 ${prepared.summary.inserted} 插入 / ${prepared.summary.deleted} 删除 · 批注 ${prepared.summary.comments} 处（按 Word 的方式显示在正文里，保存时原样写回）`,
         );
       }
     },
-    [editorRef, fileService, importBytes, path, remote],
+    [editorRef, fileService, groupComments, importBytes, path, remote],
   );
 
   /**
@@ -286,10 +288,7 @@ export function useOfficeDocument({
     [editorRef, importBytes],
   );
 
-  /**
-   * 批注导航（Word 的"上一条/下一条批注"）：把正文里对应的 `[n]` 标记选中。
-   * 这里复用查找的机制（引擎只高亮、不移动选区，所以显式设选区）。
-   */
+  /** 定位到某条批注（官方 demo 的做法：`executeLocationGroup`）。 */
   const gotoComment = useCallback(
     (index: number) => {
       const editor = editorRef.current;
@@ -299,27 +298,25 @@ export function useOfficeDocument({
         return;
       }
       setCurrentComment(index);
-      const commands = editor.command as Record<string, unknown>;
-      const ranges = (
-        commands.getKeywordRangeList as
-          | ((value: string) => Array<{ startIndex: number; endIndex: number }>)
-          | undefined
-      )?.(`[${comment.index}]`);
-      const range = ranges?.[0];
-      if (!range) {
-        setStatus(
-          `第 ${comment.index} 条批注：${comment.author}：${comment.text}（正文里没找到标记）`,
-        );
-        return;
-      }
-      (commands.executeReplaceRange as ((payload: Record<string, unknown>) => void) | undefined)?.({
-        ...range,
-        startIndex: Math.max(0, range.startIndex - 1),
-        endIndex: range.endIndex,
-      });
+      locateComment(editor, comment);
       setStatus(`批注 ${index + 1}/${comments.length} · ${comment.author}：${comment.text}`);
     },
-    [comments, editorRef],
+    [comments, editorRef, locateComment],
+  );
+
+  /** 删除某条批注（官方 demo 的做法：`executeDeleteGroup`；正文保留，保存时写回文件）。 */
+  const deleteComment = useCallback(
+    (index: number) => {
+      const comment = comments[index];
+      const editor = editorRef.current;
+      if (!comment || !editor) return Promise.resolve();
+      forgetComment(editor, comment);
+      setComments((current) => current.filter((_item, at) => at !== index));
+      setCurrentComment(-1);
+      setStatus(`已删除第 ${comment.index} 条批注（正文保留，保存时写回文件）`);
+      return Promise.resolve();
+    },
+    [comments, editorRef, forgetComment],
   );
 
   const acceptPreflight = useCallback(() => {
@@ -348,24 +345,18 @@ export function useOfficeDocument({
         : null;
       if (!(blob instanceof Blob)) throw new Error("编辑器没有返回文档内容");
       const exported = await blob.arrayBuffer();
-      // 修订模式：把改动落成 w:ins/w:del（基线＝打开时的文件字节）
-      let trackedStats: TrackedChangeStats | null = null;
-      let withTracked = exported;
-      if (trackChangesEnabled && sourceBytesRef.current) {
-        const tracked = await applyTrackedChanges(sourceBytesRef.current, exported, {
+      const composed = await composeExportedDocx({
+        exported,
+        source: sourceBytesRef.current,
+        revisionPreservation: revisionsRef.current,
+        trackChanges: {
+          enabled: trackChangesEnabled,
           author: "UWork",
           date: new Date().toISOString(),
-        });
-        withTracked = tracked.bytes;
-        trackedStats = tracked.stats;
-      }
-      // 页眉页脚不属于本次编辑范围：原样保留（没有就别让插件默认页脚留下来）
-      // 修订/批注写回：没被编辑过的段落换回原件（标记不丢、不被静默接受）
-      const revisions = await restoreRevisions(withTracked, revisionsRef.current);
-      const restored = sourceBytesRef.current
-        ? await preserveHeaderFooter(sourceBytesRef.current, revisions.bytes)
-        : { bytes: revisions.bytes, note: "" };
-      const bytes = new Uint8Array(restored.bytes);
+        },
+      });
+      const bytes = new Uint8Array(composed.bytes);
+      const notes = composed.notes;
       setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
       const result = await fileService.writeBinaryFile({
         path,
@@ -376,21 +367,13 @@ export function useOfficeDocument({
       revisionRef.current = result.revision;
       markDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
-      const revisionNote = revisions.restored
-        ? ` · 保留原修订/批注 ${revisions.restored} 段${
-            revisions.edited ? `（${revisions.edited} 段被编辑过，其原有标记按你的改动处理）` : ""
-          }`
-        : "";
-      const trackedNote = trackedStats
-        ? ` · 已记为修订（插入 ${trackedStats.inserted} 段 / 删除 ${trackedStats.deleted} 段 / 修改 ${trackedStats.modified} 段）`
-        : "";
       setStatus(
         `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}${
-          restored.note ? ` · ${restored.note}` : ""
-        }${revisionNote}${trackedNote}`,
+          notes.length ? ` · ${notes.join(" · ")}` : ""
+        }`,
       );
       // 保存后基线要更新：否则第二次保存会把上一次的改动又标一遍
-      sourceBytesRef.current = withTracked.slice(0);
+      sourceBytesRef.current = composed.bytes.slice(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(
@@ -407,6 +390,7 @@ export function useOfficeDocument({
     comments,
     currentComment,
     gotoComment,
+    deleteComment,
     revisions,
     currentRevision,
     setCurrentRevision,

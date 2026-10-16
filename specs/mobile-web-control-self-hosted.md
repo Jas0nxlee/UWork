@@ -68,6 +68,21 @@
 zcode endpoint origin，所以当前 UWork 打包产物的二维码 URL 默认仍指向 `https://zcode.z.ai/remote/v4`。
 这是必须显式改掉的：不改就等于把校内用户的手机流量导到第三方 relay。
 
+### 1.4 这条链路里所有会打到 ZCode 侧的连接（自建清单）
+
+| 连接                          | 谁发起 | 现状                                                            | 自建后                                                                    |
+| ----------------------------- | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| relay WebSocket               | 桌面   | `wss://zcode.z.ai/ws`（device 角色，出站）                      | 自建 relay（P1），配置见 P3                                               |
+| relay WebSocket               | 手机   | `wss://zcode.z.ai/ws`（terminal 角色）                          | 同上；手机页在构建期注入（P2）                                            |
+| 手机页静态资源                | 手机   | `https://zcode.z.ai/remote/v4`（上游 nginx/k8s 托管）           | 自建 nginx 托管 `packages/web/dist`（P2）                                 |
+| help/社区配置                 | 手机   | `communityUrl` 兜底 `https://zcode.z.ai`（点帮助才用）          | 注入 `VITE_ZCODE_BASE_URL=<自建域名>`，或按 UWork 品牌替换社区链接        |
+| 远控会话遥测（ARMS/RUM）      | 桌面   | `ZCODE_ARMS_RUM_ENDPOINT`，`remote_usage` 分组上报配对/桥接结果 | **决策点**：置空/关闭，或改指自建观测后端；不处理就是自建后仍有数据出境   |
+| legacy `?remoteControlToken=` | 手机   | 会打 `${relayOrigin}/api/remote-control/*`                      | 死路径：当前二维码只带 `sid/hash/t/...`，不进入该分支（可在 P2 顺带清理） |
+
+业务数据面只有 relay 一条：`bootstrap-request`、`workspace-list`、`rpc-frame`（分片）等全部封装在
+relay 的 `data.payload` 里透传，手机页与桌面**不直连**任何 z.ai 业务 API；版本校验
+（`app_version` 改写）也是走 bridge 由桌面回答，不走网络。
+
 ## 二、目标架构（UWork 版）
 
 ```text
@@ -182,8 +197,10 @@ UWork 只需要配一处 origin，桌面与手机页自动一致，且不再有�
   手机不显示企业身份登录/退出、不触发企业网关自动配置；宽窄屏导航与任务索引行为不变。
 - 品牌：手机页 title/favicon、远控弹层与手机壳文案、失败页、`config/default.json` 的
   community/feedback 链接换成 UWork 值。
-- 遥测：核对 `reportRemoteUsageEvent` / ARMS 相关上报在 UWork 构建下是否需要关闭（UWork 已裁剪
-  账号与套餐入口，远控会话遥测要么去掉要么只留本地日志）。
+- 遥测：`reportRemoteUsageEvent` → `desktopRemoteUsageArmsTelemetry.ts` 的 `REMOTE_USAGE_ARMS_GROUP`
+  （`remote_usage`）会经 ARMS/RUM 上报配对与 bridge 结果，端点是构建期注入的
+  `ZCODE_ARMS_RUM_ENDPOINT`（`packages/shared/src/env.ts:53`）。要自建就得一起决定：关闭该分组、
+  置空端点，还是改指自建观测后端（UWork 已裁剪账号与套餐入口，远控遥测要么去掉要么只留本地日志）。
 - 权限：手机侧工具能力已受 attachment/capability 约束；企业场景是否需要更严（例如手机禁终端）
   留作决策点。
 

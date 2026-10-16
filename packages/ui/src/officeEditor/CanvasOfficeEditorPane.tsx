@@ -78,6 +78,7 @@ export function CanvasOfficeEditorPane({
     comments,
     currentComment,
     gotoComment,
+    deleteComment,
     revisions,
     currentRevision,
     setCurrentRevision,
@@ -348,7 +349,12 @@ export function CanvasOfficeEditorPane({
         inTable={inTable}
         run={runRibbon}
       />
-      <OfficeCommentList comments={comments} current={currentComment} onPick={gotoComment} />
+      <OfficeCommentList
+        comments={comments}
+        current={currentComment}
+        onPick={gotoComment}
+        onDelete={(index) => void deleteComment(index)}
+      />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
       <div
         hidden={writeBlocked !== null || pendingPreflight !== null}

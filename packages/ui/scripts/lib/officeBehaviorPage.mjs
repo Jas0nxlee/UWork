@@ -108,14 +108,48 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     };
   };
 
+  /**
+   * 批注的**引擎侧**能力（官方 demo 用的那套）：选中锚点文字 → executeSetGroup →
+   * getGroupRectList 拿矩形 → executeLocationGroup 定位 → executeDeleteGroup 删除。
+   */
+  window.__commentGroupCase = async () => {
+    await window.__load(null);
+    const editor = window.__editor;
+    const commands = editor.command;
+    commands.executeInsertElementList([{ value: "被批注的一句话 后面还有字" }]);
+    const ranges = commands.getKeywordRangeList("被批注的一句话");
+    const range = ranges && ranges[0];
+    if (!range) return { error: "找不到锚点文字" };
+    commands.executeReplaceRange({ ...range, startIndex: Math.max(0, range.startIndex - 1), endIndex: range.endIndex });
+    const groupId = commands.executeSetGroup();
+    const ids = await commands.getGroupIds();
+    const rectList = commands.getGroupRectList(groupId);
+    commands.executeLocationGroup(groupId);
+    const rectAfterLocate = commands.getGroupRectList(groupId);
+    commands.executeDeleteGroup(groupId);
+    const idsAfterDelete = await commands.getGroupIds();
+    return {
+      groupId: typeof groupId === "string" && groupId.length > 0,
+      inIdList: Array.isArray(ids) && ids.includes(groupId),
+      rects: Array.isArray(rectList) ? rectList.length : 0,
+      rectAfterLocate: Array.isArray(rectAfterLocate) ? rectAfterLocate.length : 0,
+      deleted: Array.isArray(idsAfterDelete) ? idsAfterDelete.length === 0 : false,
+    };
+  };
+
   /** 批注解析：comments.xml 的作者/时间/内容要与正文里的 [n] 标记对上。 */
   window.__commentCase = async () => {
     const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const zip = new window.JSZip();
     zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>');
+    // Word 的锚定方式：commentRangeStart → 被批注的文字 → commentRangeEnd → 引用
     zip.file("word/document.xml",
-      '<w:document ' + XMLNS + '><w:body><w:p><w:r><w:t>正文一</w:t></w:r><w:r><w:commentReference w:id="7"/></w:r></w:p>' +
-      '<w:p><w:r><w:t>正文二</w:t></w:r><w:r><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>');
+      '<w:document ' + XMLNS + '><w:body>' +
+      '<w:p><w:commentRangeStart w:id="7"/><w:r><w:t>被批注的一句话</w:t></w:r><w:commentRangeEnd w:id="7"/>' +
+      '<w:r><w:commentReference w:id="7"/></w:r></w:p>' +
+      '<w:p><w:commentRangeStart w:id="8"/><w:r><w:t>第二处锚点</w:t></w:r><w:commentRangeEnd w:id="8"/>' +
+      '<w:r><w:commentReference w:id="8"/></w:r></w:p>' +
+      '</w:body></w:document>');
     zip.file("word/comments.xml",
       '<w:comments ' + XMLNS + '>' +
       '<w:comment w:id="7" w:author="张审阅" w:date="2026-10-16T09:00:00Z"><w:p><w:r><w:t>这里要改</w:t></w:r></w:p></w:comment>' +
@@ -130,8 +164,10 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
       authors: view.comments.map((c) => c.author),
       texts: view.comments.map((c) => c.text),
       paragraphs: view.comments.map((c) => c.paragraph),
-      markers: view.comments.map((c) => "[" + c.index + "]"),
-      bodyHasMarkers: documentXml.includes("[1]") && documentXml.includes("[2]"),
+      anchors: view.comments.map((c) => c.anchorText),
+      // 锚点加了浅底纹（Word 的批注底色），且正文里**不再**注入自造标记
+      bodyShaded: documentXml.includes("FFF7D6"),
+      bodyHasInventedMarker: documentXml.includes("[1]"),
     };
   };
 
@@ -157,7 +193,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
       '<w:p><w:r><w:t>AAA 普通正文</w:t></w:r></w:p>' +
       '<w:p><w:r><w:t>BBB</w:t></w:r><w:ins w:id="1" w:author="审阅者"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:r><w:t>CCC</w:t></w:r></w:p>' +
       '<w:p><w:r><w:t>DDD</w:t></w:r><w:del w:id="2" w:author="审阅者"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:r><w:t>EEE</w:t></w:r></w:p>' +
-      '<w:p><w:r><w:t>被批注的文字</w:t></w:r><w:r><w:commentReference w:id="3"/></w:r></w:p>' +
+      '<w:p><w:commentRangeStart w:id="3"/><w:r><w:t>被批注的文字</w:t></w:r><w:commentRangeEnd w:id="3"/><w:r><w:commentReference w:id="3"/></w:r></w:p>' +
       '</w:body></w:document>';
     const zip = new window.JSZip();
     zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
@@ -179,7 +215,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
       bodyShowsInserted: /INSERTED/.test(viewXml),
       insertedUnderlined: new RegExp('<w:u w:val="single"/>').test(viewXml) && viewXml.includes("1A73E8"),
       deletedStruck: new RegExp("<w:strike/>").test(viewXml) && viewXml.includes("D93025"),
-      commentMark: viewXml.includes("[1]"),
+      commentShaded: viewXml.includes("FFF7D6"),
       savedHasIns: new RegExp("<w:ins[ >]").test(savedXml),
       savedHasDel: new RegExp("<w:del[ >]").test(savedXml),
       savedHasCommentRef: new RegExp("<w:commentReference[ >]").test(savedXml),

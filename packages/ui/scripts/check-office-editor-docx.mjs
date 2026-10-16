@@ -74,7 +74,7 @@ async function main() {
     "插入的正文看得见且按 Word 的样子标出（下划线 + 蓝色）",
   );
   check(revisionView.deletedStruck, "被删除的正文按 Word 的样子显示（红色删除线，文字不消失）");
-  check(revisionView.commentMark, "批注锚点在正文里显示为上标标记 [1]");
+  check(revisionView.commentShaded, "批注锚点按 Word 的样子加浅底纹（不再注入自造标记）");
   check(
     revisionView.savedHasIns && revisionView.savedHasDel && revisionView.savedHasCommentRef,
     `保存时原样写回修订与批注（w:ins/w:del/commentReference 都在，写回 ${revisionView.restored} 段）`,
@@ -125,8 +125,23 @@ async function main() {
     `批注解析出作者与内容（${comments.authors.join("、")}：${comments.texts.join("；")}）`,
   );
   check(
-    comments.markers.join(" ") === "[1] [2]" && comments.bodyHasMarkers,
-    `正文标记与批注一一对应（${comments.markers.join(" ")}，所在段落 ${comments.paragraphs.join("/")}）`,
+    comments.anchors.join(" / ") === "被批注的一句话 / 第二处锚点",
+    `批注锚点按 Word 的 commentRangeStart/End 解析（${comments.anchors.join(" / ")}）`,
+  );
+  check(
+    comments.bodyShaded && !comments.bodyHasInventedMarker,
+    "锚点范围加浅底纹、正文里不再注入自造标记（[$n] 已去掉）",
+  );
+
+  // 批注的引擎侧能力：用官方 demo 的那套 API（建组/取矩形/定位/删除）在真引擎上跑一遍
+  const commentGroup = await page.evaluate(() => window.__commentGroupCase());
+  check(
+    commentGroup.groupId && commentGroup.inIdList && commentGroup.rects > 0,
+    `批注用引擎 group（demo 的做法）：建组成功、列出 ${commentGroup.rects} 个矩形`,
+  );
+  check(
+    commentGroup.rectAfterLocate > 0 && commentGroup.deleted,
+    "定位（executeLocationGroup）与删除（executeDeleteGroup）都在真引擎上生效",
   );
 
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来

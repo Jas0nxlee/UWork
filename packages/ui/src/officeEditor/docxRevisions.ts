@@ -76,11 +76,6 @@ function styleDeletedXml(inner: string): string {
     );
 }
 
-/** 取 run 里第一个 `w:t` 的文字（批注锚点前后要显示一点上下文）。 */
-function runText(runXml: string): string {
-  return [...runXml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join("");
-}
-
 /**
  * 把一份 document.xml 改写成"Word 标记视图"，并记下每段的原件。
  * 只有含修订/批注的段落会被改写；其它段落原样返回。
@@ -124,26 +119,47 @@ export function buildRevisionView(
         styleDeletedXml(String(inner)),
       );
 
-    // 批注：run 里的 commentReference → 上标编号标记
+    // 批注：Word 的锚定方式是 commentRangeStart/End（被批注的正文），锚点文字加浅底纹，
+    // 内容与作者来自 comments.xml，交互（定位/删除）用引擎的 group（官方 demo 同一套）。
     let commentsInParagraph = 0;
-    next = next.replace(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g, (run) => {
-      if (!/<w:commentReference[ >]/.test(run)) return run;
+    const rangeIds = [...paragraphXml.matchAll(/<w:commentRangeStart[^>]*w:id="([^"]*)"/g)].map(
+      (match) => match[1],
+    );
+    for (const id of rangeIds) {
       commentIndex += 1;
       commentsInParagraph += 1;
-      const around = runText(run).slice(0, 20);
-      const id = /<w:commentReference[^>]*w:id="([^"]*)"/.exec(run)?.[1] ?? "";
-      const content = commentContents.get(id);
-      commentMarks.push({ index: commentIndex, paragraph: current, around });
+      const start = next.indexOf(`w:commentRangeStart w:id="${id}"`);
+      const end = next.indexOf(`w:commentRangeEnd w:id="${id}"`);
+      const anchorText =
+        start >= 0 && end > start
+          ? paragraphText(next.slice(next.indexOf(">", start) + 1, next.lastIndexOf("<", end)))
+          : "";
+      const content = commentContents.get(id ?? "");
       comments.push({
         index: commentIndex,
-        id,
+        id: id ?? "",
         author: content?.author ?? "",
         date: content?.date ?? "",
         text: content?.text ?? "",
         paragraph: current,
+        anchorText,
       });
-      return `<w:r><w:rPr><w:vertAlign w:val="superscript"/><w:color w:val="${REVISION_COLORS.comment}"/></w:rPr><w:t>[${commentIndex}]</w:t></w:r>`;
-    });
+      commentMarks.push({
+        index: commentIndex,
+        paragraph: current,
+        around: anchorText.slice(0, 20),
+      });
+    }
+    if (rangeIds.length > 0) {
+      // 给锚点范围里的 run 加浅底纹（Word 的批注底色），让它一眼看得出被批注过
+      next = next.replace(
+        /(<w:commentRangeStart[^>]*>[\s\S]*?<w:commentRangeEnd[^>]*>)/g,
+        (block) =>
+          block.replace(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g, (run) =>
+            addRunProperties(run, `<w:shd w:val="clear" w:color="auto" w:fill="FFF7D6"/>`),
+          ),
+      );
+    }
 
     summary.inserted += inserted;
     summary.deleted += deleted;
@@ -189,7 +205,7 @@ export function restoreOriginalParagraphs(
 }
 
 export interface DocumentComment {
-  /** 正文里显示的标记序号（1 基，与 `[n]` 一致）。 */
+  /** 文档里的第几条批注（1 基，供卡片标题与"上一条/下一条"）。 */
   index: number;
   id: string;
   author: string;
@@ -197,6 +213,12 @@ export interface DocumentComment {
   text: string;
   /** 所在段落序号（0 基）。 */
   paragraph: number;
+  /**
+   * 被批注的正文（`w:commentRangeStart` → `w:commentRangeEnd` 之间的文字）。
+   * 官方 demo 的口径是"选中一段文字 → `executeSetGroup()` 建组 → 宿主记卡片"，
+   * 所以我们导入后按这段文字在引擎里建组，用 `executeLocationGroup` 定位——不自己发明标记。
+   */
+  anchorText: string;
 }
 
 export interface RevisionPreservationState {

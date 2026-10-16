@@ -65,9 +65,23 @@ ONLYOFFICE/Collabora（服务端重型）。许可按仓库口径核查（`scrip
 并把这份字节设为新的"原始状态"（C2 的差异对比、下一次审阅都基于它）。
 副作用是**当前未保存的编辑会被这次导入覆盖**——Word 的接受/拒绝也是立刻改文档，行为一致。
 
-**批注**：解析 `word/comments.xml`（作者/时间/内容）并与正文里的 `[n]` 标记一一对应；
-编辑区下方是**批注列表**（Word 的审阅窗格），点一条就跳到正文对应标记；「上一/下一批注」在列表里前后走。
-页边气泡（Word 那种贴在一侧的圆角气泡）**待做**——canvas 渲染下要把元素位置换算成屏幕坐标再叠加，属于后续。
+**批注（按官方 demo 的做法，不自己发明）**：查证结论——引擎里**批注没有内置模型**（只有 `EditorComponent.COMMENT`
+一个枚举名），但官方 demo 用**引擎的 group 能力**做了批注：`executeSetGroup()` 给选中的文字建组、
+宿主侧维护卡片（作者/内容/时间/锚点文字）、`executeLocationGroup(id)` 定位、`executeDeleteGroup(id)` 删除、
+`getGroupRectList(id)` 取矩形自己画引线；**修订（trace）反过来**：引擎原生支持（`IElement.trace`、
+`TraceType.inserted/deleted`、`ITraceOption{insertColor,deleteColor,author}`、`TraceParticle`），但 demo
+只做了"留痕"开关，**没有**接受/拒绝 UI。
+
+所以这一块的最终口径：
+
+- **导入**：按 Word 的真实锚定方式解析 `w:commentRangeStart` → `w:commentRangeEnd` 之间的正文作为锚点，
+  锚点范围加浅底纹（`w:shd`，Word 的批注底色），内容/作者/时间来自 `word/comments.xml`；
+  **不再往正文里注入自造的 `[n]` 标记**（那是兜底做法，已删）；
+- **交互**：导入后按锚点文字建引擎 group，**定位＝`executeLocationGroup`、删除＝`executeDeleteGroup`**（demo 同款 API）；
+  编辑区下方是批注卡片列表（作者 · 时间 / 内容，结构照 demo 的卡片）；
+- **保存**：段落未被编辑就整段换回原件，`commentRangeStart/End` 与 `commentReference` 一并保留。
+
+**仍未做**：页边气泡与引线（demo 用 `getGroupRectList` 自己画 SVG 线——canvas 渲染下要把元素位置换成屏幕坐标再叠加）。
 
 ## 4 界面规则（功能区）
 
