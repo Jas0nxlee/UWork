@@ -7,6 +7,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { cp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 const CONTENT_TYPES = [
@@ -94,9 +95,14 @@ export async function startOfficeHarness(options) {
   };
 }
 
-/** 仓库内的引擎/插件产物路径（两个检查脚本都要用同一份）。 */
+/**
+ * 仓库内的引擎/插件产物路径（检查脚本共用）。
+ * `jszip` 也要给：页面里手工造/读 docx 用它，而它的 dist 是 UMD（只能当经典 script 引入）。
+ */
 export function engineAssetPaths(repoRoot) {
+  const resolver = createRequire(join(repoRoot, "package.json"));
   return {
+    jszip: resolver.resolve("jszip/dist/jszip.min.js"),
     engine: join(repoRoot, "node_modules/@hufe921/canvas-editor/dist/canvas-editor.js"),
     docxPlugin: join(repoRoot, "node_modules/@hufe921/canvas-editor-plugin-docx/dist/docx.js"),
     docxFixture: join(repoRoot, "packages/ui/test/fixtures/office-editor-check.docx"),

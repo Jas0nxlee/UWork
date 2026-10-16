@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
 import { preserveHeaderFooter } from "./docxHeaderFooter.js";
+import { applyTrackedChanges, type TrackedChangeStats } from "./docxTrackChanges.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
@@ -39,6 +40,9 @@ export interface UseOfficeDocumentInput {
 }
 
 export interface UseOfficeDocumentResult {
+  /** 修订模式开关（保存时是否把改动记成 w:ins/w:del）。 */
+  trackChangesEnabled: boolean;
+  setTrackChangesEnabled: (value: boolean) => void;
   /** 非空表示这份文件不能写回（远端缺能力），编辑位据此只显示说明。 */
   writeBlocked: string | null;
   status: string;
@@ -70,6 +74,11 @@ export function useOfficeDocument({
   const [busy, setBusy] = useState(false);
   const [pendingPreflight, setPendingPreflight] = useState<DocxPreflightResult | null>(null);
   const [writeBlocked, setWriteBlocked] = useState<string | null>(null);
+  /**
+   * 修订模式（默认开）：保存时把本次改动记成 `w:ins`/`w:del`，于是改动能进审阅队列
+   * （对话卡片逐条接受/拒绝走的就是这套标记）。关掉它就是"直接改文档"。
+   */
+  const [trackChangesEnabled, setTrackChangesEnabled] = useState(true);
 
   const markDirty = useCallback(
     (value: boolean) => {
@@ -193,10 +202,21 @@ export function useOfficeDocument({
         : null;
       if (!(blob instanceof Blob)) throw new Error("编辑器没有返回文档内容");
       const exported = await blob.arrayBuffer();
+      // 修订模式：把改动落成 w:ins/w:del（基线＝打开时的文件字节）
+      let trackedStats: TrackedChangeStats | null = null;
+      let withTracked = exported;
+      if (trackChangesEnabled && sourceBytesRef.current) {
+        const tracked = await applyTrackedChanges(sourceBytesRef.current, exported, {
+          author: "UWork",
+          date: new Date().toISOString(),
+        });
+        withTracked = tracked.bytes;
+        trackedStats = tracked.stats;
+      }
       // 页眉页脚不属于本次编辑范围：原样保留（没有就别让插件默认页脚留下来）
       const restored = sourceBytesRef.current
-        ? await preserveHeaderFooter(sourceBytesRef.current, exported)
-        : { bytes: exported, note: "" };
+        ? await preserveHeaderFooter(sourceBytesRef.current, withTracked)
+        : { bytes: withTracked, note: "" };
       const bytes = new Uint8Array(restored.bytes);
       setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
       const result = await fileService.writeBinaryFile({
@@ -208,11 +228,16 @@ export function useOfficeDocument({
       revisionRef.current = result.revision;
       markDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
+      const trackedNote = trackedStats
+        ? ` · 已记为修订（插入 ${trackedStats.inserted} 段 / 删除 ${trackedStats.deleted} 段 / 修改 ${trackedStats.modified} 段）`
+        : "";
       setStatus(
         `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}${
           restored.note ? ` · ${restored.note}` : ""
-        }`,
+        }${trackedNote}`,
       );
+      // 保存后基线要更新：否则第二次保存会把上一次的改动又标一遍
+      sourceBytesRef.current = withTracked.slice(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(
@@ -223,9 +248,11 @@ export function useOfficeDocument({
     } finally {
       setBusy(false);
     }
-  }, [busy, editorRef, fileService, path]);
+  }, [busy, editorRef, fileService, path, trackChangesEnabled]);
 
   return {
+    trackChangesEnabled,
+    setTrackChangesEnabled,
     status,
     setStatus,
     dirty,

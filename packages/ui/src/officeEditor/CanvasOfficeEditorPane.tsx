@@ -73,6 +73,8 @@ export function CanvasOfficeEditorPane({
     busy,
     pendingPreflight,
     writeBlocked,
+    trackChangesEnabled,
+    setTrackChangesEnabled,
     loadDocument,
     acceptPreflight,
     save,
@@ -264,6 +266,19 @@ export function CanvasOfficeEditorPane({
         }}
         onExit={onExit}
         confirmExit={() => !dirty || window.confirm("有未保存的修改，确定退出编辑吗？")}
+        extra={
+          <label
+            className="flex items-center gap-1 rounded border border-border px-2 py-1"
+            title="保存时把本次改动写成 Word 修订（w:ins/w:del），可回对话卡片逐条接受/拒绝"
+          >
+            <input
+              type="checkbox"
+              checked={trackChangesEnabled}
+              onChange={(event) => setTrackChangesEnabled(event.target.checked)}
+            />
+            修订模式
+          </label>
+        }
       />
       {writeBlocked ? (
         <div className="border-b border-border bg-surface px-3 py-3 text-xs">

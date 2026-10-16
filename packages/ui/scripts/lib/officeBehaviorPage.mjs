@@ -14,7 +14,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { probeWriteSupport, preserveHeaderFooter } from "/dispatcher.js";
+  import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
   window.__load = async (url) => {
@@ -80,6 +80,45 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   window.__elements = () => window.__editor.command.getValue().data.main;
 
   window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
+  window.__trackedApi = { applyTrackedChanges, acceptedText, rejectedText };
+
+  /**
+   * 修订模式用例：基线文档 → "编辑后"文档（改一段、加一段、删一段）→ 落成 w:ins/w:del。
+   * 判据：接受全部修订 == 编辑后的样子；拒绝全部修订 == 基线（与 Word 口径一致）。
+   */
+  window.__trackChangesCase = async () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const paragraph = (text) => '<w:p><w:r><w:t xml:space="preserve">' + text + '</w:t></w:r></w:p>';
+    const doc = (paragraphs) => '<w:document ' + XMLNS + '><w:body>' + paragraphs.join("") + '</w:body></w:document>';
+    // applyTrackedChanges 收的是 **docx（zip）字节**：这里现场打两个最小 zip
+    const zipOf = async (documentXml) => {
+      const zip = new window.JSZip();
+      zip.file(
+        "[Content_Types].xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+      );
+      zip.file("word/document.xml", documentXml);
+      return await zip.generateAsync({ type: "arraybuffer" });
+    };
+    const baseline = doc([paragraph("第一段原样"), paragraph("第二段要改旧内容"), paragraph("第三段要删")]);
+    const edited = doc([paragraph("第一段原样"), paragraph("第二段要改新内容"), paragraph("新增的一段")]);
+    const result = await window.__trackedApi.applyTrackedChanges(await zipOf(baseline), await zipOf(edited), {
+      author: "UWork",
+      date: "2026-10-16T00:00:00.000Z",
+    });
+    const zip = await window.JSZip.loadAsync(result.bytes);
+    const xml = await zip.file("word/document.xml").async("string");
+    return {
+      stats: result.stats,
+      hasIns: new RegExp("<w:ins[ >]").test(xml),
+      hasDel: new RegExp("<w:del[ >]").test(xml),
+      hasDelText: new RegExp("<w:delText").test(xml),
+      accepted: window.__trackedApi.acceptedText(xml),
+      rejected: window.__trackedApi.rejectedText(xml, baseline),
+      editedText: ["第一段原样", "第二段要改新内容", "新增的一段"].join("\\n"),
+      baselineText: ["第一段原样", "第二段要改旧内容", "第三段要删"].join("\\n"),
+    };
+  };
 
   /**
    * 页眉页脚用例：造"源无页脚"与"源有页脚"两份文档，各走一次 preserveHeaderFooter，
@@ -194,6 +233,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from ${JSON.stringify(join(editorDir, "docxPreflight.ts"))};`,
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
+      `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
     ].join("\n"),
     "utf8",
   );

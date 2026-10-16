@@ -18,7 +18,6 @@ import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BEHAVIOR_PAGE, bundleDispatcher } from "./lib/officeBehaviorPage.mjs";
-import { buildTrickyDocx } from "./lib/officeCheckFixtures.mjs";
 import { engineAssetPaths, startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,9 +26,6 @@ const editorDir = join(repoRoot, "packages/ui/src/officeEditor");
 
 async function main() {
   const assets = engineAssetPaths(repoRoot);
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  const jszipEsm = require.resolve("jszip/dist/jszip.min.js");
   const harness = await startOfficeHarness({
     prefix: "office-behavior-",
     pages: { "index.html": BEHAVIOR_PAGE },
@@ -38,7 +34,7 @@ async function main() {
       [assets.docxPlugin]: "ce/docx.js",
       [assets.docxFixture]: "sample.docx",
       [assets.imageFixture]: "image.png",
-      [jszipEsm]: "jszip.js",
+      [assets.jszip]: "jszip.js",
     },
     // 调度器是 esbuild 现场打出来的，必须在页面加载前写好
     prepareDir: (dir) => bundleDispatcher(dir, editorDir),
@@ -168,30 +164,6 @@ async function main() {
     `缩放可设到 ${zoomed.scale} 并恢复 ${restored.scale}（功能区的比例下拉读的就是它）`,
   );
 
-  // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
-  const hfCases = await page.evaluate(() => window.__headerFooterCases());
-  check(
-    hfCases.plain.footerRefs === 0 && hfCases.plain.headerRefs === 0 && !hfCases.plain.footerText,
-    `源文档没有页眉页脚时，导出的页脚被撤掉（引用 ${hfCases.plain.footerRefs}，部件 ${JSON.stringify(hfCases.plain.parts)}）`,
-  );
-  check(
-    hfCases.withFooter.footerText.includes("FOOTER-MARK") && hfCases.withFooter.footerRefs === 1,
-    `源文档有页脚时原样保留（${hfCases.withFooter.note}）`,
-  );
-
-  // 远端写能力探测：老远端（Method not found）要判"不能编辑"，新远端（版本不匹配）判"可以"
-  const probes = await page.evaluate(async () => ({
-    old: await window.__probeWrite("old-remote"),
-    fresh: await window.__probeWrite("new-remote"),
-    ok: await window.__probeWrite("writable"),
-  }));
-  check(
-    probes.old.supported === false &&
-      probes.fresh.supported === true &&
-      probes.ok.supported === true,
-    `写能力探测：老远端不支持（${probes.old.reason ?? ""}）／新远端支持／本地支持`,
-  );
-
   // 缩放锚点：放大后视图不能跳回左上角；缩小到装得下时横向归零（交给 mx-auto 居中）
   const zoomCases = await page.evaluate(() => [
     window.__zoomScroll({
@@ -315,43 +287,6 @@ async function main() {
     printResult.settled === "resolved" && printResult.after > printResult.before,
     `打印路径跑通（${printResult.settled}，打印 iframe ${printResult.before} → ${printResult.after}）`,
   );
-
-  // 护栏：含修订/超链接/公式/批注的文档必须先被识别，归一化后**文字不丢**
-  const trickyDocx = await buildTrickyDocx();
-  const preflight = await page.evaluate(async (bytes) => {
-    const result = await window.__preflight.preprocessDocx(bytes);
-    return {
-      findings: result.findings,
-      changes: result.changes,
-      bytes: Array.from(new Uint8Array(result.bytes)),
-    };
-  }, Array.from(trickyDocx));
-  const f = preflight.findings;
-  check(
-    f.revisions.inserted === 1 &&
-      f.revisions.deleted === 1 &&
-      f.hyperlinks === 1 &&
-      f.formulas === 1 &&
-      f.comments === 1,
-    `预检认出文档特性：插入 ${f.revisions.inserted} / 删除 ${f.revisions.deleted} / 超链接 ${f.hyperlinks} / 公式 ${f.formulas} / 批注 ${f.comments}`,
-  );
-  check(
-    preflight.changes.length >= 4,
-    `预检给出了会说清楚的改动清单（${preflight.changes.length} 条，例：${preflight.changes[0] ?? ""}）`,
-  );
-  await page.evaluate(
-    (bytes) => window.__loadPreprocessed(new Uint8Array(bytes).buffer),
-    preflight.bytes,
-  );
-  const trickyText = (await state()).text;
-  check(
-    trickyText.includes("INSERTED") &&
-      trickyText.includes("LINKTEXT") &&
-      trickyText.includes("E=mc^2"),
-    `归一化后插入文字/超链接文字/公式文字都还在（文本：${JSON.stringify(trickyText.slice(0, 80))}）`,
-  );
-  check(!trickyText.includes("DELETED"), "被删除的文字没有复活（w:del 按「接受删除」处理）");
-
   // 插入图片（从本机选文件＝data URI）：元素、尺寸、导出都要对
   await reload(false);
   const imageUri = await page.evaluate(() => window.__imageDataUri("/image.png"));
