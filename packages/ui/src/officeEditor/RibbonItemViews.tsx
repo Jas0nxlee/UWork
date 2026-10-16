@@ -57,11 +57,45 @@ import {
 } from "@fluentui/react-icons";
 import type { ComponentType } from "react";
 import type { RefObject } from "react";
+import { createContext, useContext } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { RibbonCommand, RibbonGallery, RibbonSelect, RibbonStyle } from "./officeRibbonModel.js";
 
 export type RunCommand = (command: string, args?: unknown[]) => void;
+
+/**
+ * 单一打开源：功能区里**同时只允许一个下拉打开**。
+ *
+ * 真机反馈："点开第一个下拉后，不选择再点第二个，第一个应该消失"——每个下拉各自持有 `open` 时，
+ * 互斥只能靠点击事件的传播细节来保证（容易漏）。这里把"当前打开的下拉 id"提升到功能区唯一状态，
+ * 打开任何一个都会天然关掉上一个。
+ */
+interface RibbonDropdownState {
+  openId: string | null;
+  toggle: (id: string) => void;
+  close: () => void;
+}
+
+const RibbonDropdownContext = createContext<RibbonDropdownState>({
+  openId: null,
+  toggle: () => undefined,
+  close: () => undefined,
+});
+
+export function RibbonDropdownProvider({
+  value,
+  children,
+}: {
+  value: RibbonDropdownState;
+  children: React.ReactNode;
+}) {
+  return <RibbonDropdownContext.Provider value={value}>{children}</RibbonDropdownContext.Provider>;
+}
+
+export function useRibbonDropdown(): RibbonDropdownState {
+  return useContext(RibbonDropdownContext);
+}
 
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   ArrowUndo24Regular,
@@ -335,7 +369,9 @@ export function RibbonSelectView({
   run: RunCommand;
   compact: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const dropdown = useRibbonDropdown();
+  const dropdownId = `select:${item.title}`;
+  const open = dropdown.openId === dropdownId;
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const Icon = iconOf(item.icon);
   const value = item.current?.(style ?? {}) ?? null;
@@ -349,7 +385,7 @@ export function RibbonSelectView({
         className={`flex items-center gap-1 rounded border border-border text-xs text-foreground hover:bg-surface ${
           compact ? "h-7 max-w-24 px-1.5" : "h-8 px-1.5"
         }`}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => dropdown.toggle(dropdownId)}
       >
         {Icon ? <Icon className={compact ? "size-4" : "size-5"} /> : null}
         {!compact ? <span className="max-w-16 shrink-0 text-foreground-subtle">{item.label}</span> : null}
@@ -363,7 +399,7 @@ export function RibbonSelectView({
           style={{ backgroundColor: swatch }}
         />
       ) : null}
-      <DropdownPanel open={open} anchorRef={anchorRef} onClose={() => setOpen(false)}>
+      <DropdownPanel open={open} anchorRef={anchorRef} onClose={dropdown.close}>
         {item.options.map((option) => (
           <button
             key={option.label}
@@ -372,7 +408,7 @@ export function RibbonSelectView({
               String(option.args[0]) === value ? "bg-neutral-500/15 font-medium" : ""
             }`}
             onClick={() => {
-              setOpen(false);
+              dropdown.close();
               run(optionsCommand(item.title), option.args);
             }}
           >

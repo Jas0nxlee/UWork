@@ -12,8 +12,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DropdownPanel,
   RibbonButton,
+  RibbonDropdownProvider,
   RibbonSelectView,
   StyleGalleryView,
+  useRibbonDropdown,
   type RunCommand,
 } from "./RibbonItemViews.js";
 import { RIBBON_TABS, type RibbonGroup, type RibbonItem, type RibbonStyle } from "./officeRibbonModel.js";
@@ -57,7 +59,9 @@ function OverflowMenu({
   run: RunCommand;
   label: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const dropdown = useRibbonDropdown();
+  const dropdownId = `overflow:${label}`;
+  const open = dropdown.openId === dropdownId;
   const anchorRef = useRef<HTMLDivElement | null>(null);
   if (items.length === 0) return null;
   return (
@@ -67,11 +71,11 @@ function OverflowMenu({
         title={`更多（${label}）`}
         aria-label={`更多（${label}）`}
         className="flex h-7 min-w-7 items-center justify-center rounded px-1 hover:bg-neutral-500/20"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => dropdown.toggle(dropdownId)}
       >
         ⋯
       </button>
-      <DropdownPanel open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} minWidth={224}>
+      <DropdownPanel open={open} anchorRef={anchorRef} onClose={dropdown.close} minWidth={224}>
         <div className="px-2 py-1 text-[11px] opacity-70">{label} · 更多</div>
           {items.map((item) => (
             <div key={item.title} className="flex items-center gap-1 px-2 py-1">
@@ -127,6 +131,16 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [activeTabId, setActiveTabId] = useState("home");
+  // 单一打开源：同屏只允许一个下拉（点第二个时第一个自动关）——真机反馈的互斥要求。
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownState = useMemo(
+    () => ({
+      openId: openDropdownId,
+      toggle: (id: string) => setOpenDropdownId((current) => (current === id ? null : id)),
+      close: () => setOpenDropdownId(null),
+    }),
+    [openDropdownId],
+  );
 
   useEffect(() => {
     const node = rootRef.current;
@@ -157,6 +171,7 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
 
   return (
     // mousedown 阻止默认：点功能区不能让画布失焦——否则选区丢失、撤销/格式化不生效（真机反馈）。
+    <RibbonDropdownProvider value={dropdownState}>
     <div className="border-b border-border bg-background" onMouseDown={(event) => event.preventDefault()} ref={rootRef}>
       <div className="flex items-end gap-1 border-b border-border px-2 pt-1">
         {tabs.map((tab) => (
@@ -168,7 +183,10 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
                 ? "border-sky-400 font-medium text-sky-300"
                 : "border-transparent text-foreground hover:bg-surface"
             }`}
-            onClick={() => setActiveTabId(tab.id)}
+            onClick={() => {
+              dropdownState.close();
+              setActiveTabId(tab.id);
+            }}
           >
             {tab.label}
           </button>
@@ -187,5 +205,6 @@ export function OfficeRibbon({ style, inTable, run }: OfficeRibbonProps) {
         ) : null}
       </div>
     </div>
+    </RibbonDropdownProvider>
   );
 }
