@@ -45,18 +45,28 @@ export const HIGHLIGHT_COLORS = [
 export const FONTS = ["宋体", "仿宋", "黑体", "微软雅黑", "楷体", "等线", "Times New Roman", "Arial", "Calibri"];
 export const SIZES = [9, 10.5, 11, 12, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 42, 48, 56, 72];
 
-/** 样式库（对标 Word/WPS 的「正文 / 标题 1..」）：预览按实际字号字重渲染。 */
+/**
+ * 样式库（对标 Word/WPS 的「正文 / 标题 1..」）：预览按实际字号字重渲染。
+ *
+ * ⚠️ 参数是引擎的 `TitleLevel` 枚举：**first/second/…/sixth**，不是 `h1`/`h2`。
+ * 我一开始传 `h1`，引擎查不到对应级别就**静默什么都不做**（真机反馈"标题没有正常生效"），
+ * 值取自引擎 dist（`TitleLevel.FIRST = "first" … SIXTH = "sixth"`）与官方 demo 的 data-level。
+ */
 export const STYLE_GALLERY: RibbonGallery = {
   kind: "gallery",
   label: "样式",
   title: "样式库",
   items: [
     { label: "正文", args: [null], style: { fontSize: 13, fontWeight: 400 } },
-    { label: "标题 1", args: ["h1"], style: { fontSize: 19, fontWeight: 700 } },
-    { label: "标题 2", args: ["h2"], style: { fontSize: 17, fontWeight: 600 } },
-    { label: "标题 3", args: ["h3"], style: { fontSize: 15, fontWeight: 600 } },
-    { label: "标题 4", args: ["h4"], style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" } },
-    { label: "标题 5", args: ["h5"], style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" } },
+    { label: "标题 1", args: ["first"], style: { fontSize: 19, fontWeight: 700 } },
+    { label: "标题 2", args: ["second"], style: { fontSize: 17, fontWeight: 600 } },
+    { label: "标题 3", args: ["third"], style: { fontSize: 15, fontWeight: 600 } },
+    { label: "标题 4", args: ["fourth"], style: { fontSize: 14, fontWeight: 600, fontStyle: "italic" } },
+    { label: "标题 5", args: ["fifth"], style: { fontSize: 13, fontWeight: 500, fontStyle: "italic" } },
   ],
-  current: (style) => (style.level ? `标题 ${String(style.level).replace("h", "")}` : "正文"),
+  current: (style) => {
+    const order = ["first", "second", "third", "fourth", "fifth", "sixth"];
+    const index = order.indexOf(String(style.level ?? ""));
+    return index >= 0 ? `标题 ${index + 1}` : "正文";
+  },
 };
