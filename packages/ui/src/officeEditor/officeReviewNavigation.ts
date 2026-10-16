@@ -56,6 +56,8 @@ export function gotoRevisionWithStatus(input: {
   index: number;
   setCurrentRevision: (index: number) => void;
   setStatus: (message: string) => void;
+  scrollContainer?: HTMLElement | null;
+  scale?: number;
 }): void {
   const editor = input.editorRef.current;
   const revision = input.revisions[input.index];
@@ -65,11 +67,70 @@ export function gotoRevisionWithStatus(input: {
   }
   input.setCurrentRevision(input.index);
   const kind = revision.kind === "insert" ? "插入" : "删除";
-  if (gotoRevision(editor, input.revisions, input.index)) {
+  const moved = gotoRevision(editor, input.revisions, input.index);
+  if (moved && input.scrollContainer) {
+    scrollSelectionIntoView(editor, input.scrollContainer, input.scale ?? 1);
+  }
+  if (moved) {
     input.setStatus(
       `第 ${input.index + 1}/${input.revisions.length} 条修订 · ${kind}「${revision.text.slice(0, 20)}」`,
     );
   } else {
     input.setStatus(`第 ${input.index + 1} 条修订（${kind}）：正文里没找到对应文字`);
   }
+}
+
+/**
+ * 把当前选区**滚进可见区**（Word 的导航会跟着滚）。
+ *
+ * 为什么需要：`executeSetRange` 只设选区，引擎不会自动滚——真机反馈"上下箭头不跟随"就是
+ * "定位到了但视图没过去"。目标矩形取 `getRangeContext().rangeRects[0]`（文档坐标，× 缩放即屏幕位置），
+ * 只做最小滚动：已经在可见区里就不动。
+ */
+export function scrollSelectionIntoView(
+  editor: Commands & { getScrollContainer?: () => HTMLElement | null },
+  scrollContainer: HTMLElement | null,
+  scale: number,
+  options: { padding?: number } = {},
+): boolean {
+  if (!scrollContainer) return false;
+  const context = (
+    editor.command.getRangeContext as
+      | (() => {
+          rangeRects?: Array<{ x: number; y: number; width: number; height: number }>;
+        } | null)
+      | undefined
+  )?.();
+  const rect = context?.rangeRects?.[0];
+  if (!rect) return false;
+  const next = scrollTopForRect({
+    rect,
+    scale,
+    scrollTop: scrollContainer.scrollTop,
+    viewportHeight: scrollContainer.clientHeight,
+    ...(options.padding === undefined ? {} : { padding: options.padding }),
+  });
+  if (next === null) return false;
+  scrollContainer.scrollTop = next;
+  return true;
+}
+
+/**
+ * 目标矩形要不要滚、滚到哪里（纯函数，便于断言）。
+ * 已经在可见区（留 padding）里 → 返回 null（不动）；否则返回"把目标顶部对齐到 padding 处"的位置。
+ */
+export function scrollTopForRect(input: {
+  rect: { y: number; height: number };
+  scale: number;
+  scrollTop: number;
+  viewportHeight: number;
+  padding?: number;
+}): number | null {
+  const padding = input.padding ?? 24;
+  const targetTop = input.rect.y * input.scale;
+  const targetBottom = (input.rect.y + input.rect.height) * input.scale;
+  const viewTop = input.scrollTop;
+  const viewBottom = viewTop + input.viewportHeight;
+  if (targetTop >= viewTop + padding && targetBottom <= viewBottom - padding) return null;
+  return Math.max(0, targetTop - padding);
 }

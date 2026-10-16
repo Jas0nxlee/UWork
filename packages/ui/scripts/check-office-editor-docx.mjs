@@ -164,6 +164,16 @@ async function main() {
     "段落原件也同步去掉（否则保存时会被写回，表现为「删不掉」）",
   );
 
+  // 审阅导航的滚动：视野内不动、可见区外按缩放滚到位（真机反馈"上下箭头不跟随"）
+  const navScroll = await page.evaluate(() => window.__navScrollCase());
+  check(
+    navScroll.inside === null &&
+      navScroll.below === 1676 &&
+      navScroll.above === 76 &&
+      navScroll.zoomed === 726,
+    `审阅导航的滚动判定正确（视野内→不动；下方 1700→1676；上方 100→76；缩放 1.5 时 500→726）`,
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(

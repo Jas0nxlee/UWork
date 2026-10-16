@@ -267,6 +267,8 @@ export function CanvasOfficeEditorPane({
                   currentRevision <= 0 ? Math.max(0, revisions.length - 1) : currentRevision - 1,
                 setCurrentRevision,
                 setStatus,
+                scrollContainer: scrollRef.current,
+                scale: pageSize.scale,
               }),
             next: () =>
               gotoRevisionWithStatus({
@@ -275,6 +277,8 @@ export function CanvasOfficeEditorPane({
                 index: currentRevision + 1 >= revisions.length ? 0 : currentRevision + 1,
                 setCurrentRevision,
                 setStatus,
+                scrollContainer: scrollRef.current,
+                scale: pageSize.scale,
               }),
             count: () => ({ total: revisions.length, current: currentRevision }),
           },

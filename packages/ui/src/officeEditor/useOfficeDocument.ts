@@ -23,7 +23,7 @@ import {
   type RevisionPreservationState,
 } from "./docxRevisions.js";
 import { composeExportedDocx } from "./officeExportPipeline.js";
-import { gotoCommentAnchor } from "./officeReviewNavigation.js";
+import { gotoCommentAnchor, scrollSelectionIntoView } from "./officeReviewNavigation.js";
 import { useCommentGroups, type CommentAnchor } from "./useCommentGroups.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
@@ -105,6 +105,8 @@ export function useOfficeDocument({
   onDirtyChange,
 }: UseOfficeDocumentInput): UseOfficeDocumentResult {
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
+  /** 当前缩放（滚动定位要用文档坐标 × 缩放）；由编辑位每次同步时更新。 */
+  const pageSizeRef = useRef({ scale: 1 });
   /** 源文件字节：保存时要用它把原页眉页脚还给导出结果（编辑器不编辑页眉页脚）。 */
   const sourceBytesRef = useRef<ArrayBuffer | null>(null);
   /** 导入时保留下来的"修订/批注段落原件"：保存时按段落写回，避免静默接受或丢失。 */
@@ -308,8 +310,14 @@ export function useOfficeDocument({
       }
       setCurrentComment(index);
       locateComment(editor, comment);
-      // 只调 executeLocationGroup 看不出"跳过去了"（真机反馈"不管用"）：再把锚点文字选中
-      gotoCommentAnchor(editor, comment);
+      // 只调 executeLocationGroup 看不出"跳过去了"（真机反馈"不管用"）：再把锚点文字选中并滚过去
+      if (gotoCommentAnchor(editor, comment)) {
+        scrollSelectionIntoView(
+          editor,
+          typeof document === "undefined" ? null : document.getElementById("office-editor-scroll"),
+          pageSizeRef.current.scale,
+        );
+      }
       setStatus(
         `批注 ${index + 1}/${comments.length} · ${comment.author || "（无作者）"}：${comment.text || "（文件里没有批注内容，只有锚点）"}`,
       );

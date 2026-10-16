@@ -16,7 +16,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
-  import { layoutBalloons } from "/dispatcher.js";
+  import { layoutBalloons, scrollTopForRect } from "/dispatcher.js";
   import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions, removeCommentAnchorsInDocx, stripCommentsFromPreservation } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings } from "/dispatcher.js";
 
@@ -259,6 +259,14 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   };
 
 ${CASE_SNIPPETS}
+  /** 审阅导航的滚动判定（纯函数）：视野内不动、超出才滚、按缩放换算。 */
+  window.__navScrollCase = () => ({
+    inside: scrollTopForRect({ rect: { y: 1000, height: 20 }, scale: 1, scrollTop: 900, viewportHeight: 600 }),
+    below: scrollTopForRect({ rect: { y: 1700, height: 20 }, scale: 1, scrollTop: 900, viewportHeight: 600 }),
+    above: scrollTopForRect({ rect: { y: 100, height: 20 }, scale: 1, scrollTop: 900, viewportHeight: 600 }),
+    zoomed: scrollTopForRect({ rect: { y: 500, height: 20 }, scale: 1.5, scrollTop: 0, viewportHeight: 600 }),
+  });
+
   /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
   window.__zoomScroll = (input) => scrollAfterZoom(input);
 
@@ -313,6 +321,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { applyRevisionView, restoreRevisions, buildRevisionView, removeCommentAnchorsInDocx, stripCommentsFromPreservation } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
       `export { listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxReview.ts"))};`,
       `export { layoutBalloons } from ${JSON.stringify(join(editorDir, "commentBalloons.ts"))};`,
+      `export { scrollTopForRect } from ${JSON.stringify(join(editorDir, "officeReviewNavigation.ts"))};`,
     ].join("\n"),
     "utf8",
   );
