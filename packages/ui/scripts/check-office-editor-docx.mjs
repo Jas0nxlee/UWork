@@ -116,6 +116,19 @@ async function main() {
     "拒绝全部＝插入消失、删除的文字还原为正文",
   );
 
+  // 批注：内容解析 + 正文标记对应（Word 的审阅窗格就是这张表）
+  const comments = await page.evaluate(() => window.__commentCase());
+  check(
+    comments.count === 2 &&
+      comments.authors.join("/") === "张审阅/李审阅" &&
+      comments.texts.join("/") === "这里要改/这句不通",
+    `批注解析出作者与内容（${comments.authors.join("、")}：${comments.texts.join("；")}）`,
+  );
+  check(
+    comments.markers.join(" ") === "[1] [2]" && comments.bodyHasMarkers,
+    `正文标记与批注一一对应（${comments.markers.join(" ")}，所在段落 ${comments.paragraphs.join("/")}）`,
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(

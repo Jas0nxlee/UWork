@@ -35,13 +35,15 @@ export interface ParagraphPreservation {
 
 export interface RevisionView {
   xml: string;
+  /** 批注清单（作者/时间/内容/所在段落），供审阅窗格与"上一/下一批注"用。 */
+  comments: DocumentComment[];
   paragraphs: ParagraphPreservation[];
   summary: { inserted: number; deleted: number; comments: number };
   /** 每处批注的编号与锚点文字，供正文标记与（后续的）气泡列表使用。 */
   commentMarks: Array<{ index: number; paragraph: number; around: string }>;
 }
 
-const PARAGRAPH_PATTERN = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
+export const PARAGRAPH_PATTERN = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
 
 function paragraphText(paragraphXml: string): string {
   let text = "";
@@ -83,8 +85,12 @@ function runText(runXml: string): string {
  * 把一份 document.xml 改写成"Word 标记视图"，并记下每段的原件。
  * 只有含修订/批注的段落会被改写；其它段落原样返回。
  */
-export function buildRevisionView(documentXml: string): RevisionView {
+export function buildRevisionView(
+  documentXml: string,
+  commentContents: Map<string, { author: string; date: string; text: string }> = new Map(),
+): RevisionView {
   const paragraphs: ParagraphPreservation[] = [];
+  const comments: DocumentComment[] = [];
   const commentMarks: RevisionView["commentMarks"] = [];
   let commentIndex = 0;
   const summary = { inserted: 0, deleted: 0, comments: 0 };
@@ -125,7 +131,17 @@ export function buildRevisionView(documentXml: string): RevisionView {
       commentIndex += 1;
       commentsInParagraph += 1;
       const around = runText(run).slice(0, 20);
+      const id = /<w:commentReference[^>]*w:id="([^"]*)"/.exec(run)?.[1] ?? "";
+      const content = commentContents.get(id);
       commentMarks.push({ index: commentIndex, paragraph: current, around });
+      comments.push({
+        index: commentIndex,
+        id,
+        author: content?.author ?? "",
+        date: content?.date ?? "",
+        text: content?.text ?? "",
+        paragraph: current,
+      });
       return `<w:r><w:rPr><w:vertAlign w:val="superscript"/><w:color w:val="${REVISION_COLORS.comment}"/></w:rPr><w:t>[${commentIndex}]</w:t></w:r>`;
     });
 
@@ -143,7 +159,7 @@ export function buildRevisionView(documentXml: string): RevisionView {
     return next;
   });
 
-  return { xml: rewritten, paragraphs, summary, commentMarks };
+  return { xml: rewritten, paragraphs, summary, commentMarks, comments };
 }
 
 /**
@@ -172,8 +188,41 @@ export function restoreOriginalParagraphs(
   return { xml, restored, edited };
 }
 
+export interface DocumentComment {
+  /** 正文里显示的标记序号（1 基，与 `[n]` 一致）。 */
+  index: number;
+  id: string;
+  author: string;
+  date: string;
+  text: string;
+  /** 所在段落序号（0 基）。 */
+  paragraph: number;
+}
+
 export interface RevisionPreservationState {
   paragraphs: ParagraphPreservation[];
+  comments: DocumentComment[];
+}
+
+/** 解析 `word/comments.xml`：批注 id → 作者/时间/内容（Word 的批注窗格就读这个）。 */
+export async function readComments(zip: {
+  file: (path: string) => { async: (type: "string") => Promise<string> } | null;
+}): Promise<Map<string, { author: string; date: string; text: string }>> {
+  const entry = zip.file("word/comments.xml");
+  if (!entry) return new Map();
+  const xml = await entry.async("string");
+  const map = new Map<string, { author: string; date: string; text: string }>();
+  for (const match of xml.matchAll(/<w:comment(?:\s[^>]*)?>([\s\S]*?)<\/w:comment>/g)) {
+    const whole = match[0];
+    const id = /w:id="([^"]*)"/.exec(whole)?.[1] ?? "";
+    const author = /w:author="([^"]*)"/.exec(whole)?.[1] ?? "";
+    const date = /w:date="([^"]*)"/.exec(whole)?.[1] ?? "";
+    let text = "";
+    for (const run of (match[1] ?? "").matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g))
+      text += run[1];
+    map.set(id, { author, date, text });
+  }
+  return map;
 }
 
 /** 导入前：改写 document.xml 为"标记视图"，并把原件留在 preservation 里。 */
@@ -181,24 +230,34 @@ export async function applyRevisionView(bytes: ArrayBuffer): Promise<{
   bytes: ArrayBuffer;
   preservation: RevisionPreservationState;
   summary: RevisionView["summary"];
+  comments: DocumentComment[];
 }> {
   const zip = await JSZip.loadAsync(bytes);
   const entry = zip.file("word/document.xml");
   if (!entry)
     return {
       bytes,
-      preservation: { paragraphs: [] },
+      preservation: { paragraphs: [], comments: [] },
       summary: { inserted: 0, deleted: 0, comments: 0 },
+      comments: [],
     };
-  const view = buildRevisionView(await entry.async("string"));
+  // 批注内容在 word/comments.xml：正文里的 [n] 标记要能对应回作者与内容（审阅窗格与"上一/下一批注"）
+  const commentContents = await readComments(zip);
+  const view = buildRevisionView(await entry.async("string"), commentContents);
   if (view.paragraphs.length === 0) {
-    return { bytes, preservation: { paragraphs: [] }, summary: view.summary };
+    return {
+      bytes,
+      preservation: { paragraphs: [], comments: [] },
+      summary: view.summary,
+      comments: [],
+    };
   }
   zip.file("word/document.xml", view.xml);
   return {
     bytes: await zip.generateAsync({ type: "arraybuffer" }),
-    preservation: { paragraphs: view.paragraphs },
+    preservation: { paragraphs: view.paragraphs, comments: view.comments },
     summary: view.summary,
+    comments: view.comments,
   };
 }
 
@@ -217,149 +276,5 @@ export async function restoreRevisions(
     bytes: await zip.generateAsync({ type: "arraybuffer" }),
     restored: result.restored,
     edited: result.edited,
-  };
-}
-
-export type RevisionKind = "insert" | "delete";
-
-/** 文档里的一处修订（＝一个 `w:ins`/`w:del` 元素，与 Word 的"每处改动一条"同粒度）。 */
-export interface RevisionItem {
-  /** 全局序号（0 基），用于"上一条/下一条"。 */
-  index: number;
-  kind: RevisionKind;
-  text: string;
-  author: string;
-  /** 所在段落序号（0 基）。 */
-  paragraph: number;
-}
-
-export type RevisionAction = "accept" | "reject";
-
-/** 枚举全部修订（按文档顺序）。 */
-export function listRevisions(documentXml: string): RevisionItem[] {
-  const items: RevisionItem[] = [];
-  let paragraph = 0;
-  for (const match of documentXml.matchAll(PARAGRAPH_PATTERN)) {
-    const paragraphXml = match[0];
-    for (const revision of paragraphXml.matchAll(
-      /<w:(ins|del|moveTo|moveFrom)(?:\s[^>]*)?>([\s\S]*?)<\/w:\1>/g,
-    )) {
-      const tag = revision[1];
-      const inner = revision[2] ?? "";
-      const author = /w:author="([^"]*)"/.exec(revision[0])?.[1] ?? "";
-      let text = "";
-      for (const run of inner.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)) text += run[1];
-      for (const run of inner.matchAll(/<w:delText(?:\s[^>]*)?>([\s\S]*?)<\/w:delText>/g))
-        text += run[1];
-      items.push({
-        index: items.length,
-        kind: tag === "ins" || tag === "moveTo" ? "insert" : "delete",
-        text,
-        author,
-        paragraph,
-      });
-    }
-    paragraph += 1;
-  }
-  return items;
-}
-
-export interface ResolveRevisionsOptions {
-  action: RevisionAction;
-  /** 只处理这一条（按 `listRevisions` 的序号）；省略＝处理全部。 */
-  targetIndex?: number;
-}
-
-export interface ResolveRevisionsResult {
-  xml: string;
-  /** 本次处理了几条。 */
-  resolved: number;
-  /** 处理完还剩几条（逐条处理时用得上）。 */
-  remaining: RevisionItem[];
-  /** 处理掉的都是哪些（状态栏用）。 */
-  handled: RevisionItem[];
-}
-
-/**
- * 接受/拒绝修订（Word 的语义）：
- *   - 接受插入 → 拆掉 `w:ins` 外壳（文字成为正文，并去掉我们加的标记格式）；
- *   - 拒绝插入 → 整段删掉插入的文字；
- *   - 接受删除 → 把 `w:del` 里的文字真的删掉；
- *   - 拒绝删除 → 拆掉 `w:del` 外壳（被删文字恢复为正文，去掉标记格式）。
- */
-export function resolveRevisions(
-  documentXml: string,
-  options: ResolveRevisionsOptions,
-): ResolveRevisionsResult {
-  const targets = listRevisions(documentXml);
-  const wants = (item: RevisionItem) =>
-    options.targetIndex === undefined ? true : item.index === options.targetIndex;
-  const handled = targets.filter(wants);
-  if (handled.length === 0)
-    return { xml: documentXml, resolved: 0, remaining: targets, handled: [] };
-
-  const kinds = new Set(handled.map((item) => item.kind));
-  const accept = options.action === "accept";
-  const unwrapKinds = new Set<RevisionKind>();
-  const dropKinds = new Set<RevisionKind>();
-  if (accept) {
-    unwrapKinds.add("insert");
-    dropKinds.add("delete");
-  } else {
-    dropKinds.add("insert");
-    unwrapKinds.add("delete");
-  }
-  void kinds;
-
-  const stripMarker = (xml: string) =>
-    xml
-      .replace(`<w:u w:val="single"/>`, "")
-      .replace(new RegExp(`<w:color w:val="${REVISION_COLORS.insert}"/>`, "g"), "")
-      .replace(`<w:strike/>`, "")
-      .replace(new RegExp(`<w:color w:val="${REVISION_COLORS.delete}"/>`, "g"), "");
-
-  let seen = 0;
-  const xml = documentXml.replace(
-    /<w:(ins|del|moveTo|moveFrom)(?:\s[^>]*)?>[\s\S]*?<\/w:\1>/g,
-    (whole) => {
-      const item = targets[seen];
-      seen += 1;
-      if (!item || !wants(item)) return whole;
-      if (unwrapKinds.has(item.kind)) {
-        // 拆壳保留文字。**拒绝删除**时还要把 w:delText 还原成 w:t，否则 Word 仍把它当成被删的文字。
-        const inner = whole
-          .replace(/^<w:(?:ins|moveTo|del|moveFrom)(?:\s[^>]*)?>/, "")
-          .replace(/<\/w:(?:ins|moveTo|del|moveFrom)>$/, "")
-          .replace(/<w:delText(\s[^>]*)?>/g, "<w:t$1>")
-          .replace(/<\/w:delText>/g, "</w:t>");
-        return stripMarker(inner);
-      }
-      if (dropKinds.has(item.kind)) return "";
-      return whole;
-    },
-  );
-  return {
-    xml,
-    resolved: handled.length,
-    remaining: targets.filter((item) => !wants(item)),
-    handled,
-  };
-}
-
-/** zip 层面：按动作处理修订（逐条或全部）。 */
-export async function resolveRevisionsInDocx(
-  bytes: ArrayBuffer,
-  options: ResolveRevisionsOptions,
-): Promise<{ bytes: ArrayBuffer } & Omit<ResolveRevisionsResult, "xml">> {
-  const zip = await JSZip.loadAsync(bytes);
-  const entry = zip.file("word/document.xml");
-  if (!entry) return { bytes, resolved: 0, remaining: [], handled: [] };
-  const result = resolveRevisions(await entry.async("string"), options);
-  zip.file("word/document.xml", result.xml);
-  return {
-    bytes: await zip.generateAsync({ type: "arraybuffer" }),
-    resolved: result.resolved,
-    remaining: result.remaining,
-    handled: result.handled,
   };
 }

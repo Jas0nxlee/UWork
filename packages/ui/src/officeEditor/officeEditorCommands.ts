@@ -56,6 +56,8 @@ export interface CommandContext {
     next: () => void;
     count: () => { total: number; current: number };
   };
+  /** 批注导航（Word 的"上一条/下一条批注"）。 */
+  comments?: { prev: () => void; next: () => void };
 }
 
 export interface FindSession {

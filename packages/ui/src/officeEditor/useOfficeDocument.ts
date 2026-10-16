@@ -10,12 +10,15 @@ import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
 import { preserveHeaderFooter } from "./docxHeaderFooter.js";
 import {
-  applyRevisionView,
   listRevisions,
   resolveRevisionsInDocx,
-  restoreRevisions,
   type RevisionAction,
   type RevisionItem,
+} from "./docxReview.js";
+import {
+  applyRevisionView,
+  restoreRevisions,
+  type DocumentComment,
   type RevisionPreservationState,
 } from "./docxRevisions.js";
 import { applyTrackedChanges, type TrackedChangeStats } from "./docxTrackChanges.js";
@@ -55,6 +58,12 @@ export interface UseOfficeDocumentInput {
 }
 
 export interface UseOfficeDocumentResult {
+  /** 批注清单（作者/时间/内容/段落）——Word 的审阅窗格。 */
+  comments: DocumentComment[];
+  /** 当前批注序号（-1＝没选）。 */
+  currentComment: number;
+  /** 定位到下一条/第 n 条批注（选中正文里的 `[n]` 标记并把内容显示到状态栏）。 */
+  gotoComment: (index: number) => void;
   /** 修订清单（Word 的"审阅"是按这个列表逐条走的）。 */
   revisions: RevisionItem[];
   /** 当前选中的修订序号（-1＝没选）。 */
@@ -94,10 +103,13 @@ export function useOfficeDocument({
   /** 源文件字节：保存时要用它把原页眉页脚还给导出结果（编辑器不编辑页眉页脚）。 */
   const sourceBytesRef = useRef<ArrayBuffer | null>(null);
   /** 导入时保留下来的"修订/批注段落原件"：保存时按段落写回，避免静默接受或丢失。 */
-  const revisionsRef = useRef<RevisionPreservationState>({ paragraphs: [] });
+  const revisionsRef = useRef<RevisionPreservationState>({ paragraphs: [], comments: [] });
   const [revisionSummary, setRevisionSummary] = useState({ inserted: 0, deleted: 0, comments: 0 });
   /** 文档里的修订清单（Word 的"审阅"面板就是按这个列表逐条走的）。 */
   const [revisions, setRevisions] = useState<RevisionItem[]>([]);
+  /** 批注清单（作者/时间/内容），Word 的审阅窗格就读这个。 */
+  const [comments, setComments] = useState<DocumentComment[]>([]);
+  const [currentComment, setCurrentComment] = useState(-1);
   const [currentRevision, setCurrentRevision] = useState(-1);
   /** 归一化前的原始字节：审阅动作在这份字节上做，做完重新导入。 */
   const normalizedBytesRef = useRef<ArrayBuffer | null>(null);
@@ -212,6 +224,8 @@ export function useOfficeDocument({
       revisionsRef.current = view.preservation;
       setRevisions(listRevisions(await documentXmlOf(preflightBytes)));
       setCurrentRevision(-1);
+      setComments(view.comments);
+      setCurrentComment(-1);
       setRevisionSummary(view.summary);
       await importBytes(editor, view.bytes, label, options.reset !== false);
       if (view.summary.inserted || view.summary.deleted || view.summary.comments) {
@@ -254,6 +268,8 @@ export function useOfficeDocument({
         revisionsRef.current = view.preservation;
         setRevisions(result.remaining);
         setCurrentRevision(-1);
+        setComments(view.comments);
+        setCurrentComment(-1);
         setRevisionSummary(view.summary);
         await importBytes(editor, view.bytes, "审阅后的文档", true);
         setStatus(
@@ -268,6 +284,42 @@ export function useOfficeDocument({
       }
     },
     [editorRef, importBytes],
+  );
+
+  /**
+   * 批注导航（Word 的"上一条/下一条批注"）：把正文里对应的 `[n]` 标记选中。
+   * 这里复用查找的机制（引擎只高亮、不移动选区，所以显式设选区）。
+   */
+  const gotoComment = useCallback(
+    (index: number) => {
+      const editor = editorRef.current;
+      const comment = comments[index];
+      if (!editor || !comment) {
+        setStatus(comments.length ? "没有下一条批注了" : "这份文档没有批注");
+        return;
+      }
+      setCurrentComment(index);
+      const commands = editor.command as Record<string, unknown>;
+      const ranges = (
+        commands.getKeywordRangeList as
+          | ((value: string) => Array<{ startIndex: number; endIndex: number }>)
+          | undefined
+      )?.(`[${comment.index}]`);
+      const range = ranges?.[0];
+      if (!range) {
+        setStatus(
+          `第 ${comment.index} 条批注：${comment.author}：${comment.text}（正文里没找到标记）`,
+        );
+        return;
+      }
+      (commands.executeReplaceRange as ((payload: Record<string, unknown>) => void) | undefined)?.({
+        ...range,
+        startIndex: Math.max(0, range.startIndex - 1),
+        endIndex: range.endIndex,
+      });
+      setStatus(`批注 ${index + 1}/${comments.length} · ${comment.author}：${comment.text}`);
+    },
+    [comments, editorRef],
   );
 
   const acceptPreflight = useCallback(() => {
@@ -352,6 +404,9 @@ export function useOfficeDocument({
   }, [busy, editorRef, fileService, path, trackChangesEnabled]);
 
   return {
+    comments,
+    currentComment,
+    gotoComment,
     revisions,
     currentRevision,
     setCurrentRevision,

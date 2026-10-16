@@ -17,10 +17,12 @@ import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { OfficeCommentList } from "./OfficeCommentList.js";
+import { OfficeGuardNotices } from "./OfficeGuardNotices.js";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
 import type { EngineCommand } from "./engineCommands.js";
-import { summarizeFindings } from "./docxPreflight.js";
+
 import { createEditorOptions, createInitialData } from "./officeEditorOptions.js";
 import { scrollAfterZoom } from "./pageViewport.js";
 import { useOfficeDocument } from "./useOfficeDocument.js";
@@ -73,6 +75,9 @@ export function CanvasOfficeEditorPane({
     busy,
     pendingPreflight,
     writeBlocked,
+    comments,
+    currentComment,
+    gotoComment,
     revisions,
     currentRevision,
     setCurrentRevision,
@@ -236,6 +241,10 @@ export function CanvasOfficeEditorPane({
               setCurrentRevision(currentRevision + 1 >= revisions.length ? 0 : currentRevision + 1),
             count: () => ({ total: revisions.length, current: currentRevision }),
           },
+          comments: {
+            prev: () => gotoComment(currentComment <= 0 ? comments.length - 1 : currentComment - 1),
+            next: () => gotoComment(currentComment + 1 >= comments.length ? 0 : currentComment + 1),
+          },
           canUndoEngine: () => refreshEngineUndo(editor).canUndo,
           canRedoEngine: () => refreshEngineUndo(editor).canRedo,
         },
@@ -319,49 +328,12 @@ export function CanvasOfficeEditorPane({
           </>
         }
       />
-      {writeBlocked ? (
-        <div className="border-b border-border bg-surface px-3 py-3 text-xs">
-          <div className="pb-1 font-medium">这份文件现在不能应用内编辑</div>
-          <div className="pb-2 text-foreground-subtle">{writeBlocked}</div>
-          <div className="text-foreground-subtle">
-            只读预览与对话卡片审阅不受影响；等远端服务端升级出二进制写回后再来。
-          </div>
-        </div>
-      ) : null}
-      {pendingPreflight ? (
-        <div className="border-b border-amber-500/40 bg-amber-500/10 px-2 py-2 text-xs text-amber-200">
-          <div className="pb-1 font-medium">这份文档有以下特性，应用内编辑会让它们发生变化：</div>
-          <ul className="list-disc pb-2 pl-5">
-            {summarizeFindings(pendingPreflight.findings).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              className="rounded border border-amber-400 px-2 py-1 hover:bg-amber-500/20"
-              onClick={acceptPreflight}
-            >
-              按上述方式编辑
-            </button>
-            {onExit ? (
-              <button
-                type="button"
-                className="rounded border border-border px-2 py-1 hover:bg-surface"
-                onClick={onExit}
-              >
-                只看只读预览
-              </button>
-            ) : null}
-            <span className="text-amber-200/80">
-              想保住这些特性（例如逐条接受/拒绝修订），请用对话卡片或侧栏的审阅面板。
-            </span>
-          </div>
-          <div className="pt-1 text-amber-200/70">文档还没打开，点上面的按钮才会载入</div>
-        </div>
-      ) : null}
-      {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
-          之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
+      <OfficeGuardNotices
+        writeBlocked={writeBlocked}
+        pending={pendingPreflight}
+        onAccept={acceptPreflight}
+        onExit={onExit}
+      />
       <OfficeRibbon
         style={{
           ...rangeStyle,
@@ -376,6 +348,7 @@ export function CanvasOfficeEditorPane({
         inTable={inTable}
         run={runRibbon}
       />
+      <OfficeCommentList comments={comments} current={currentComment} onPick={gotoComment} />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
       <div
         hidden={writeBlocked !== null || pendingPreflight !== null}

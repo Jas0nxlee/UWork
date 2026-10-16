@@ -1,11 +1,13 @@
 # UWork 手机 Web 远控：实现规划
 
 本文规划 UWork 如何具备「手机浏览器控制桌面 Agent」的能力（等价于上游 ZCode 的手机远控）。
-**结论先行**：客户端 89 个文件、约 2.5 万行的能力不需要自研——上游 v3.15.1 已经有整套实现，
-并已随合并线进入本仓（`chore/upstream-v3.15.1-sync`）。UWork 真正缺的只有三件事：**一个自建的
-relay 服务**、**一份手机页静态托管**、**一处把客户端指向自建入口的配置注入**。
+**结论先行**：客户端 89 个文件、约 2.5 万行的能力不需要自研——上游 v3.15.1 的整套实现已随 PR #5
+合并进 `uwork`（2026-10-16，merge commit `a3a46f4d`）。UWork 真正缺的只有四件事：**侧栏入口接线**
+（合并时没移植渲染点）、**一个自建的 relay 服务**、**一份手机页静态托管**、**一处把客户端指向自建
+入口的配置注入**。
 
-> 状态：规划稿，尚未实现。文中事实核对基于合并线 `e716b651`（2026-10-16）。
+> 状态：规划稿，尚未实现。文中事实核对基于 `origin/uwork` = `c898562c` 与本地合并线
+> `e716b651`（2026-10-16）。
 
 ## 一、现状事实（均已核对代码/分支）
 
@@ -27,7 +29,7 @@ relay 服务**、**一份手机页静态托管**、**一处把客户端指向自
 - relay 不在本仓：`docs/web-remote-control/web-remote-control-architecture.md` 明确「旧的仓库内 relay
   已移除」，当前 relay（文档里叫 zcode-remote-hub）属于外部基础设施。
 
-### 1.2 代码分布（合并线上的现状）
+### 1.2 代码分布（uwork 现状）
 
 | 位置                                                      | 作用                                                   |
 | --------------------------------------------------------- | ------------------------------------------------------ |
@@ -38,15 +40,18 @@ relay 服务**、**一份手机页静态托管**、**一处把客户端指向自
 | `packages/ui/src/WebRemoteControlDialog.tsx` 等           | 桌面开远控弹层（二维码）                               |
 | `packages/ui/src/WebRemoteControlMobileShell.tsx` 等      | 窄屏手机壳、任务首页、任务索引                         |
 | `packages/web/src/main.tsx` + `webRemoteControl*.ts`      | 手机页 SPA（Vite，`base=/remote/v4/`）                 |
-| `packages/android/`                                       | Android WebView 壳（可选，uwork 基线没有）             |
+| `packages/android/`                                       | Android WebView 壳（随合并进入，可选）                 |
 | `docs/web-remote-control/*`                               | 12 篇设计文档（架构、稳定性、任务首页、实时同步等）    |
 
 ### 1.3 三条会决定方案的硬事实
 
-1. **`uwork` 基线分支完全没有这个功能**：`packages/desktop/src/main/` 无 `webRemoteControl*`，
-   `packages/shared/src/` 无 `web-remote-control.ts`，`packages/ui/src/` 无 `WebRemoteControl*`，
-   `packages/web/src/` 只有 auth 与 share。能力只存在于合并线（`uwork..HEAD` 差 43 个提交，
-   其中 `0becde37` 是 UWork 侧的远控装配修复）。
+1. **代码已在 uwork，但界面入口没接线**：`origin/uwork`（`c898562c`）现在含全部远控文件——
+   `packages/ui/src` 15 个、`packages/desktop/src/main` 9 个、`packages/shared/src` 3 个协议文件。
+   但**没有任何非测试文件渲染 `WorkspaceWebRemoteControlTrigger`**：上游在
+   `packages/ui/src/WorkspaceSidebarFooter.tsx:468` 渲染它并透传 `workspaceIdentity`/`remoteSessionId`，
+   合并后的 uwork 该文件相对上游是 +14 / −254 行，这段被删掉了。PR #5 正文列的待办第 2 条就是这个
+   （「上游 shell 传给侧栏的远控 props 目前『接受不渲染』（切换 UI 未移植）」）。
+   → 所以即使从合并后的 uwork 构建，界面上也看不到远控入口。
 2. **relay 地址不是从 endpoint origin 派生的**：`resolveWebRemoteControlRelayWsUrl()`
    （`packages/shared/src/zcodeEndpoint.ts:235`）对**任何** endpoint 都返回 `wss://zcode.z.ai/ws`，
    只有 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL` 显式覆盖才变。桌面在运行时读该 env
@@ -77,18 +82,24 @@ zcode endpoint origin，所以当前 UWork 打包产物的二维码 URL 默认�
   桌面 App（配置来自打包内 runtime config，而不是 process.env）
 ```
 
-三件交付物：`packages/relay`（新）、`deploy/web-remote`（静态页 + nginx 配置 + 镜像）、
-desktop 侧的 runtime 配置注入（复用企业身份配置那套加载模式）。
+交付物：入口接线（P0，改 UI 渲染点）、`packages/relay`（P1，新）、`deploy/web-remote`（P2，静态页 +
+nginx 配置 + 镜像）、desktop 侧的 runtime 配置注入（P3，复用企业身份配置那套加载模式）。
 
 ## 三、分期实施
 
-### P0 带入能力（不写新功能）
+### P0 补上入口接线（上游合并已完成）
 
-- 前提：合并线并入 `uwork`。合并线包含上游整树快照（约 1.18 万文件），不要cherry-pick；
-  按既有 sync 流程走，并保留 `0becde37` 的 UWork 装配修复。
+- 合并已落地：PR #5（`ModestXin:chore/upstream-v3.15.1-sync` → `Jas0nxlee:uwork`）2026-10-16
+  合并（`a3a46f4d`），11,807 文件；`origin/uwork` 已含客户端全链路（ui / desktop main / shared /
+  web / android）。**不需要再走一遍合并**。
+- 缺的是**渲染点**：把上游 `packages/ui/src/WorkspaceSidebarFooter.tsx:468` 那段
+  `WorkspaceWebRemoteControlTrigger`（含 `workspacePath`/`workspaceIdentity`/`remoteSessionId`/
+  `initialTaskId` 透传）按 UWork 侧栏结构接回来，并核对 `WorkspaceShellLayout` /
+  `RootWorkspaceContent` / `app-shell/types` 的 props 链路没有断点。
 - 验收：`pnpm typecheck` 全绿；`packages/desktop/test/webRemoteControl*.test.ts`、
   `packages/web/test/webRemoteControl*.test.ts`、`packages/shared/test/webRemoteControl*.test.ts`、
-  `packages/client/test/webRemoteControlRelayProtocol.test.ts`、`packages/ui/test/webRemoteControl*.test.ts` 全过。
+  `packages/client/test/webRemoteControlRelayProtocol.test.ts`、`packages/ui/test/webRemoteControl*.test.ts`
+  全过；打包后桌面侧栏可见远控入口、能开弹层出二维码。
 - 此阶段结束后功能已经可用，但走的是 z.ai 的 relay 与页面（只适合内部试用）。
 
 ### P1 自建 relay（核心工作量）
@@ -192,7 +203,8 @@ UWork 只需要配一处 origin，桌面与手机页自动一致，且不再有�
 
 ### P6 可选（不进一期）
 
-- Android 壳（`packages/android` 不在 uwork 基线）：浏览器扫码已够用；需要常驻/推送时再说。
+- Android 壳（`packages/android` 已随合并进来）：浏览器扫码已够用；需要常驻/推送时再打包，注意其
+  生产包只允许 `https://zcode.z.ai/remote`，换自建域名要改 URL 白名单。
 - 局域网直连（不经 relay）：省服务器但要自签证书与手动信任，体验更差，不建议。
 - relay 前置企微 OAuth / 内网 ACL：二维码链接本身就是凭证（含 pass_hash，等同密码）。若要求
   「只有本校人员可配对」，在 relay 前加一层鉴权即可，但要先拍板。

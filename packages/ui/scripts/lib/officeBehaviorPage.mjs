@@ -108,6 +108,33 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     };
   };
 
+  /** 批注解析：comments.xml 的作者/时间/内容要与正文里的 [n] 标记对上。 */
+  window.__commentCase = async () => {
+    const XMLNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const zip = new window.JSZip();
+    zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>');
+    zip.file("word/document.xml",
+      '<w:document ' + XMLNS + '><w:body><w:p><w:r><w:t>正文一</w:t></w:r><w:r><w:commentReference w:id="7"/></w:r></w:p>' +
+      '<w:p><w:r><w:t>正文二</w:t></w:r><w:r><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>');
+    zip.file("word/comments.xml",
+      '<w:comments ' + XMLNS + '>' +
+      '<w:comment w:id="7" w:author="张审阅" w:date="2026-10-16T09:00:00Z"><w:p><w:r><w:t>这里要改</w:t></w:r></w:p></w:comment>' +
+      '<w:comment w:id="8" w:author="李审阅" w:date="2026-10-16T10:00:00Z"><w:p><w:r><w:t>这句不通</w:t></w:r></w:p></w:comment>' +
+      '</w:comments>');
+    const bytes = await zip.generateAsync({ type: "arraybuffer" });
+    const view = await window.__trackedApi.applyRevisionView(bytes);
+    const zip2 = await window.JSZip.loadAsync(view.bytes);
+    const documentXml = await zip2.file("word/document.xml").async("string");
+    return {
+      count: view.comments.length,
+      authors: view.comments.map((c) => c.author),
+      texts: view.comments.map((c) => c.text),
+      paragraphs: view.comments.map((c) => c.paragraph),
+      markers: view.comments.map((c) => "[" + c.index + "]"),
+      bodyHasMarkers: documentXml.includes("[1]") && documentXml.includes("[2]"),
+    };
+  };
+
   window.__trackedApi = {
     applyTrackedChanges,
     acceptedText,
@@ -313,7 +340,8 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
-      `export { applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
+      `export { applyRevisionView, restoreRevisions, buildRevisionView } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
+      `export { listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxReview.ts"))};`,
     ].join("\n"),
     "utf8",
   );
