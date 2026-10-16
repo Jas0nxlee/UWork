@@ -60,6 +60,13 @@ const ExcelEditorPane = lazy(() =>
     default: module.ExcelEditorPane,
   })),
 );
+
+/** PPTX 只做**文字层**编辑（保真补丁），同样按需加载。 */
+const PptxTextEditorPane = lazy(() =>
+  import("@/officeEditor/PptxTextEditorPane.js").then((module) => ({
+    default: module.PptxTextEditorPane,
+  })),
+);
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
@@ -599,13 +606,18 @@ export function PreviewPane({
     [source],
   );
   /**
-   * 界内编辑的入口条件：docx 走 canvas-editor；xlsx/xlsm 走 fortune-sheet。
+   * 界内编辑的入口：docx 走 canvas-editor（完整编辑器）；xlsx/xlsm 走 fortune-sheet；
+   * pptx 走**文字层保真补丁**（没有可用的 OSS pptx 编辑器，见 specs/office-editors-triad.md）。
    * 老的 .xls（二进制格式）不在其中——它根本不是 zip，exceljs 读不了，只能走只读预览。
    */
-  const canEditOfficeInPlace =
-    source?.type === "file" &&
-    (officePreviewKind === "docx" ||
-      (officePreviewKind === "excel" && /\.xls[xm]$/i.test(source.path)));
+  const officeEditorKind: "docx" | "xlsx" | "pptx" | null = useMemo(() => {
+    if (source?.type !== "file") return null;
+    if (officePreviewKind === "docx") return "docx";
+    if (officePreviewKind === "excel") return /\.xls[xm]$/i.test(source.path) ? "xlsx" : null;
+    if (/\.pptx$/i.test(source.path)) return "pptx";
+    return null;
+  }, [officePreviewKind, source]);
+  const canEditOfficeInPlace = officeEditorKind !== null;
   const pptxSource = useMemo(() => resolvePreviewPanePptxSource(source), [source]);
   const showDocumentHeaderDivider = shouldShowPreviewPaneHeaderDivider(source);
   const pptxSourcePath = pptxSource?.path ?? null;
@@ -1741,13 +1753,19 @@ export function PreviewPane({
                 if (officeEditing && !confirmLeaveOfficeEditor()) return;
                 setOfficeEditing((value) => !value);
               }}
-              title={officeEditing ? "返回只读预览" : "应用内编辑"}
+              title={
+                officeEditing
+                  ? "返回只读预览"
+                  : officeEditorKind === "pptx"
+                    ? "编辑文字（版式与图片原样保留）"
+                    : "应用内编辑"
+              }
               aria-label={officeEditing ? "返回只读预览" : "应用内编辑"}
             >
               <PencilIcon className="size-3.5" />
             </Button>
           ) : null}
-          {/* 第一期 PPTX 明确为只读预览，不展示任何编辑入口。 */}
+
           <Button
             type="button"
             size="icon-md"
@@ -1779,26 +1797,8 @@ export function PreviewPane({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        {officeEditing && canEditOfficeInPlace ? (
-          officePreviewKind === "excel" ? (
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-xs text-foreground-subtle">
-                  正在加载表格编辑器…
-                </div>
-              }
-            >
-              <ExcelEditorPane
-                fileService={fileService}
-                path={source.path}
-                remote={isRemoteSource}
-                onDirtyChange={(value) => {
-                  officeEditorDirtyRef.current = value;
-                }}
-                onExit={() => setOfficeEditing(false)}
-              />
-            </Suspense>
-          ) : (
+        {officeEditing && officeEditorKind !== null && source.type === "file" ? (
+          officeEditorKind === "docx" ? (
             <CanvasOfficeEditorPane
               fileService={fileService}
               path={source.path}
@@ -1808,6 +1808,36 @@ export function PreviewPane({
               }}
               onExit={() => setOfficeEditing(false)}
             />
+          ) : (
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-xs text-foreground-subtle">
+                  {officeEditorKind === "xlsx" ? "正在加载表格编辑器…" : "正在加载演示文稿编辑器…"}
+                </div>
+              }
+            >
+              {officeEditorKind === "xlsx" ? (
+                <ExcelEditorPane
+                  fileService={fileService}
+                  path={source.path}
+                  remote={isRemoteSource}
+                  onDirtyChange={(value) => {
+                    officeEditorDirtyRef.current = value;
+                  }}
+                  onExit={() => setOfficeEditing(false)}
+                />
+              ) : (
+                <PptxTextEditorPane
+                  fileService={fileService}
+                  path={source.path}
+                  remote={isRemoteSource}
+                  onDirtyChange={(value) => {
+                    officeEditorDirtyRef.current = value;
+                  }}
+                  onExit={() => setOfficeEditing(false)}
+                />
+              )}
+            </Suspense>
           )
         ) : renderHeavyContent ? (
           <PreviewPaneContent
