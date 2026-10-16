@@ -165,6 +165,36 @@ async function main() {
     else console.log(`ok   ${item.label} [${item.command}] 文本 ${result.before}→${result.after}`);
   }
 
+  // 取值类命令（下拉/样式库）：命令名对、但**取值不在引擎枚举里时会静默无效果**——
+  // 真机踩过（标题传 h1 而引擎要 first…sixth）。这里逐个取值断言"元素属性真的被设置成该值"。
+  const OPTION_CHECKS = [
+    { label: "标题 1", command: "executeTitle", args: ["first"], prop: "level", expect: "first" },
+    { label: "标题 3", command: "executeTitle", args: ["third"], prop: "level", expect: "third" },
+    { label: "字号 24", command: "executeSize", args: [24], prop: "size", expect: 24 },
+    { label: "字色红", command: "executeColor", args: ["rgb(217, 38, 38)"], prop: "color", expect: "rgb(217, 38, 38)" },
+    { label: "底纹黄", command: "executeHighlight", args: ["rgb(255, 255, 0)"], prop: "highlight", expect: "rgb(255, 255, 0)" },
+    { label: "字体 楷体", command: "executeFont", args: ["楷体"], prop: "font", expect: "楷体" },
+  ];
+  for (const check of OPTION_CHECKS) {
+    await page.evaluate(() => window.__load("/sample.docx"));
+    const result = await page.evaluate(
+      ([command, args, prop]) => {
+        window.__editor.command.executeSetRange(0, 6);
+        window.__editor.command[command]?.(...args);
+        const value = window.__editor.command.getValue?.();
+        const data = value?.data?.main ?? value?.main ?? [];
+        const hit = data.find((entry) => entry[prop] !== undefined && entry[prop] !== null && entry[prop] !== "");
+        return hit ? hit[prop] : null;
+      },
+      [check.command, check.args, check.prop],
+    );
+    if (String(result) === String(check.expect)) {
+      console.log(`ok   ${check.label} [${check.command}] → ${check.prop}=${result}`);
+    } else {
+      failures.push(`${check.label} [${check.command}] 取值未生效：期望 ${check.prop}=${check.expect}，实际 ${result}`);
+    }
+  }
+
   // 渲染哨兵：真实键盘输入后截图，确认画布确实画出了文字（尺寸远大于空白页）
   await page.evaluate(() => window.__load("/sample.docx"));
   await page.mouse.click(220, 200);
