@@ -15,6 +15,14 @@ import {
   textStats,
   type EngineCommand,
 } from "./engineCommands.js";
+import { getKeywordRanges, highlightCurrentHit, selectMatch } from "./engineFindReplace.js";
+import { insertImageWithNaturalSize } from "./engineImageInsert.js";
+import {
+  applyLayout,
+  LAYOUT_COMMANDS,
+  readLayout,
+  type LayoutHistory,
+} from "./engineLayoutHistory.js";
 import type { IElement } from "./engineTypes.js";
 
 /**
@@ -24,81 +32,21 @@ import type { IElement } from "./engineTypes.js";
  * 参数形态与坑**（纸张收像素、控件要整套 valueSets、连页是 "continuity"、引擎没有字数统计命令…），
  * 集中在一处才好对照 engineCommands.ts 的注释。
  */
-/**
- * 版面状态（纸张/页边距/方向/分栏）。
- *
- * 为什么要自己做撤销：引擎的撤销栈存的是**元素表快照**（`historyManager.execute(fn)`），
- * 而分栏/纸张这些是 `options` 上的版面配置，不进元素表——所以改完版面按 Ctrl+Z 什么都不会发生
- * （真机反馈"最右边的插入分栏没法撤销"）。这里给版面单独记一份快照栈，撤销时先让引擎撤文本、
- * 引擎撤不动了再撤版面（与用户的心智一致：最后做的先回退）。
- */
-export interface LayoutState {
-  width?: number;
-  height?: number;
-  margins?: number[];
-  paperDirection?: string;
-  columns: unknown;
-}
-
-export interface LayoutHistory {
-  undo: LayoutState[];
-  redo: LayoutState[];
-}
-
-export function createLayoutHistory(): LayoutHistory {
-  return { undo: [], redo: [] };
-}
-
-/** 读当前版面（引擎的 getOptions 里有纸张/页边距/方向，分栏要单独问 getColumns）。 */
-export function readLayout(commands: EngineCommand): LayoutState | null {
-  const getOptions = commands.getOptions as
-    | (() => { width?: number; height?: number; margins?: number[]; paperDirection?: string })
-    | undefined;
-  const options = getOptions?.();
-  if (!options) return null;
-  const getColumns = commands.getColumns as (() => unknown) | undefined;
-  return {
-    width: options.width,
-    height: options.height,
-    margins: options.margins,
-    paperDirection: options.paperDirection,
-    columns: getColumns?.() ?? null,
-  };
-}
-
-/** 把版面恢复成快照（用引擎自己的命令，避免直接改 options 造成状态不一致）。 */
-export function applyLayout(commands: EngineCommand, layout: LayoutState): void {
-  if (typeof layout.width === "number" && typeof layout.height === "number") {
-    commands.executePaperSize?.(layout.width, layout.height);
-  }
-  if (layout.margins) commands.executeSetPaperMargin?.(layout.margins);
-  commands.executeSetColumns?.(layout.columns ?? null);
-  if (layout.paperDirection) commands.executePaperDirection?.(layout.paperDirection);
-}
-
 export interface CommandContext {
-  /** 引擎实例（需要 `command`，替换还要读内部元素表）。 */
+  /** 引擎实例（需要 `command`，替换要读命中范围）。 */
   editor: { command: Record<string, unknown>; draw?: unknown };
   commands: EngineCommand;
   status: (message: string) => void;
   /** 当前编辑器状态：只读/页面模式要在命令之间翻转。 */
   engineState: { mode: string; pageMode: string };
-  /** 查找会话：关键词、命中下标与当前位置（跨命令保留）。 */
+  /** 查找会话：关键词、命中范围与当前位置（跨命令保留）。 */
   findRef: { current: FindSession };
   /** 版面撤销栈（纸张/页边距/方向/分栏）。 */
   layoutRef?: { current: LayoutHistory };
-  /** 引擎自己还能不能撤销/重做（由编辑位从 rangeStyleChange 里回填；决定"该撤文本还是撤版面"）。 */
+  /** 引擎自己还能不能撤销/重做（由编辑位从 rangeStyleChange 回填；决定"该撤文本还是撤版面"）。 */
   canUndoEngine?: () => boolean;
   canRedoEngine?: () => boolean;
 }
-
-/** 会改变版面的命令：执行前记一份快照，供"撤版面"使用。 */
-const LAYOUT_COMMANDS = new Set([
-  "executeSetColumns",
-  "executePaperSize",
-  "executePaperDirection",
-  "executeSetPaperMargin",
-]);
 
 export interface FindSession {
   keyword: string;
@@ -337,101 +285,4 @@ export function runEngineCommand(context: CommandContext, command: string, args?
   } catch (error) {
     status(`${command} 执行失败：${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-/**
- * 选中一处命中。
- *
- * 引擎 `getKeywordRangeList` 给的范围**不能直接用**（实测，选区是左闭右开）：
- *   - "压测"（两字，元素下标 10/11）→ 返回 {11,12}，直接用只会选中"测"；
- *   - "段"（一字，下标 4）        → 返回 {5,5}，直接用是空选区。
- * 两种长度都只差**起点减 1**：{11,12}→[10,12)="压测" ✓，{5,5}→[4,5)="段" ✓。
- * 起点差 1 是因为引擎内部元素表比 `setRange` 的下标多一个前导零宽元素。
- */
-function selectMatch(commands: Record<string, unknown>, range: Record<string, unknown>): void {
-  const start = Number(range.startIndex ?? -1);
-  const end = Number(range.endIndex ?? -1);
-  if (start < 0 || end < 0) return;
-  const replaceRange = commands.executeReplaceRange as
-    | ((payload: Record<string, unknown>) => void)
-    | undefined;
-  replaceRange?.({ ...range, startIndex: Math.max(0, start - 1), endIndex: end });
-}
-
-/**
- * 插图片：量出图片真实尺寸 → 按版心（纸张宽 − 左右页边距）等比缩放 → 交给引擎。
- *
- * 为什么要异步量：`new Image()` 的宽高只有在 onload 之后才有效；引擎的 executeImage 只认现成的宽高。
- * 量不出来（网络图片跨域/加载失败）就退回一个保守尺寸，不阻塞插入。
- */
-async function insertImageWithNaturalSize(
-  commands: Record<string, unknown>,
-  status: (message: string) => void,
-  value: string,
-): Promise<void> {
-  const options = (
-    commands.getOptions as (() => { width?: number; margins?: number[] }) | undefined
-  )?.();
-  const width = options?.width ?? 794;
-  const margins = options?.margins ?? [100, 120, 100, 120];
-  const innerWidth = Math.max(120, width - (margins[1] ?? 0) - (margins[3] ?? 0));
-  try {
-    const size = await loadImageSize(value);
-    const ratio = Math.min(1, innerWidth / size.width);
-    const target = {
-      width: Math.round(size.width * ratio),
-      height: Math.round(size.height * ratio),
-    };
-    (commands.executeImage as ((payload: Record<string, unknown>) => void) | undefined)?.({
-      value,
-      ...target,
-    });
-    status(`已插入图片（${target.width}×${target.height}，原图 ${size.width}×${size.height}）`);
-  } catch {
-    (commands.executeImage as ((payload: Record<string, unknown>) => void) | undefined)?.({
-      value,
-      width: Math.round(innerWidth / 2),
-      height: Math.round(innerWidth / 3),
-    });
-    status("已插入图片（读不到原始尺寸，用了默认大小，可在文档里拖拽调整）");
-  }
-}
-
-function loadImageSize(value: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-    image.onerror = () => reject(new Error("image load failed"));
-    image.src = value;
-  });
-}
-
-/** 取关键词在文档里的全部命中范围（引擎自带匹配器，表格命中带行列坐标）。 */
-function getKeywordRanges(
-  editor: { command: Record<string, unknown> },
-  keyword: string,
-): Array<Record<string, unknown>> | null {
-  const getList = editor.command.getKeywordRangeList as
-    | ((value: string) => Array<Record<string, unknown>>)
-    | undefined;
-  try {
-    return getList?.(keyword) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** 把当前命中处选中（引擎的 search 只高亮、不移动选区，所以这里显式设选区）。 */
-function highlightCurrentHit(
-  editor: { command: Record<string, unknown> },
-  status: (message: string) => void,
-  session: FindSession,
-) {
-  const range = session.ranges[session.current];
-  if (!range) {
-    status(`未找到「${session.keyword}」`);
-    return;
-  }
-  selectMatch(editor.command, range);
-  status(`第 ${session.current + 1} / 共 ${session.ranges.length} 处「${session.keyword}」`);
 }

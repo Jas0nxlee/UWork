@@ -17,136 +17,19 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BEHAVIOR_PAGE, bundleDispatcher } from "./lib/officeBehaviorPage.mjs";
+import { buildTrickyDocx } from "./lib/officeCheckFixtures.mjs";
 import { engineAssetPaths, startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
 const editorDir = join(repoRoot, "packages/ui/src/officeEditor");
 
-const HARNESS = `<!doctype html><meta charset="utf-8">
-<div id="host" style="height:100vh;overflow:auto"></div>
-<script type="importmap">{"imports":{"@hufe921/canvas-editor":"/ce/canvas-editor.js"}}</script>
-<script type="module">
-  import Editor from "/ce/canvas-editor.js";
-  import docxPlugin from "/ce/docx.js";
-  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom } from "/dispatcher.js";
-
-  window.__load = async (url) => {
-    document.getElementById("host").replaceChildren();
-    const host = document.getElementById("host");
-    // 用与编辑位同一份构造选项：这样"控件没有花括号"这类观感约定也在回归范围内
-    const editorOptions = createEditorOptions({ scrollContainerSelector: "#host" });
-    const editor = new Editor(host, createInitialData(), editorOptions);
-    editor.use(docxPlugin);
-    if (url) await editor.command.executeImportDocx({ arrayBuffer: await (await fetch(url)).arrayBuffer() });
-    editor.command.executeSetRange(0, 0);
-    window.__editor = editor;
-    window.__findRef = { current: createFindSession() };
-    window.__engineState = { mode: "edit", pageMode: "paging" };
-    window.__layoutRef = { current: createLayoutHistory() };
-    // 引擎的撤销可用性由编辑位从 rangeStyleChange 回填；这里固定成"引擎没得撤"，
-    // 用来验证"版面改动能否被撤销"（真机反馈：分栏改完 Ctrl+Z 没反应）。
-    window.__engineUndo = { canUndo: false, canRedo: false };
-    return true;
-  };
-
-  /** 走**我们自己的**命令调度（officeEditorCommands.ts），并把状态栏消息带回来。 */
-  window.__run = (name, args) => {
-    const messages = [];
-    window.__lastMessages = messages;
-    try {
-      runEngineCommand(
-        {
-          editor: window.__editor,
-          commands: window.__editor.command,
-          status: (message) => messages.push(message),
-          engineState: window.__engineState,
-          findRef: window.__findRef,
-          layoutRef: window.__layoutRef,
-          canUndoEngine: () => window.__engineUndo.canUndo,
-          canRedoEngine: () => window.__engineUndo.canRedo,
-        },
-        name,
-        args,
-      );
-    } catch (error) {
-      return { error: String(error).slice(0, 200), messages };
-    }
-    // 同步我们维护的引擎状态（真机上由编辑位的 syncLayoutState 做同样的事）
-    const options = window.__editor.command.getOptions();
-    window.__engineState.mode = options.mode;
-    window.__engineState.pageMode = options.pageMode;
-    return { messages };
-  };
-
-  window.__state = () => {
-    const options = window.__editor.command.getOptions();
-    return {
-      width: options.width,
-      height: options.height,
-      scale: options.scale,
-      mode: options.mode,
-      pageMode: options.pageMode,
-      traceDisabled: options.trace?.disabled,
-      text: documentText(window.__editor.command.getValue().data),
-    };
-  };
-
-  window.__elements = () => window.__editor.command.getValue().data.main;
-
-  /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
-  window.__zoomScroll = (input) => scrollAfterZoom(input);
-
-  /** 把服务端的图片转成 data URI：与"从本机选文件"读出来的形态完全一致。 */
-  window.__imageDataUri = async (url) => {
-    const blob = await (await fetch(url)).blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  /** 导出 docx（图片是否真的进了文件，用导出产物大小判断）。 */
-  window.__exportDocx = async () => {
-    // 与编辑位一致：插件把导出注册在 command 上
-    const blob = await window.__editor.command.executeExportDocx({ fileName: "check.docx" });
-    return blob.size;
-  };
-</script>`;
-
-async function bundleDispatcher(dir) {
-  const esbuild = await import("esbuild");
-  // 入口写在临时目录里：页面要用的东西分散在两个模块（调度 + 参数工具），用一层再导出把它们聚成
-  // 一个 URL，避免为每个模块各写一段 importmap。
-  const entry = join(dir, "dispatcher-entry.ts");
-  writeFileSync(
-    entry,
-    [
-      `export { runEngineCommand, createFindSession, createLayoutHistory } from ${JSON.stringify(join(editorDir, "officeEditorCommands.ts"))};`,
-      `export { documentText } from ${JSON.stringify(join(editorDir, "engineCommands.ts"))};`,
-      `export { createEditorOptions, createInitialData } from ${JSON.stringify(join(editorDir, "officeEditorOptions.ts"))};`,
-      `export { scrollAfterZoom } from ${JSON.stringify(join(editorDir, "pageViewport.ts"))};`,
-    ].join("\n"),
-    "utf8",
-  );
-  const result = await esbuild.build({
-    entryPoints: [entry],
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "browser",
-    absWorkingDir: repoRoot,
-    define: { "process.env.NODE_ENV": '"production"' },
-  });
-  writeFileSync(join(dir, "dispatcher.js"), result.outputFiles[0].text, "utf8");
-}
-
 async function main() {
   const assets = engineAssetPaths(repoRoot);
   const harness = await startOfficeHarness({
     prefix: "office-behavior-",
-    pages: { "index.html": HARNESS },
+    pages: { "index.html": BEHAVIOR_PAGE },
     copies: {
       [assets.engine]: "ce/canvas-editor.js",
       [assets.docxPlugin]: "ce/docx.js",
@@ -154,9 +37,10 @@ async function main() {
       [assets.imageFixture]: "image.png",
     },
     // 调度器是 esbuild 现场打出来的，必须在页面加载前写好
-    prepareDir: (dir) => bundleDispatcher(dir),
+    prepareDir: (dir) => bundleDispatcher(dir, editorDir),
   });
   const page = harness.page;
+
   const failures = [];
   const reload = async (withFixture = true) => {
     await page.evaluate((url) => window.__load(url), withFixture ? "/sample.docx" : null);
@@ -403,6 +287,42 @@ async function main() {
     printResult.settled === "resolved" && printResult.after > printResult.before,
     `打印路径跑通（${printResult.settled}，打印 iframe ${printResult.before} → ${printResult.after}）`,
   );
+
+  // 护栏：含修订/超链接/公式/批注的文档必须先被识别，归一化后**文字不丢**
+  const trickyDocx = await buildTrickyDocx();
+  const preflight = await page.evaluate(async (bytes) => {
+    const result = await window.__preflight.preprocessDocx(bytes);
+    return {
+      findings: result.findings,
+      changes: result.changes,
+      bytes: Array.from(new Uint8Array(result.bytes)),
+    };
+  }, Array.from(trickyDocx));
+  const f = preflight.findings;
+  check(
+    f.revisions.inserted === 1 &&
+      f.revisions.deleted === 1 &&
+      f.hyperlinks === 1 &&
+      f.formulas === 1 &&
+      f.comments === 1,
+    `预检认出文档特性：插入 ${f.revisions.inserted} / 删除 ${f.revisions.deleted} / 超链接 ${f.hyperlinks} / 公式 ${f.formulas} / 批注 ${f.comments}`,
+  );
+  check(
+    preflight.changes.length >= 4,
+    `预检给出了会说清楚的改动清单（${preflight.changes.length} 条，例：${preflight.changes[0] ?? ""}）`,
+  );
+  await page.evaluate(
+    (bytes) => window.__loadPreprocessed(new Uint8Array(bytes).buffer),
+    preflight.bytes,
+  );
+  const trickyText = (await state()).text;
+  check(
+    trickyText.includes("INSERTED") &&
+      trickyText.includes("LINKTEXT") &&
+      trickyText.includes("E=mc^2"),
+    `归一化后插入文字/超链接文字/公式文字都还在（文本：${JSON.stringify(trickyText.slice(0, 80))}）`,
+  );
+  check(!trickyText.includes("DELETED"), "被删除的文字没有复活（w:del 按「接受删除」处理）");
 
   // 插入图片（从本机选文件＝data URI）：元素、尺寸、导出都要对
   await reload(false);

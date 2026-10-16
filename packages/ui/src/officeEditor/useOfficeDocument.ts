@@ -1,0 +1,188 @@
+/**
+ * 编辑位的**文档生命周期**：读文件 → 护栏预检 → 导入 → 保存（含冲突/备份提示）。
+ *
+ * 抽出来的原因有两个：编辑位本体要守 400 行上限；更重要的是这些逻辑（尤其护栏与写回）
+ * 属于"数据安全"路径，单独成文件后，读者能一眼看清"什么情况下我们不让编、什么情况下拒绝写"。
+ */
+import type { IFileService } from "@zcode/services";
+import { useCallback, useRef, useState } from "react";
+import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
+import { preprocessDocx, summarizeFindings, type DocxPreflightResult } from "./docxPreflight.js";
+import type { EngineCommand } from "./engineCommands.js";
+import { logger } from "@/logger.js";
+
+/** 应用内原地编辑的体积上限（docx 文件字节）。 */
+const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
+/**
+ * document.xml 的上限：**这才是真正的体量口径**。实测 191 KB 的 docx 解出 2.35 MB document.xml
+ * （约 12 倍）、95.7 万个文字元素、导入 4.4 秒；按文件大小限流会放进一个几十 MB 的 document.xml，
+ * 面板会长时间卡死甚至 OOM。
+ */
+const MAX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024;
+/** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
+const SLOW_PARSE_MS = 3000;
+
+export interface OfficeEditorHandle {
+  command: Record<string, unknown>;
+}
+
+export interface UseOfficeDocumentInput {
+  fileService: IFileService;
+  path: string;
+  editorRef: { current: OfficeEditorHandle | null };
+}
+
+export interface UseOfficeDocumentResult {
+  status: string;
+  setStatus: (message: string) => void;
+  dirty: boolean;
+  setDirty: (value: boolean) => void;
+  busy: boolean;
+  pendingPreflight: DocxPreflightResult | null;
+  /** 读文件 → 预检 → 导入。需要用户确认的特性会停在横幅上（见 pendingPreflight）。 */
+  loadDocument: (options?: { reset?: boolean; skipGuard?: boolean }) => Promise<void>;
+  /** 用户在护栏横幅上点"按上述方式编辑"：用归一化后的字节导入。 */
+  acceptPreflight: () => void;
+  /** 导出并写回原文件（版本比对失败即拒绝）。 */
+  save: () => Promise<void>;
+}
+
+export function useOfficeDocument({
+  fileService,
+  path,
+  editorRef,
+}: UseOfficeDocumentInput): UseOfficeDocumentResult {
+  const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
+  const [status, setStatus] = useState("正在加载文档…");
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pendingPreflight, setPendingPreflight] = useState<DocxPreflightResult | null>(null);
+
+  const importBytes = useCallback(
+    async (editor: OfficeEditorHandle, bytes: ArrayBuffer, label: string, reset: boolean) => {
+      setStatus(`解析文档（${label}）…`);
+      const startedAt = performance.now();
+      await (
+        editor.command.executeImportDocx as (payload: { arrayBuffer: ArrayBuffer }) => Promise<void>
+      )({
+        arrayBuffer: bytes,
+      });
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      logger.info(`[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${label}）`);
+      if (reset) setDirty(false);
+      const slowHint =
+        elapsedMs > SLOW_PARSE_MS
+          ? `（文档很大，编辑会明显卡顿：${Math.round(elapsedMs / 1000)}s 解析。建议改用只读预览 + 卡片审阅。）`
+          : "";
+      setStatus(
+        `已载入 ${label} · 解析 ${(elapsedMs / 1000).toFixed(1)}s · 点「保存到文件」写回${slowHint}`,
+      );
+    },
+    [],
+  );
+
+  const loadDocument = useCallback(
+    async (options: { reset?: boolean; skipGuard?: boolean } = {}) => {
+      const [preview, fileStat] = await Promise.all([
+        fileService.readBinaryPreview({ path }),
+        fileService.stat({ path }),
+      ]);
+      revisionRef.current =
+        typeof fileStat.mtimeMs === "number"
+          ? { size: preview.totalBytes, mtimeMs: fileStat.mtimeMs }
+          : null;
+      const editor = editorRef.current;
+      if (!editor) return;
+      if (preview.totalBytes > MAX_EDITABLE_BYTES) {
+        setStatus(
+          `文档过大（${Math.round(preview.totalBytes / 1048576)} MB），不在应用内编辑：请用只读预览 + 对话卡片审阅，或分段编辑。`,
+        );
+        return;
+      }
+      const raw = base64ToArrayBuffer(preview.dataBase64);
+      const label = `${Math.round(preview.totalBytes / 1024)} KiB`;
+      // 护栏：先看清这份文档里有什么是引擎**保不住**的。实测修订的插入文字、超链接文字、公式文字会直接消失；
+      // 批注/脚注在保存时丢——所以先把话说明白，用户确认后才按归一化字节导入。
+      if (!options.skipGuard) {
+        const preflight = await preprocessDocx(raw);
+        if (preflight.findings.documentXmlBytes > MAX_DOCUMENT_XML_BYTES) {
+          setStatus(
+            `文档解压后过大（document.xml ${(preflight.findings.documentXmlBytes / 1048576).toFixed(1)} MB，上限 ${MAX_DOCUMENT_XML_BYTES / 1048576} MB）：应用内编辑会卡到不可用，请用只读预览 + 对话卡片审阅。`,
+          );
+          return;
+        }
+        const notices = summarizeFindings(preflight.findings);
+        if (notices.length > 0) {
+          setPendingPreflight(preflight);
+          setStatus("这份文档有需要你确认的特性（见上方提示）——确认后才会打开");
+          return;
+        }
+      }
+      await importBytes(editor, raw, label, options.reset !== false);
+    },
+    [editorRef, fileService, importBytes, path],
+  );
+
+  const acceptPreflight = useCallback(() => {
+    const pending = pendingPreflight;
+    setPendingPreflight(null);
+    const editor = editorRef.current;
+    if (!pending || !editor) return;
+    void importBytes(editor, pending.bytes, "预处理后的文档", true).catch((error) =>
+      setStatus(`打开失败：${String(error)}`),
+    );
+  }, [editorRef, importBytes, pendingPreflight]);
+
+  const save = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor || busy) return;
+    setBusy(true);
+    try {
+      setStatus("导出 docx…");
+      // docx 插件把导入/导出都注册在 `command` 上（不是编辑器实例本身）——按 SuperDoc 的写法读
+      // `editor.executeExportDocx` 会拿到 undefined，保存必然报"编辑器没有返回文档内容"。
+      const exportDocx = (editor.command as EngineCommand).executeExportDocx as
+        | ((options: { fileName: string }) => Promise<Blob>)
+        | undefined;
+      const blob = exportDocx
+        ? await exportDocx({ fileName: path.split("/").pop() ?? "document.docx" })
+        : null;
+      if (!(blob instanceof Blob)) throw new Error("编辑器没有返回文档内容");
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
+      const result = await fileService.writeBinaryFile({
+        path,
+        dataBase64: bytesToBase64(bytes),
+        ...(revisionRef.current ? { expectedRevision: revisionRef.current } : {}),
+        backup: "sibling",
+      });
+      revisionRef.current = result.revision;
+      setDirty(false);
+      const backupName = result.backup ? result.backup.split("/").pop() : "";
+      setStatus(
+        `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(
+        message.includes("revision mismatch")
+          ? "保存被拒：文件已被其它程序（可能是 Agent）修改。请「重新加载」或另存副本后再改。"
+          : `保存失败：${message}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, editorRef, fileService, path]);
+
+  return {
+    status,
+    setStatus,
+    dirty,
+    setDirty,
+    busy,
+    pendingPreflight,
+    loadDocument,
+    acceptPreflight,
+    save,
+  };
+}

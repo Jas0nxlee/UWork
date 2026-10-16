@@ -1707,8 +1707,8 @@ export function PreviewPane({
               variant="ghost"
               className="shrink-0 text-foreground-subtle hover:text-foreground disabled:text-foreground-subtlest"
               onClick={() => setOfficeEditing((value) => !value)}
-              title={officeEditing ? "返回只读预览" : "应用内编辑（改动记为修订）"}
-              aria-label={officeEditing ? "返回只读预览" : "应用内编辑（改动记为修订）"}
+              title={officeEditing ? "返回只读预览" : "应用内编辑"}
+              aria-label={officeEditing ? "返回只读预览" : "应用内编辑"}
             >
               <PencilIcon className="size-3.5" />
             </Button>

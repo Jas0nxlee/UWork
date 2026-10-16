@@ -7,10 +7,11 @@
  *
  * 与产品的其余部分保持一致：
  * - 字节来自 `IFileService.readBinaryPreview`，保存走 `writeBinaryFile`（写前比对 size/mtime、sibling 备份、原子替换）；
- * - 保存是显式的，冲突时拒绝写入并提示；改动是否落成 `w:ins`/`w:del` 由"修订"按钮决定（见 trackChanges 注释）。
+ * - 保存是显式的，冲突时拒绝写入并提示；**导入前先过护栏**（`docxPreflight.ts`）：引擎保不住的特性
+ *   （修订/超链接/公式/批注/脚注/编号…）会先列清楚再让用户决定，绝不静默改坏文档。
  *
- * 已知边界（写在界面上，不假装）：canvas-editor 自身不支持 Word 的修订记录语义；
- * 需要"改动进审查队列"时用「修订模式」——导出前把改动与基线做比较，落成 w:ins/w:del（后续接我们的引擎）。
+ * 已知边界（写在界面上，不假装）：本轮**不做** Word 修订记录（我们的改写不会落成 `w:ins`/`w:del`，
+ * 所以护栏会把别人的修订按"接受"处理并如实告知）；要把改动进审查队列，请用对话卡片/插件审阅路径。
  */
 import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
@@ -19,37 +20,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
 import type { EngineCommand } from "./engineCommands.js";
+import { summarizeFindings } from "./docxPreflight.js";
 import { createEditorOptions, createInitialData } from "./officeEditorOptions.js";
 import { scrollAfterZoom } from "./pageViewport.js";
-import {
-  createFindSession,
-  createLayoutHistory,
-  runEngineCommand,
-  type LayoutHistory,
-} from "./officeEditorCommands.js";
+import { useOfficeDocument } from "./useOfficeDocument.js";
+import { createLayoutHistory, type LayoutHistory } from "./engineLayoutHistory.js";
+import { createFindSession, runEngineCommand } from "./officeEditorCommands.js";
 import type { RibbonStyle } from "./officeRibbonModel.js";
-import { logger } from "@/logger.js";
-
-/** 应用内原地编辑的体积上限：超过就只读审阅（超大文档在任何浏览器编辑器里都不可用）。 */
-const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
-/** 解析超过这个时间就明确提示卡顿（实测：6000 段 957ms / 20000 段 4.4s）。 */
-const SLOW_PARSE_MS = 3000;
-
-function base64ToArrayBuffer(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes.buffer;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const step = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += step) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(offset, offset + step)));
-  }
-  return btoa(binary);
-}
 
 type CanvasEditor = InstanceType<typeof Editor> & {
   use: (plugin: unknown) => void;
@@ -78,56 +55,22 @@ export interface CanvasOfficeEditorPaneProps {
 export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOfficeEditorPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<CanvasEditor | null>(null);
-  const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
-  const [status, setStatus] = useState("正在加载文档…");
-  const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const {
+    status,
+    setStatus,
+    dirty,
+    setDirty,
+    busy,
+    pendingPreflight,
+    loadDocument,
+    acceptPreflight,
+    save,
+  } = useOfficeDocument({ fileService, path, editorRef });
   const [rangeStyle, setRangeStyle] = useState<RibbonStyle | null>(null);
   const [inTable, setInTable] = useState(false);
   // 引擎按容器宽度铺画布、页面从 x=0 起画（天生贴左）。所以把编辑区宽度收到**纸张宽度**，
   // 再由外层 flex 居中——这就是 Word/WPS「纸张居中、两侧留灰边」的做法（真机反馈）。
   const [pageSize, setPageSize] = useState({ width: 794, scale: 1 });
-
-  const loadDocument = useCallback(
-    async (options: { reset?: boolean } = {}) => {
-      const [preview, fileStat] = await Promise.all([
-        fileService.readBinaryPreview({ path }),
-        fileService.stat({ path }),
-      ]);
-      revisionRef.current =
-        typeof fileStat.mtimeMs === "number"
-          ? { size: preview.totalBytes, mtimeMs: fileStat.mtimeMs }
-          : null;
-      const editor = editorRef.current;
-      if (!editor) return;
-      if (preview.totalBytes > MAX_EDITABLE_BYTES) {
-        setStatus(
-          `文档过大（${Math.round(preview.totalBytes / 1048576)} MB），不在应用内编辑：请用只读预览 + 对话卡片审阅，或分段编辑。`,
-        );
-        return;
-      }
-      setStatus(`解析文档（${Math.round(preview.totalBytes / 1024)} KiB）…`);
-      const startedAt = performance.now();
-      await editor.command.executeImportDocx({
-        arrayBuffer: base64ToArrayBuffer(preview.dataBase64),
-      });
-      const elapsedMs = Math.round(performance.now() - startedAt);
-      logger.info(
-        `[OfficeEditor] canvas-editor 导入完成 ${elapsedMs}ms（${Math.round(preview.totalBytes / 1024)} KiB）`,
-      );
-      if (options.reset !== false) setDirty(false);
-      // 实测（headless Chromium，canvas-editor）：500 段 76ms / 2000 段 266ms / 6000 段 957ms / 20000 段 4.4s。
-      // 超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug。
-      const slowHint =
-        elapsedMs > SLOW_PARSE_MS
-          ? `（文档很大，编辑会明显卡顿：${Math.round(elapsedMs / 1000)}s 解析。建议改用只读预览 + 卡片审阅。）`
-          : "";
-      setStatus(
-        `已载入 ${Math.round(preview.totalBytes / 1024)} KiB · 解析 ${(elapsedMs / 1000).toFixed(1)}s · 点「保存到文件」写回${slowHint}`,
-      );
-    },
-    [fileService, path],
-  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -167,49 +110,6 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
       host.replaceChildren();
     };
   }, [loadDocument]);
-
-  const save = useCallback(async () => {
-    const editor = editorRef.current;
-    if (!editor || busy) return;
-    setBusy(true);
-    try {
-      setStatus("导出 docx…");
-      // docx 插件把导入/导出都注册在 `command` 上（不是编辑器实例本身）——之前按 SuperDoc 的写法
-      // 读 `editor.executeExportDocx`，拿到 undefined 就会报"编辑器没有返回文档内容"（保存直接失败）。
-      const exportDocx = (
-        editor.command as {
-          executeExportDocx?: (options: { fileName: string }) => Promise<Blob>;
-        }
-      ).executeExportDocx?.bind(editor.command);
-      const blob = exportDocx
-        ? await exportDocx({ fileName: path.split("/").pop() ?? "document.docx" })
-        : null;
-      if (!(blob instanceof Blob)) throw new Error("编辑器没有返回文档内容");
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      setStatus(`写回文件（${Math.round(bytes.length / 1024)} KiB）…`);
-      const result = await fileService.writeBinaryFile({
-        path,
-        dataBase64: bytesToBase64(bytes),
-        ...(revisionRef.current ? { expectedRevision: revisionRef.current } : {}),
-        backup: "sibling",
-      });
-      revisionRef.current = result.revision;
-      setDirty(false);
-      const backupName = result.backup ? result.backup.split("/").pop() : "";
-      setStatus(
-        `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""}`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(
-        message.includes("revision mismatch")
-          ? "保存被拒：文件已被其它程序（可能是 Agent）修改。请「重新加载」或另存副本后再改。"
-          : `保存失败：${message}`,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, fileService, path]);
 
   /**
    * 引擎没有"布局变了"的统一事件（纸张/页边距/模式切换都不发通知），所以每次命令后主动读一次
@@ -354,6 +254,37 @@ export function CanvasOfficeEditorPane({ fileService, path, onExit }: CanvasOffi
         onExit={onExit}
         confirmExit={() => !dirty || window.confirm("有未保存的修改，确定退出编辑吗？")}
       />
+      {pendingPreflight ? (
+        <div className="border-b border-amber-500/40 bg-amber-500/10 px-2 py-2 text-xs text-amber-200">
+          <div className="pb-1 font-medium">这份文档有以下特性，应用内编辑会让它们发生变化：</div>
+          <ul className="list-disc pb-2 pl-5">
+            {summarizeFindings(pendingPreflight.findings).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-amber-400 px-2 py-1 hover:bg-amber-500/20"
+              onClick={acceptPreflight}
+            >
+              按上述方式编辑
+            </button>
+            {onExit ? (
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 hover:bg-surface"
+                onClick={onExit}
+              >
+                只看只读预览
+              </button>
+            ) : null}
+            <span className="text-amber-200/80">
+              想保住这些特性（例如逐条接受/拒绝修订），请用对话卡片或侧栏的审阅面板。
+            </span>
+          </div>
+        </div>
+      ) : null}
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
           之前沿用 SuperDoc 版的 overflow-hidden，导致"无法滚动"——真机反馈。 */}
       <OfficeRibbon
