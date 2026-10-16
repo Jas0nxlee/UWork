@@ -5,11 +5,12 @@
 // starting/active 状态都会继续挡住同一 session 的第二次 start。
 import { type TurnBackgroundAttribution, type TurnInputIntentMetadata } from "@zcode/contracts";
 import type { TurnAttachment } from "@zcode/core";
+import type { ZCodeAutomationBotDeliveryTarget } from "@zcode/shared";
 import type { SendInputOptions, SendInputResult } from "../../app/types.js";
 import { runWithSessionResidencyFinalization } from "../../zcode-protocol/session-residency.js";
 import type { V4CommandCoreHost, V4SessionRecordView } from "./types.js";
 
-interface StartPromptTurnParamsBase {
+export interface StartPromptTurnParamsBase {
   content: string;
   /** v4 锚点：inputId=queryId=commandId（权威数据 sourceCommandId 对账）。 */
   inputId: string;
@@ -22,13 +23,17 @@ interface StartPromptTurnParamsBase {
   modelExecution?: SendInputOptions["modelExecution"];
   sharedContextRefs?: SendInputOptions["sharedContextRefs"];
   toolDisallowlist?: readonly string[];
+  /** 当前输入必须保留为未来独立 turn，不能因 admission 瞬间转为空闲而直接启动。 */
+  requireQueue?: boolean;
   /** sendQueuedNow 已持有 Core promotion lease，要求这次 admission 只能占用空闲位。 */
   requireIdle?: boolean;
+  /** Bot 入站 turn 的稳定回推地址；仅在本 turn 内暴露给 CronCreate。 */
+  botDeliveryTarget?: ZCodeAutomationBotDeliveryTarget;
 }
 
-type StartPromptTurnParams = StartPromptTurnParamsBase & TurnBackgroundAttribution;
+export type StartPromptTurnParams = StartPromptTurnParamsBase & TurnBackgroundAttribution;
 
-interface PromptTurnStartResult {
+export interface PromptTurnStartResult {
   /** Core admission 已完成；不等待 TurnStarted 或 projection commit。 */
   turnStarted: Promise<void>;
   /** Core 真实完成 promise，仅供生命周期清理使用，不属于 ACK 边界。 */
@@ -48,6 +53,11 @@ export class V4PromptRejectedError extends Error {
     super(message);
     this.name = "V4PromptRejectedError";
   }
+}
+
+/** 旧 queue promotion 兼容谓词：新的 Core admission 不再产生 projection authority 不确定态。 */
+export function isPromptTurnStartUncertainFailure(_error: unknown): boolean {
+  return false;
 }
 
 /**
@@ -85,6 +95,7 @@ export async function startPromptTurn(
 
   const previousAutomationId = record.activeAutomationId;
   const previousOffPeakTaskId = record.activeOffPeakTaskId;
+  const previousBotDeliveryTarget = record.activeBotDeliveryTarget;
   const activeAutomationId = resolveTurnAutomationId(params);
   const activeOffPeakTaskId = resolveTurnOffPeakTaskId(params);
   const turnToolDisallowlist = buildTurnToolDisallowlist(
@@ -97,6 +108,7 @@ export async function startPromptTurn(
     // 闲时派发轮同型标记，供 offpeak-port 在工具执行前拒绝递归 OffPeakCreate。
     record.activeOffPeakTaskId = activeOffPeakTaskId;
   }
+  record.activeBotDeliveryTarget = params.botDeliveryTarget;
 
   let admission: SendInputResult;
   try {
@@ -127,18 +139,29 @@ export async function startPromptTurn(
         ...(params.modelExecution ? { modelExecution: params.modelExecution } : {}),
         ...(params.sharedContextRefs ? { sharedContextRefs: params.sharedContextRefs } : {}),
         ...(turnToolDisallowlist ? { toolDisallowlist: turnToolDisallowlist } : {}),
+        ...(params.requireQueue ? { requireQueue: true } : {}),
         ...(params.requireIdle ? { requireIdle: true } : {}),
         queryId: params.inputId as SendInputOptions["queryId"],
       },
     );
   } catch (error) {
-    clearPromptRecordState(record, previousAutomationId, previousOffPeakTaskId);
+    clearPromptRecordState(
+      record,
+      previousAutomationId,
+      previousOffPeakTaskId,
+      previousBotDeliveryTarget,
+    );
     await host.afterLegacyStateMutation?.(record, "prompt_failed");
     throw error;
   }
 
   if (admission.kind === "rejected") {
-    clearPromptRecordState(record, previousAutomationId, previousOffPeakTaskId);
+    clearPromptRecordState(
+      record,
+      previousAutomationId,
+      previousOffPeakTaskId,
+      previousBotDeliveryTarget,
+    );
     throw new V4PromptRejectedError(
       "activePrompt",
       `Core prompt admission rejected: ${admission.reason}`,
@@ -146,7 +169,12 @@ export async function startPromptTurn(
   }
 
   if (admission.kind === "queued") {
-    clearPromptRecordState(record, previousAutomationId, previousOffPeakTaskId);
+    clearPromptRecordState(
+      record,
+      previousAutomationId,
+      previousOffPeakTaskId,
+      previousBotDeliveryTarget,
+    );
     return { admission, turnStarted: Promise.resolve() };
   }
 
@@ -162,7 +190,12 @@ export async function startPromptTurn(
         sessionId: record.app.sessionId,
       });
     } finally {
-      clearPromptRecordState(record, previousAutomationId, previousOffPeakTaskId);
+      clearPromptRecordState(
+        record,
+        previousAutomationId,
+        previousOffPeakTaskId,
+        previousBotDeliveryTarget,
+      );
       await host.afterLegacyStateMutation?.(record, mutationReason);
     }
   });
@@ -180,13 +213,15 @@ function clearPromptRecordState(
   record: V4SessionRecordView,
   previousAutomationId: string | undefined,
   previousOffPeakTaskId: string | undefined,
+  previousBotDeliveryTarget: V4SessionRecordView["activeBotDeliveryTarget"],
 ): void {
   record.activeAutomationId = previousAutomationId;
   // 闲时轮身份与 automation 同规则随 turn 还原，防止跨轮残留误拒 OffPeakCreate。
   record.activeOffPeakTaskId = previousOffPeakTaskId;
+  record.activeBotDeliveryTarget = previousBotDeliveryTarget;
 }
 
-function buildTurnToolDisallowlist(
+export function buildTurnToolDisallowlist(
   params: Pick<StartPromptTurnParams, "automationId" | "offPeakTaskId" | "toolDisallowlist">,
   activeAutomationId = params.automationId,
   activeOffPeakTaskId = params.offPeakTaskId,
@@ -216,7 +251,7 @@ export function resolveTurnAutomationId(
   return automationId.length > AUTOMATION_INPUT_ID_PREFIX.length ? automationId : undefined;
 }
 
-function resolveTurnOffPeakTaskId(
+export function resolveTurnOffPeakTaskId(
   params: Pick<StartPromptTurnParams, "offPeakTaskId" | "inputId">,
 ): string | undefined {
   const explicit = params.offPeakTaskId?.trim();

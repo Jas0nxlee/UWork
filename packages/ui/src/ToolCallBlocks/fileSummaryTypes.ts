@@ -1,3 +1,4 @@
+import type { PluginUiToolBinding } from "@/plugin-ui/contract.js";
 import type { ReactNode } from "react";
 import type { WorkflowRunState } from "@zcode/shared/zcode-protocol-v4";
 import type { MessageFileLinkTarget } from "@/components/ai-elements/message.js";
@@ -160,11 +161,15 @@ export interface WorkflowRunCardSummary {
   status: WorkflowRunState["status"];
   /** `stopped` 的原因；投影带才带。 */
   stopReason?: WorkflowRunState["stopReason"];
-  /** 已结算（`phase === "settled"`）的节点数。 */
+  /** 已结算（`phase === "settled"`）的节点数，**含**撞界后没进表的那些。 */
   nodesSettled: number;
   /**
    * 已排程（observed）节点数，**不是**全程总数——动态工作流的节点数由脚本在运行时决定，
    * 静态总数不存在。所以进度读作「已排程的里结算了几个」，绝不冒充完成百分比。
+   *
+   * 两个数都出自 `workflowRunStepCounts`（@zcode/shared）：`nodes` 表内 + `usage.nodesUnlisted`
+   * 表外。撞过 1024 界的 run 在这里仍报真实步数，少的是**每一步的详情**，卡与详情页各有一句
+   * 「仅展示 n/m 步的详情」说这件事。
    */
   nodesTotal: number;
   /**
@@ -201,6 +206,11 @@ export interface ToolCallBlockRenderContext {
   toolCallNode: TaskChatToolCallTreeNode;
   workspacePath: string;
   /**
+   * 插件 UI：scope 是沙箱登记需要的 session 范围，onOpenSidePane 是"在侧栏打开"回调；
+   * 由 PluginUiSessionProvider 在边界注入。缺省表示宿主不提供，带 ui:// 资源的工具回退普通 MCP 卡片。
+   */
+  pluginUi?: PluginUiToolBinding;
+  /**
    * 应用主题（store 耦合剥离）：由构建 render context 的宿主
    * （ToolCallBlock / PermissionDialog 等）从上层状态传入，供
    * MessageResponse / EditInlineDiffContent 等展示组件做 light/dark 分流。
@@ -213,6 +223,8 @@ export interface ToolCallBlockRenderContext {
   viewerSource: CodeViewerSource | null;
   rawFileSummaries: RawToolCallFileSummary[];
   isRunning: boolean;
+  /** 权限预览尚未执行，不展示任何输出或空输出占位。 */
+  isPermissionPreview?: boolean;
   statusLabel: string;
   sourceLabel?: string;
   errorText?: string;

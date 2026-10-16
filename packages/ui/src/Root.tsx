@@ -35,7 +35,7 @@ import { StoreProvider, useZCodeStore } from "@/store/StoreProvider.js";
 import { setMcpStorePlatform } from "@/store/mcpStore.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { TabStoreProvider, useTabStore, useTabStoreApi } from "@/store/TabStoreProvider.js";
-import { isSettingsTab, isWorkspaceTab } from "@/store/tabStore.js";
+import { isSettingsTab, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import { RootShell } from "@/root/RootShell.js";
 import { RootWorkspaceContent } from "@/root/RootWorkspaceContent.js";
@@ -53,6 +53,20 @@ import { useRootWorkspaceActions } from "@/root/useRootWorkspaceActions.js";
 import { registerBaseWorkspaceServices } from "@/store/remoteWorkspaceSessionStore.js";
 import type { RootProps } from "@/root/types.js";
 import { DiffsWorkerPoolProvider } from "@/root/DiffsWorkerPoolProvider.js";
+import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
+import {
+  buildWebRemoteControlTaskRuntimeByWorkspaceKey,
+  buildWebRemoteControlTaskTargets,
+} from "@/lib/webRemoteControlTaskIndex.js";
+import {
+  logDeferredWebRemoteControlTaskSnapshot,
+  shouldSyncWebRemoteControlTaskSnapshot,
+} from "@/lib/webRemoteControlTaskSync.js";
+import {
+  WebRemoteControlFeatureProvider,
+  useWebRemoteControlFeatureEnabled,
+} from "@/WebRemoteControlFeatureProvider.js";
+import { useWebRemoteControlStatus } from "@/hooks/useWebRemoteControlStatus.js";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
 import { useRemoteConnectionLogs } from "@/hooks/useRemoteConnectionLogs.js";
 import {
@@ -83,6 +97,110 @@ interface RemoteConnectionOpenPreference {
   preferredWslDistro?: string;
 }
 
+function WebRemoteControlTaskSync({
+  syncWebRemoteControlTasks,
+  workspaceTabs,
+}: {
+  syncWebRemoteControlTasks: NonNullable<RootProps["platform"]["syncWebRemoteControlTasks"]>;
+  workspaceTabs: WorkspaceTabState[];
+}) {
+  const workspaceStates = useZCodeSessionStore((state) => state.workspaces);
+  const timelineTaskList = useGlobalTaskList({
+    kind: "timeline",
+    workspaceTabs,
+    sortBy: "updated",
+    searchQuery: "",
+    expanded: true,
+    collapsedLimit: 100,
+  });
+  const pinnedTaskList = useGlobalTaskList({
+    kind: "pinned",
+    workspaceTabs,
+    sortBy: "updated",
+    searchQuery: "",
+    expanded: true,
+    collapsedLimit: 100,
+  });
+  const archivedTaskList = useGlobalTaskList({
+    kind: "archived",
+    workspaceTabs,
+    sortBy: "updated",
+    searchQuery: "",
+    expanded: true,
+    collapsedLimit: 100,
+  });
+  const taskTargets = useMemo(() => {
+    const runtimeByWorkspaceKey = buildWebRemoteControlTaskRuntimeByWorkspaceKey(workspaceStates);
+    // Bugfix: Web remote 未开启时不应让 Root 订阅整张 workspace 表。
+    // 远控 task 索引只在该组件挂载后运行，避免桌面 continuous 流式更新唤醒 Root/App/Shell 主链路。
+    // Bugfix: 手机远控首页之前只同步 timeline，而 timeline 查询会过滤 pinned=1。
+    // 这里把 sqlite pinned 列表单独同步给手机端，避免置顶任务从远控任务列表消失。
+    const pinnedTargets = buildWebRemoteControlTaskTargets({
+      workspaceTabs,
+      tasks: pinnedTaskList.items,
+      taskRuntimeByWorkspaceKey: runtimeByWorkspaceKey,
+      pinned: true,
+    });
+    const timelineTargets = buildWebRemoteControlTaskTargets({
+      workspaceTabs,
+      tasks: timelineTaskList.items,
+      taskRuntimeByWorkspaceKey: runtimeByWorkspaceKey,
+    });
+    // Bugfix: 宽屏 Web 远控归档视图以前退回当前 bridge workspace 查询，
+    // 因为同步给 remote 的任务索引没有 archived 成员。归档目标只作为远控列表数据，不改变桌面任务区。
+    const archivedTargets = buildWebRemoteControlTaskTargets({
+      workspaceTabs,
+      tasks: archivedTaskList.items,
+      taskRuntimeByWorkspaceKey: runtimeByWorkspaceKey,
+      archived: true,
+    });
+
+    return [...pinnedTargets, ...timelineTargets, ...archivedTargets].sort((left, right) => {
+      if (right.updatedAt !== left.updatedAt) {
+        return right.updatedAt - left.updatedAt;
+      }
+      if (right.createdAt !== left.createdAt) {
+        return right.createdAt - left.createdAt;
+      }
+      return right.taskId.localeCompare(left.taskId);
+    });
+  }, [
+    archivedTaskList.items,
+    pinnedTaskList.items,
+    timelineTaskList.items,
+    workspaceStates,
+    workspaceTabs,
+  ]);
+  const shouldSyncTasks = shouldSyncWebRemoteControlTaskSnapshot({
+    archivedLoading: archivedTaskList.loading,
+    enabled: true,
+    pinnedLoading: pinnedTaskList.loading,
+    timelineLoading: timelineTaskList.loading,
+  });
+
+  useEffect(() => {
+    if (!shouldSyncTasks) {
+      logDeferredWebRemoteControlTaskSnapshot(logger, {
+        pinnedLoading: pinnedTaskList.loading,
+        archivedLoading: archivedTaskList.loading,
+        timelineLoading: timelineTaskList.loading,
+      });
+      return;
+    }
+
+    syncWebRemoteControlTasks(taskTargets);
+  }, [
+    archivedTaskList.loading,
+    pinnedTaskList.loading,
+    shouldSyncTasks,
+    syncWebRemoteControlTasks,
+    taskTargets,
+    timelineTaskList.loading,
+  ]);
+
+  return null;
+}
+
 /**
  * Root —— 应用根组件
  *
@@ -110,21 +228,23 @@ export function Root(props: RootProps) {
             >
               <TabStoreProvider>
                 <DiffsWorkerPoolProvider>
-                  <AssistantCodeCommentFeatureProvider
-                    enabled={props.assistantCodeCommentCardsEnabled}
-                  >
-                    <CodingPlanUpgradeDialogProvider>
-                      <EnterpriseIdentityProvider
-                        service={props.services.enterpriseIdentityService}
-                        providerSettingsService={props.services.providerSettingsService}
-                        ucasGatewayService={props.services.ucasGatewayService}
-                        showOnStartup={!props.enterpriseIdentityReadOnly}
-                        allowLogin={!props.enterpriseIdentityReadOnly}
-                      >
-                        <RootInner {...props} />
-                      </EnterpriseIdentityProvider>
-                    </CodingPlanUpgradeDialogProvider>
-                  </AssistantCodeCommentFeatureProvider>
+                  <WebRemoteControlFeatureProvider enabled={props.webRemoteControlFeatureEnabled}>
+                    <AssistantCodeCommentFeatureProvider
+                      enabled={props.assistantCodeCommentCardsEnabled}
+                    >
+                      <CodingPlanUpgradeDialogProvider>
+                        <EnterpriseIdentityProvider
+                          service={props.services.enterpriseIdentityService}
+                          providerSettingsService={props.services.providerSettingsService}
+                          ucasGatewayService={props.services.ucasGatewayService}
+                          showOnStartup={!props.enterpriseIdentityReadOnly}
+                          allowLogin={!props.enterpriseIdentityReadOnly}
+                        >
+                          <RootInner {...props} />
+                        </EnterpriseIdentityProvider>
+                      </CodingPlanUpgradeDialogProvider>
+                    </AssistantCodeCommentFeatureProvider>
+                  </WebRemoteControlFeatureProvider>
                 </DiffsWorkerPoolProvider>
               </TabStoreProvider>
             </StoreProvider>
@@ -152,6 +272,10 @@ function RootInner({
   preferDirectoryBrowser,
   supportsEmbeddedBrowser: explicitSupportsEmbeddedBrowser,
   allowRemoteWorkspace = true,
+  webRemoteControlWorkspaceSwitcher,
+  initialWebRemoteControlMobileNavigationIntent,
+  initialWebRemoteControlWorkspaceList,
+  webRemoteControlTerminalTransportState,
   initialWorkspaceLoadingFallback,
 }: RootProps) {
   useEffect(() => {
@@ -351,6 +475,21 @@ function RootInner({
   const addTab = useTabStore((state) => state.addTab);
   const activateTabByPath = useTabStore((state) => state.activateTabByPath);
   const tabStoreApi = useTabStoreApi();
+  const webRemoteControlFeatureEnabled = useWebRemoteControlFeatureEnabled();
+  const webRemoteControlStatus = useWebRemoteControlStatus({
+    enabled: Boolean(
+      webRemoteControlFeatureEnabled && isDesktop && platform.syncWebRemoteControlTasks,
+    ),
+  });
+  const webRemoteControlSessionActive =
+    webRemoteControlStatus.status === "running" || webRemoteControlStatus.status === "active";
+  const webRemoteControlTaskSyncEnabled = Boolean(
+    webRemoteControlFeatureEnabled &&
+    webRemoteControlSessionActive &&
+    isDesktop &&
+    platform.syncWebRemoteControlTasks,
+  );
+  const isWebRemoteControlRoot = Boolean(webRemoteControlWorkspaceSwitcher);
   const refreshProviderState = useRootProviderStateRefresh(services);
   useRootProviderSettingsSnapshot(services);
   useEffect(() => {
@@ -448,6 +587,10 @@ function RootInner({
     setUser,
     userId: user?.id,
     onOpenRemoteConnection: allowRemoteWorkspace ? handleOpenRemoteConnection : undefined,
+    // 修复依据：手机只复用已有 Host 的 replayable attachment，不能沿用桌面 continuous 的本地恢复资格。
+    workbenchGroupClientMode: isWebRemoteControlRoot
+      ? "web-remote-replayable"
+      : "desktop-continuous",
   });
   const handleRemoteWorkspaceActivated = useCallback(
     ({
@@ -492,6 +635,28 @@ function RootInner({
   });
 
   useEffect(() => {
+    if (!platform.onWebRemoteControlReconnectWorkspace) return;
+    // 修复原因：合并时丢失桌面重连接线，手机的重连请求必须仍由已有连接 owner 执行。
+    return platform.onWebRemoteControlReconnectWorkspace(async (request) => {
+      try {
+        await handleReconnectRemoteWorkspace(request.workspaceKey, {
+          activateWorkspaceAfterReconnect: false,
+          showErrorToast: false,
+          throwOnFailure: true,
+        });
+        return { requestId: request.requestId, workspaceKey: request.workspaceKey, success: true };
+      } catch (error) {
+        return {
+          requestId: request.requestId,
+          workspaceKey: request.workspaceKey,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+  }, [handleReconnectRemoteWorkspace, platform]);
+
+  useEffect(() => {
     // fileDisplay 默认不传 basePath 时需要落到“当前激活 workspace”。
     // 之前纯工具层拿不到窗口内的 workspace 上下文，只能退回绝对路径，导致 mention / 文件展示在输入框里不够简洁。
     // 这里由 Root 在 workspace 切换时同步一份当前上下文，既保留工具层复用性，也不把 Zustand 依赖硬塞进工具函数。
@@ -528,6 +693,16 @@ function RootInner({
       })),
     );
   }, [hasCompletedFullRestore, isDesktop, windowWorkspaceTabs]);
+
+  const webRemoteControlTaskSyncNode =
+    hasCompletedFullRestore &&
+    webRemoteControlTaskSyncEnabled &&
+    platform.syncWebRemoteControlTasks ? (
+      <WebRemoteControlTaskSync
+        syncWebRemoteControlTasks={platform.syncWebRemoteControlTasks}
+        workspaceTabs={windowWorkspaceTabs}
+      />
+    ) : null;
 
   const { tryRefresh, clearCredentials } = useTokenRefresh();
   void tryRefresh;
@@ -597,6 +772,8 @@ function RootInner({
     reconnectingRemoteWorkspaceKeys,
     remoteWorkspaceErrorByWorkspaceKey,
     totalUnreadTaskCount,
+    webRemoteControlFeatureEnabled,
+    webRemoteControlSessionActive,
     hasCompletedFullTabRestore: hasCompletedFullRestore,
     intl,
     isRestoringOAuthSession: isResolvingStartupAuthState || providerStartupSyncPending,
@@ -824,6 +1001,7 @@ function RootInner({
     isDesktop,
     isMacDesktop,
     isWindowsDesktop,
+    isWebRemoteControl: isWebRemoteControlRoot,
     captionWorkspacePath: activeWorkspacePath,
     onBack: activeWorkspacePath ? handleBackFromSettings : undefined,
     onCreateTask: handleCreateTask,
@@ -837,6 +1015,7 @@ function RootInner({
     return (
       <RootShell>
         {rootModelSelectionErrorNode}
+        {webRemoteControlTaskSyncNode}
         {remoteConnectionDialog}
         {directoryBrowserDialog}
         {/* HTML 启动壳已经展示 ZCode SVG，但 React 接管 root 后旧壳会被整棵替换。
@@ -858,87 +1037,105 @@ function RootInner({
     return (
       <RootShell>
         {rootModelSelectionErrorNode}
+        {webRemoteControlTaskSyncNode}
         {initialWorkspaceLoadingFallback}
         {directoryBrowserDialog}
       </RootShell>
     );
   }
 
+  // 修复原因：手机复用已有 Host，不因 home-only 缺少桌面偏好而重新挂载职业/迁移引导。
+  const workspaceContent = (
+    <>
+      {/* 新引导属于应用级偏好；无项目时也要挂载，才能响应设置页的手动打开请求。 */}
+      {!workspaceShellPath ? (
+        isSettingsTabActive ? (
+          <ScopedErrorBoundary
+            scope="settings-page"
+            resetKeys={["settings-root"]}
+            variant="panel"
+            className="h-full"
+          >
+            <SettingsPage {...settingsLayerProps} />
+          </ScopedErrorBoundary>
+        ) : null
+      ) : (
+        <RootWorkspaceContent
+          workspaceScopedServices={workspaceScopedServices}
+          baseFeedbackService={services.feedbackService}
+          workspaceShellPath={workspaceShellPath}
+          workspaceIdentity={workspaceShellIdentity}
+          workspaceRemoteSessionId={workspaceShellRemoteSessionId}
+          activeWorkspacePath={activeWorkspacePath}
+          isSettingsTabActive={isSettingsTabActive}
+          handleConnectRemote={handleConnectRemote}
+          handleSelectRemoteProject={handleSelectRemoteProject}
+          handleCancelRemoteProject={handleCancelRemoteProject}
+          handleReconnectRemoteWorkspace={handleReconnectRemoteWorkspace}
+          handleCreateTask={handleCreateTask}
+          handleCreateConversationTask={handleCreateConversationTask}
+          handleResolveConversationWorkspace={handleResolveConversationWorkspace}
+          handleOpenWorkspace={handleOpenWorkspace}
+          handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
+          handleOpenRemoteWorkspace={allowRemoteWorkspace ? handleOpenRemoteConnection : undefined}
+          handleCreateScratchWorkspace={handleCreateScratchWorkspace}
+          remoteConnectionInProgress={remoteConnectionInProgress}
+          remoteWorkspaceSessions={remoteWorkspaceSessions}
+          allowRemoteWorkspace={allowRemoteWorkspace}
+          handleBackFromSettings={handleBackFromSettings}
+          user={user}
+          reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
+          remoteWorkspaceErrorByWorkspaceKey={remoteWorkspaceErrorByWorkspaceKey}
+          reconnectingRemoteWorkspaceLogsByWorkspaceKey={
+            reconnectingRemoteWorkspaceLogsByWorkspaceKey
+          }
+          remoteConnectionLogs={remoteConnectionLogs}
+          allowOpenWorkspace={allowOpenWorkspace}
+          // 修复原因：Root 曾吞掉这些合法 props，手机壳与宽屏远控任务索引因此完全不可达。
+          webRemoteControlWorkspaceSwitcher={webRemoteControlWorkspaceSwitcher}
+          initialWebRemoteControlMobileNavigationIntent={
+            initialWebRemoteControlMobileNavigationIntent
+          }
+          initialWebRemoteControlWorkspaceList={initialWebRemoteControlWorkspaceList}
+          webRemoteControlTerminalTransportState={webRemoteControlTerminalTransportState}
+          isDesktop={isDesktop}
+          isMacDesktop={isMacDesktop}
+          isWindowsDesktop={isWindowsDesktop}
+          supportsEmbeddedBrowser={supportsEmbeddedBrowser}
+        />
+      )}
+    </>
+  );
+
   return (
     <RootShell>
       {rootModelSelectionErrorNode}
+      {webRemoteControlTaskSyncNode}
       {remoteConnectionDialog}
       {directoryBrowserDialog}
-      <OccupationOnboarding
-        showWindowControls={Boolean(isWindowsDesktop || (isDesktop && !isMacDesktop))}
-        showChildrenWhileLoading={!workspaceShellPath && isSettingsTabActive}
-        isMacDesktop={isMacDesktop}
-        isWindowsDesktop={isWindowsDesktop}
-      >
-        {/* 新引导属于应用级偏好；无项目时也要挂载，才能响应设置页的手动打开请求。 */}
-        {!workspaceShellPath ? (
-          isSettingsTabActive ? (
-            <ScopedErrorBoundary
-              scope="settings-page"
-              resetKeys={["settings-root"]}
-              variant="panel"
-              className="h-full"
-            >
-              <SettingsPage {...settingsLayerProps} />
-            </ScopedErrorBoundary>
-          ) : null
-        ) : (
-          <RootWorkspaceContent
-            workspaceScopedServices={workspaceScopedServices}
-            baseFeedbackService={services.feedbackService}
-            workspaceShellPath={workspaceShellPath}
-            workspaceIdentity={workspaceShellIdentity}
-            workspaceRemoteSessionId={workspaceShellRemoteSessionId}
-            activeWorkspacePath={activeWorkspacePath}
-            isSettingsTabActive={isSettingsTabActive}
-            handleConnectRemote={handleConnectRemote}
-            handleSelectRemoteProject={handleSelectRemoteProject}
-            handleCancelRemoteProject={handleCancelRemoteProject}
-            handleReconnectRemoteWorkspace={handleReconnectRemoteWorkspace}
-            handleCreateTask={handleCreateTask}
-            handleCreateConversationTask={handleCreateConversationTask}
-            handleResolveConversationWorkspace={handleResolveConversationWorkspace}
-            handleOpenWorkspace={handleOpenWorkspace}
-            handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
-            handleOpenRemoteWorkspace={
-              allowRemoteWorkspace ? handleOpenRemoteConnection : undefined
-            }
-            handleCreateScratchWorkspace={handleCreateScratchWorkspace}
-            remoteConnectionInProgress={remoteConnectionInProgress}
-            remoteWorkspaceSessions={remoteWorkspaceSessions}
-            allowRemoteWorkspace={allowRemoteWorkspace}
-            handleBackFromSettings={handleBackFromSettings}
-            user={user}
-            reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
-            remoteWorkspaceErrorByWorkspaceKey={remoteWorkspaceErrorByWorkspaceKey}
-            reconnectingRemoteWorkspaceLogsByWorkspaceKey={
-              reconnectingRemoteWorkspaceLogsByWorkspaceKey
-            }
-            remoteConnectionLogs={remoteConnectionLogs}
-            allowOpenWorkspace={allowOpenWorkspace}
-            isDesktop={isDesktop}
-            isMacDesktop={isMacDesktop}
-            isWindowsDesktop={isWindowsDesktop}
-            supportsEmbeddedBrowser={supportsEmbeddedBrowser}
-          />
-        )}
-        <ScopedErrorBoundary
-          scope="onboarding-dialog"
-          resetKeys={[workspaceShellIdentity?.trim() || workspaceShellPath]}
-          variant="silent"
+      {isWebRemoteControlRoot ? (
+        workspaceContent
+      ) : (
+        <OccupationOnboarding
+          showWindowControls={Boolean(isWindowsDesktop || (isDesktop && !isMacDesktop))}
+          showChildrenWhileLoading={!workspaceShellPath && isSettingsTabActive}
+          isMacDesktop={isMacDesktop}
+          isWindowsDesktop={isWindowsDesktop}
         >
-          <OnboardingDialog
-            workspacePath={workspaceShellPath || undefined}
-            workspaceIdentity={workspaceShellIdentity}
-            isDesktop={isDesktop}
-          />
-        </ScopedErrorBoundary>
-      </OccupationOnboarding>
+          {workspaceContent}
+          <ScopedErrorBoundary
+            scope="onboarding-dialog"
+            resetKeys={[workspaceShellIdentity?.trim() || workspaceShellPath]}
+            variant="silent"
+          >
+            <OnboardingDialog
+              workspacePath={workspaceShellPath || undefined}
+              workspaceIdentity={workspaceShellIdentity}
+              isDesktop={isDesktop}
+            />
+          </ScopedErrorBoundary>
+        </OccupationOnboarding>
+      )}
     </RootShell>
   );
 }

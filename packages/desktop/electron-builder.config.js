@@ -4,8 +4,7 @@ import { access, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { HELPER_APP_NAME } from "@zcode/zcode-cua/broker/helperConstants";
 import { runCommand, runCommandAndReadStdout } from "../../scripts/spawn-command.mjs";
 import { loadBuiltinProviderConfig } from "../../scripts/builtin-provider-config.mjs";
 import { noticesFileName, stageElectronNotices } from "../../scripts/third-party-notices.mjs";
@@ -23,43 +22,17 @@ import {
   resolveDesktopArtifactSuffix,
   resolveDesktopProductIdentity,
 } from "./scripts/desktop-product-identity.mjs";
+import { createWindowsPowerShellSecurityArgs } from "./scripts/powershell-command.mjs";
+import {
+  isSharpRequiredByComputerUse,
+  verifyStagedSharp,
+} from "./scripts/sharp-package-assets.mjs";
+import { isRealComputerUseProducerInstalled } from "./scripts/computer-use-producer.mjs";
 import { verifyStagedKoffi } from "./scripts/koffi-package-assets.mjs";
-const ELECTRON_BUILDER_ARCH = {
-  1: "x64",
-  3: "arm64",
-};
-function resolveElectronBuilderWindowsTarget({
-  electronPlatformName,
-  arch,
-  configuredTargetPlatform,
-}) {
-  if (electronPlatformName !== "win32") {
-    throw new Error(
-      `[electron-builder.config] context platform is not win32: ${String(electronPlatformName)}`,
-    );
-  }
-  const actualArch = ELECTRON_BUILDER_ARCH[arch];
-  if (!actualArch) {
-    throw new Error(
-      `[electron-builder.config] unsupported electron-builder Windows architecture: ${String(arch)}`,
-    );
-  }
-  const actualTarget = {
-    os: "win32",
-    arch: actualArch,
-    key: `win32-${actualArch}`,
-  };
-  if (
-    configuredTargetPlatform?.os !== actualTarget.os ||
-    configuredTargetPlatform?.arch !== actualTarget.arch ||
-    configuredTargetPlatform?.key !== actualTarget.key
-  ) {
-    throw new Error(
-      `[electron-builder.config] configured target ${String(configuredTargetPlatform?.key)} does not match electron-builder target ${actualTarget.key}`,
-    );
-  }
-  return actualTarget;
-}
+import {
+  finalizePackagedWindowsCuaHelper,
+  resolveElectronBuilderWindowsTarget,
+} from "./scripts/windows-cua-helper-assets.mjs";
 import {
   findDesktopNativePackageViolations,
   createDesktopNativePackagePrunePatterns,
@@ -73,6 +46,10 @@ import {
 
 const buildMetadata = getBuildMetadata();
 const targetPlatform = getTargetPlatform();
+// 修复原因：Windows Chrome 导入入口已暂时隐藏，默认安装包不应继续携带、签名或校验原生 helper。
+// 代码和完整供应链保留在显式 opt-in 后，便于未来恢复而不影响当前发布流程。
+const shouldPackageWindowsBrowserImportHelper =
+  targetPlatform.os === "win32" && process.env.ZCODE_ENABLE_WINDOWS_BROWSER_IMPORT === "1";
 const builtinProviderConfig = await loadBuiltinProviderConfig();
 const desktopProductIdentity = resolveDesktopProductIdentity({
   ...process.env,
@@ -89,6 +66,8 @@ const shouldEnableMacSigning =
   process.env.ZCODE_ENABLE_MAC_SIGN === "1" && Boolean(macSigningIdentity);
 const workspaceRoot = resolve(import.meta.dirname, "../..");
 const desktopPackageRoot = import.meta.dirname;
+// 修复原因：随包资源仍引用暂存配置，但声明被移除后配置加载即抛 ReferenceError。
+// 恢复同一文件的存在性检查，并在正式发布要求配置时提前拒绝缺失产物。
 const enterpriseIdentityConfigPath = resolve(
   desktopPackageRoot,
   ".release-config/enterprise-identity.json",
@@ -97,8 +76,12 @@ const hasEnterpriseIdentityConfig = await access(enterpriseIdentityConfigPath).t
   () => true,
   () => false,
 );
-if (process.env.UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG === "1" && !hasEnterpriseIdentityConfig)
+if (process.env.UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG === "1" && !hasEnterpriseIdentityConfig) {
   throw new Error("Release requires staged public enterprise identity configuration");
+}
+// Computer Use Helper（macOS .app、Windows runtime）只随真实 producer 打包；开源占位包下跳过随包资源与校验。
+const shouldPackageComputerUseHelper = isRealComputerUseProducerInstalled({ desktopPackageRoot });
+const HELPER_FILENAME = "zcode-browser-import-helper.exe";
 const runtimeModuleLookupRoots = [
   desktopPackageRoot,
   workspaceRoot,
@@ -106,6 +89,12 @@ const runtimeModuleLookupRoots = [
   resolve(workspaceRoot, "node_modules", ".pnpm", "node_modules"),
 ];
 const desktopDistDir = process.env.ZCODE_DESKTOP_DIST_DIR || "dist";
+const bundledCuaHelperSource = resolve(
+  desktopPackageRoot,
+  "bundled-cua-helper",
+  targetPlatform.arch,
+  HELPER_APP_NAME,
+);
 const DEFAULT_ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/";
 // `pnpm exec asar` 依赖 `.bin/asar`，但 @electron/asar 仅是 electron-builder 传递依赖时，
 // Linux CI（pnpm hoisted）往往解析不到该二进制，`asar list` 未运行即 exit 1。
@@ -120,7 +109,6 @@ const asarCliPath = resolve(
   "bin",
   "asar.js",
 );
-
 // pacman 依赖必须使用 Arch 官方仓库中的包名。electron-builder 的历史默认集合包含
 // 已移除的 libappindicator-gtk3/http-parser，且缺少 Electron 实际需要的运行库；显式
 // 维护最小运行时闭包，避免 pacman -U 无法解析依赖或启动时才暴露缺库。
@@ -173,6 +161,22 @@ function resolveElectronDownloadMirror(env = process.env) {
   return DEFAULT_ELECTRON_MIRROR;
 }
 
+function assertPackagedCuaHelper(context) {
+  if (targetPlatform.os !== "darwin" || !shouldPackageComputerUseHelper) return;
+  const appPath = join(
+    context.appOutDir,
+    `${desktopProductIdentity.productName}.app`,
+    "Contents",
+    "Resources",
+    "cua-helper",
+    HELPER_APP_NAME,
+  );
+  if (!existsSync(appPath)) {
+    throw new Error(`Packaged ZCode is missing bundled Computer Use Helper: ${appPath}`);
+  }
+}
+const shouldEnableWindowsVsign =
+  process.platform === "win32" && process.env.ZCODE_ENABLE_WINDOWS_SIGN === "1";
 const commandStdoutMaxBuffer = 64 * 1024 * 1024;
 // 产物后缀只标记后端环境（_TEST）；身份靠 productName 区分，生产后端的 Preview 包没有后缀。
 const desktopArtifactEnvSuffix = resolveDesktopArtifactSuffix(process.env);
@@ -419,6 +423,102 @@ function assertPackagedNodePtyPrebuild(context) {
     throw new Error(`node-pty 预编译产物缺失: ${targetBinaryPath}`);
 }
 
+function assertPackagedCuaSharp(context) {
+  if (!isSharpRequiredByComputerUse({ desktopPackageRoot })) return;
+  const problems = [
+    [
+      "packages/browser-use-plugin",
+      verifyStagedSharp({
+        resourcesDir: resolvePackagedResourcesDir(context),
+        targetPlatform,
+        pluginRelativePath: "packages/browser-use-plugin",
+      }),
+    ],
+    [
+      "packages/zcode-cua-plugin",
+      verifyStagedSharp({
+        resourcesDir: resolvePackagedResourcesDir(context),
+        targetPlatform,
+        pluginRelativePath: "packages/zcode-cua-plugin",
+      }),
+    ],
+  ].flatMap(([pluginPath, pluginProblems]) =>
+    pluginProblems.map((problem) => `${pluginPath}: ${problem}`),
+  );
+  if (problems.length > 0) {
+    throw new Error(
+      `node_repl sharp runtime is incomplete in the packaged app:\n- ${problems.join("\n- ")}`,
+    );
+  }
+}
+
+function assertPackagedCuaKoffi(context) {
+  const problems = verifyStagedKoffi({
+    resourcesDir: resolvePackagedResourcesDir(context),
+    targetPlatform,
+  });
+  if (problems.length > 0) {
+    throw new Error(
+      `CUA plugin koffi runtime is incomplete in the packaged app:\n- ${problems.join("\n- ")}`,
+    );
+  }
+}
+
+function assertSignedWindowsBrowserImportHelper(context) {
+  if (
+    !shouldPackageWindowsBrowserImportHelper ||
+    context.electronPlatformName !== "win32" ||
+    !shouldEnableWindowsVsign
+  )
+    return;
+  const helperPath = resolve(context.appOutDir, "resources", "browser-import", HELPER_FILENAME);
+  const appExecutablePath = resolve(
+    context.appOutDir,
+    `${context.packager.appInfo.productFilename}.exe`,
+  );
+  const script = [
+    "$helper=Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $zcodeArg0;",
+    "$app=Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $zcodeArg1;",
+    "if($helper.Status -ne 'Valid' -or $app.Status -ne 'Valid'){",
+    "[Console]::Error.WriteLine(('Authenticode status invalid: helper={0} ({1}); app={2} ({3})' -f $helper.Status,$helper.StatusMessage,$app.Status,$app.StatusMessage));",
+    "exit 23};",
+    "if($null -eq $helper.SignerCertificate -or $null -eq $app.SignerCertificate){",
+    "[Console]::Error.WriteLine('Authenticode signer certificate missing');exit 24};",
+    "if($helper.SignerCertificate.Thumbprint -ne $app.SignerCertificate.Thumbprint){",
+    "[Console]::Error.WriteLine(('Authenticode signer mismatch: helper={0}; app={1}' -f $helper.SignerCertificate.Thumbprint,$app.SignerCertificate.Thumbprint));",
+    "exit 25};",
+  ].join("");
+  // Bugfix 原因：extraResources 下的 EXE 是否进入 electron-builder 默认签名遍历会随版本变化；
+  // 同时 Windows PowerShell 的 `-Command` 不会把尾随路径放进 `$args`，旧校验因此固定误报 exit 23。
+  // 发布态改用 EncodedCommand，并从 PSHOME 显式加载系统 Security 模块，避免 pwsh 继承的
+  // PSModulePath 让 Windows PowerShell 5.1 错误加载不兼容模块。
+  runCommand(
+    "powershell.exe",
+    createWindowsPowerShellSecurityArgs(script, [helperPath, appExecutablePath]),
+  );
+}
+
+function signWindowsBrowserImportHelper(context) {
+  if (
+    !shouldPackageWindowsBrowserImportHelper ||
+    context.electronPlatformName !== "win32" ||
+    !shouldEnableWindowsVsign
+  )
+    return;
+  const helperPath = resolve(context.appOutDir, "resources", "browser-import", HELPER_FILENAME);
+  runCommand("powershell.exe", [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    resolve(workspaceRoot, "scripts/sign-windows.ps1"),
+    "-FilePath",
+    helperPath,
+  ]);
+}
+
 /** @type {import("electron-builder").Configuration} */
 export default {
   appId: desktopProductIdentity.appId,
@@ -437,8 +537,14 @@ export default {
   // 默认全量语言会产生大量 locale.pak 签名调用，显著拉长打包时长。
   // 这里仅保留当前产品必需语言，减少签名文件数并缩短 CI 总耗时。
   electronLanguages: ["en-US", "zh-CN"],
-  // 旧硬编码曾让锁文件已升级的 Electron 仍被打包成旧版本；直接取 manifest 的唯一固定版本。
+  // 修复原因：独立硬编码让安装包回退到旧 Electron，与 manifest 及测试 runtime 不一致。
+  // 显式读取唯一固定版本，既避免 builder 推导版本，也保证 Helper 校验与安装包一致。
   electronVersion: desktopElectronVersion,
+  // 旧 Windows 协议注册可能在应用 JS 重写注册表前注入 --inspect-brk。
+  // 在签名前关闭原生 Inspector 参数，覆盖升级后首次启动；保留 Agent 所需的 RunAsNode。
+  ...(targetPlatform.os === "win32"
+    ? { electronFuses: { enableNodeCliInspectArguments: false } }
+    : {}),
   electronDownload: {
     // ELECTRON_MIRROR 是 @electron/get 的全局环境变量，会覆盖 dmg-builder 等
     // generic artifact 自己传入的 mirrorOptions，导致 builder 辅助包被错误拼到 Electron runtime 镜像目录。
@@ -528,19 +634,40 @@ export default {
     runTimedSync("afterPack:assertPackagedNodePtyPrebuild", () =>
       assertPackagedNodePtyPrebuild(context),
     );
-    if (context.electronPlatformName === "darwin" && process.env.ZCODE_MAC_ADHOC_SIGN === "1") {
-      // Finder/resource-fork 属性会令签名拒绝；只清理生成的副本，保持签名校验严格执行。
-      await promisify(execFile)("xattr", [
-        "-cr",
-        join(context.appOutDir, `${desktopProductIdentity.productName}.app`),
-      ]);
+    runTimedSync("afterPack:assertPackagedCuaSharp", () => assertPackagedCuaSharp(context));
+    runTimedSync("afterPack:assertPackagedCuaKoffi", () => assertPackagedCuaKoffi(context));
+    runTimedSync("afterPack:assertPackagedCuaHelper", () => assertPackagedCuaHelper(context));
+    if (actualWindowsTarget && shouldPackageComputerUseHelper) {
+      await runTimedAsync("afterPack:finalizePackagedWindowsCuaHelper", () =>
+        finalizePackagedWindowsCuaHelper({
+          resourcesDir: resolvePackagedResourcesDir(context),
+          targetPlatform: actualWindowsTarget,
+          electronVersion: desktopElectronVersion,
+        }),
+      );
     }
+    // 修复原因：清单属于 Windows 升级清理合同；CUA 占位包也必须记录程序文件所有权。
+    // 放在可选 Helper 校验之后，保证清单覆盖最终资源，不受 producer 是否启用影响。
     if (actualWindowsTarget) {
       await runTimedAsync("afterPack:writeWindowsInstallManifest", () =>
         writeWindowsInstallManifest(context),
       );
     }
+    if (shouldPackageWindowsBrowserImportHelper) {
+      runTimedSync("afterPack:signWindowsBrowserImportHelper", () =>
+        signWindowsBrowserImportHelper(context),
+      );
+    }
   },
+  ...(shouldPackageWindowsBrowserImportHelper
+    ? {
+        afterSign: async (context) => {
+          runTimedSync("afterSign:assertSignedWindowsBrowserImportHelper", () =>
+            assertSignedWindowsBrowserImportHelper(context),
+          );
+        },
+      }
+    : {}),
   extraResources: [
     ...(hasEnterpriseIdentityConfig
       ? [{ from: enterpriseIdentityConfigPath, to: "config/enterprise-identity.json" }]
@@ -548,6 +675,14 @@ export default {
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
     ...(targetPlatform.os === "darwin"
       ? [
+          ...(shouldPackageComputerUseHelper
+            ? [
+                {
+                  from: bundledCuaHelperSource,
+                  to: `cua-helper/${HELPER_APP_NAME}`,
+                },
+              ]
+            : []),
           {
             // CUA 权限浮窗的吸附数据源（CGWindowListCopyWindowInfo，不需要任何 TCC 权限）。
             // 主进程按 process.resourcesPath 解析；缺失时 watcher fail-open，浮窗仍可用
@@ -598,6 +733,22 @@ export default {
           },
         ]
       : []),
+    ...(targetPlatform.os === "win32" && shouldPackageComputerUseHelper
+      ? [
+          {
+            // 根因：electron-builder 会跳过 from 根目录下的 node_modules；主树与依赖树必须分开映射，
+            // 否则安装包有 manifest/entry，却会在 Helper 启动时缺 express/Sharp。
+            from: `bundled-tools/${targetPlatform.key}/cua-helper`,
+            to: "tools/cua-helper",
+            filter: ["**/*", "!node_modules{,/**/*}"],
+          },
+          {
+            from: `bundled-tools/${targetPlatform.key}/cua-helper/node_modules`,
+            to: "tools/cua-helper/node_modules",
+            filter: ["**/*", "!**/*.map"],
+          },
+        ]
+      : []),
     {
       // agent 运行时资产，打包到 resources/glm。
       // 桌面端内置的是 agent 的 JS bundle（glm/zcode.cjs，由 prepare:agent-bundle 生成），
@@ -639,6 +790,9 @@ export default {
     artifactName: buildDesktopArtifactName("mac"),
     extendInfo: {
       NSAppleEventsUsageDescription: `${desktopProductIdentity.productName} needs Apple Events access to coordinate local automation workflows with user-approved desktop apps.`,
+      // 缺失该 key 时 macOS 会静默拒绝 CoreBluetooth 枚举，内置浏览器 Web Bluetooth
+      // 的设备选择器列表恒为空（实测 Chrome 有蓝牙隐私权限则正常）。
+      NSBluetoothAlwaysUsageDescription: `${desktopProductIdentity.productName} needs Bluetooth access to list nearby devices when a website you open in the embedded browser requests one.`,
     },
     // 预签名脚本走的是原生 codesign，要求完整的 "Developer ID Application: ..." 身份串；
     // 但 electron-builder 的 mac.identity 在 26.x 下会拒绝带此前缀的名字。
@@ -668,6 +822,7 @@ export default {
     // CUA Helper 在独立 job 中已完成 Developer ID 签名和 notarization staple；
     // electron-builder 若再次签名嵌套 Helper 会改变 CDHash，使最终用户包中的 staple 失效。
     signIgnore: [
+      "[/\\\\]Contents[/\\\\]Resources[/\\\\]cua-helper([/\\\\]|$)",
       "[/\\\\]Contents[/\\\\]Resources[/\\\\]glm([/\\\\]|$)",
       "[/\\\\]Contents[/\\\\]Resources[/\\\\]tools([/\\\\]|$)",
     ],
@@ -675,6 +830,18 @@ export default {
   win: {
     target: ["nsis"],
     artifactName: buildDesktopArtifactName("win"),
+    signExts: [".node", ".dll"],
+    // Bugfix: Windows CI 之前完全依赖 electron-builder 内置 signtool.exe，
+    // 一旦 runner 的证书链路要求改走 vsigntool，打包阶段就会在内置签名环节卡死。
+    // 这里通过自定义 sign hook 把所有 Windows 可执行文件统一切到仓库内的 vsigntool 封装，
+    // 既保留 electron-builder 的签名时机，又和 CI 机器上的签名基础设施保持一致。
+    ...(shouldEnableWindowsVsign
+      ? {
+          signtoolOptions: {
+            sign: "./scripts/sign-windows-hook.cjs",
+          },
+        }
+      : {}),
   },
   linux: {
     target: ["AppImage", "deb", "rpm", "pacman"],

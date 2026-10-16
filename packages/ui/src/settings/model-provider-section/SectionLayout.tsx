@@ -25,7 +25,7 @@ interface ModelProviderSectionLayoutProps {
   children: ReactNode;
 }
 
-function shouldShowModelProviderRefreshLoading(params: {
+export function shouldShowModelProviderRefreshLoading(params: {
   presetLoading: boolean;
   customLoading: boolean;
 }): boolean {

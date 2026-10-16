@@ -18,6 +18,8 @@
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。
+- Electron runtime 版本唯一读取 `packages/desktop/package.json` 的固定版本，开发、测试、安装包及 Windows Helper 校验不得另行硬编码。打包配置必须能在未暂存企业身份配置时正常加载；配置存在时从 `.release-config/enterprise-identity.json` 复制到 `resources/config/enterprise-identity.json`，设置 `UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG=1` 而配置缺失时在打包开始前拒绝构建。
+- Windows 的 `.zcode-install-manifest` 由桌面打包流程独立生成，记录最终安装目录内的程序所有权。Computer Use 使用开源占位包或真实 producer 都必须生成清单；只有 Helper 的资源准备与校验依赖 producer，不能让可选能力改变升级清理合同。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
 - macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。
 - Linux 包保留发行格式的架构名称：x64 可为 x64/x86_64/amd64，arm64 可为 arm64/aarch64；manifest 使用统一 matrix 身份，汇总须识别对应别名。
@@ -26,6 +28,7 @@
 ## 所有者和事件顺序
 
 - 根版本和 Git 提交唯一决定构建身份。平台 build job 只产生当前提交的安装包与带 SHA256 的 manifest；publish job 唯一拥有 Release 创建与公开操作。
+- `electron-builder.config.js` 唯一持有企业公开配置的随包映射和 Windows 安装所有权清单；Windows `afterPack` 先完成运行时资源校验、按需完成真实 Helper 校验，再写入最终文件清单，随后才签名和生成 NSIS 产物。
 - publish 必须等待检查、审计策略和全部五个平台构建完成。汇总时重新验证版本、提交、平台矩阵、必需文件和校验和；任一目标失败不发布完整 Release。
 - 构建 job 仅有 contents read；publish job 才有 contents write。输入先校验，再通过环境变量和独立脚本传递，不把用户输入插入 shell 代码。
 - 发布先创建 draft，再上传全部已核验文件，最后公开；重跑只能补齐同一版本、同一提交的 draft。已公开 Release 不自动覆盖。保留旧版本和本机替换前的 `.app` 备份作为回退路径。
@@ -39,7 +42,9 @@ flowchart LR
   Check --> Win[Windows x64]
   Check --> Linux[Linux x64 / arm64]
   Mac --> Validate[校验五平台 manifest 和 SHA256]
-  Win --> Validate
+  Win --> WinRuntime[运行时资源校验 / 按需 Helper 校验]
+  WinRuntime --> WinOwnership[写入最终 Windows 文件所有权清单]
+  WinOwnership --> Validate
   Linux --> Validate
   Audit --> Validate
   Validate --> Draft[创建并上传 draft]
@@ -53,3 +58,5 @@ flowchart LR
 3. macOS 安装副本的签名、版本和源码提交通过核验，主进程实际启动；Windows/Linux 分别记录构建及可用的运行验证，不能用 macOS 启动代替它们。
 4. CI 的未执行、失败、依赖审计发现和签名限制如实记录。
 5. 从其它分支手工 publish、缺失 tag、tag 指向另一提交或版本不一致均在创建 Release 前失败。
+6. 打包配置在企业身份配置缺失且非必需时正常加载；配置存在时正确映射随包路径，必需但缺失时立即失败。Electron runtime 版本始终等于 desktop manifest 固定版本。
+7. 开源占位 CUA 的 Windows `afterPack` 仍生成包含实际安装文件的 `.zcode-install-manifest`；真实 producer 完成 Helper 校验后也生成同一清单。

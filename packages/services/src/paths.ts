@@ -7,8 +7,9 @@ import {
   LEGACY_DATA_BASE_DIR_ENV,
   UWORK_DATA_BASE_DIR_ENV,
   UWORK_DATA_ROOT_DIR_NAME,
-  resolveUserStorageRoot,
+  ZCODE_AGENT_RUNTIME,
   resolveUserCliRoot,
+  resolveUserStorageRoot,
 } from "@zcode/shared";
 
 let _dataBaseDir: string | null = null;
@@ -19,13 +20,13 @@ const envDataBaseDir =
   null;
 const defaultDataBaseDir = process.env.HOME?.trim() || homedir();
 
-interface DataBaseDirTargetValidationOptions {
+export interface DataBaseDirTargetValidationOptions {
   platform?: NodeJS.Platform | string;
   env?: Record<string, string | undefined>;
   appInstallDir?: string | null;
 }
 
-type DataBaseDirTargetValidationResult =
+export type DataBaseDirTargetValidationResult =
   | { ok: true }
   | {
       ok: false;
@@ -260,4 +261,16 @@ export function getLegacyDeletedTaskSessionSnapshotPath(
   return join(getTaskSessionDir(workspacePath, workspaceIdentity), `${taskId}.deleted.json`);
 }
 
+/**
+ * GLM（唯一 agent provider）的配置目录：~/.zcode/cli。
+ * Bugfix：GLM 配置改为直接读写新版 zcode-cli 的全局配置目录，不做 workspace 隔离，
+ * 避免同机不同工作区配置漂移。
+ */
+export function getProviderWorkspaceConfigDir(): string {
+  return ZCODE_AGENT_RUNTIME.nativeConfigDir
+    ? join(getDataBaseDir(), ZCODE_AGENT_RUNTIME.nativeConfigDir)
+    : join(getDataBaseDir(), ".zcode", "cli");
+}
+
+// 上游只复制 .zcode/v2 会遗漏 UWork 自有状态甚至复制另一应用的数据；统一委托整根原子迁移。
 export { copyDataDirectory } from "./dataDirectoryMigration.js";

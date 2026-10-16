@@ -7,8 +7,11 @@
 // 除 optimistic overlay（pending 命令展示）外，本 store 不产生任何 conversation 事实。
 import {
   applyConversationDeltas,
+  isDeterministicContentFault,
   parseConversationTopic,
   PROTOCOL_V4_LIMITS,
+  type ConversationDelta,
+  SUBSCRIPTION_CONTENT_REJECTED,
   type ConversationRow,
   type ConversationSnapshot,
   type ConversationOpenTiming,
@@ -20,6 +23,7 @@ import {
 import { logger } from "@/logger.js";
 import type { ConversationTurnNavigatorHydrationResult } from "@/v4/conversationTurnNavigatorHelpers.js";
 import type { ConversationTransport } from "@/v4/transport.js";
+import { ConversationRowPool } from "@/v4/conversationRowSharing.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 
 /**
@@ -40,7 +44,7 @@ const RUNTIME_RECYCLE_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
  * 路径只相差一个 renderer/network round-trip。把窗口设为 2s 可以覆盖正常 desktop/mobile
  * 延迟，又能尽快从“CLI 继续工作、订阅完全静默”的半开通道自愈。超时只恢复订阅，不重放命令。
  */
-const ACCEPTED_INPUT_PROJECTION_GRACE_MS = 2_000;
+export const ACCEPTED_INPUT_PROJECTION_GRACE_MS = 2_000;
 const ACCEPTED_INPUT_COMMAND_TYPES = new Set(["sendText"]);
 
 /** 退避耗尽时展示给用户的 lastError（无底层 error 对象可引用的换代路径）。 */
@@ -250,7 +254,7 @@ export function shouldAutoLoadIncompleteLeadingTurn(
  * 窗口首行之前的行、去重后前插；顺序键 = rowId 升序（全序保证）。
  * 返回 null 表示无可并入行（窗口无变化，调用方不换引用）。
  */
-function mergeOlderRows(
+export function mergeOlderRows(
   window: readonly ConversationRow[],
   fetched: readonly ConversationRow[],
 ): ConversationRow[] | null {
@@ -281,6 +285,8 @@ export class ConversationProjectionStore {
   private readonly modelTransitionListeners = new Set<
     (transition: SessionModelTransition) => void
   >();
+  /** live-only 增量（插件资源通知）的旁路监听；只在 delta 帧应用后触发，快照帧不触发。 */
+  private readonly liveDeltaListeners = new Set<(deltas: readonly ConversationDelta[]) => void>();
   private observedModelTransitionEventId: string | null = null;
   // 订阅代际：并发 connect 只认最新一代，过期结果立即退订防服务端悬挂。
   private generation = 0;
@@ -304,6 +310,8 @@ export class ConversationProjectionStore {
     forceSnapshot: boolean;
     postRecoveryGapPending: boolean;
     frameDeadline: ReturnType<typeof setTimeout> | null;
+    /** 本次 flight 是为内容确定性失败发起的：终态用 contentRejected，不混进瞬态统计。 */
+    contentFault: boolean;
   } | null = null;
   private readonly offAssemblyFault: () => void;
   private readonly offRuntimeRestart: (() => void) | null = null;
@@ -330,11 +338,14 @@ export class ConversationProjectionStore {
   constructor(
     readonly topic: string,
     private readonly transport: ConversationTransport,
+    // 行结构共享池（docs/performance/conversation-row-structural-sharing.md）；
+    // SessionDataLayer 注入跨 store 共享的池，独立构造时退化为 store 内共享。
+    private readonly rowPool: ConversationRowPool = new ConversationRowPool(),
   ) {
     liveProjectionStores.add(this);
     this.offAssemblyFault = transport.onAssemblyFault((fault) => {
       if (fault.topic === this.topic) {
-        this.handleAssemblyFault(fault.subscriptionId, fault.deliveryKind);
+        this.handleAssemblyFault(fault.subscriptionId, fault.deliveryKind, fault.reasonCode);
       }
     });
     // runtime 换代（CLI 进程换代）按 sessionsIndexStore 的约定优先走 lifecycle：dispose
@@ -373,6 +384,15 @@ export class ConversationProjectionStore {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * 订阅每一帧应用后的增量列表。用途是 live-only 的 `pluginUi.*` 增量（它们不改行、不进快照），
+   * 常规行状态仍以 subscribe + getState 为准。
+   */
+  onLiveDeltas(listener: (deltas: readonly ConversationDelta[]) => void): () => void {
+    this.liveDeltaListeners.add(listener);
+    return () => this.liveDeltaListeners.delete(listener);
   }
 
   onOnlineModelTransition(listener: (transition: SessionModelTransition) => void): () => void {
@@ -652,26 +672,22 @@ export class ConversationProjectionStore {
   ): void {
     if (frame.payload.kind === "snapshot") {
       const hadAppliedBase = this.subscriptionHasAppliedBase;
-      logSubagentProjectionTransition(
-        this.topic,
-        this.state.snapshot,
-        frame.payload.snapshot,
-        "snapshot",
-      );
-      // 规则 1：整体替换，扔掉手里的一切换新的。
+      const snapshot = this.shareSnapshotRows(frame.payload.snapshot);
+      logSubagentProjectionTransition(this.topic, this.state.snapshot, snapshot, "snapshot");
+      // 规则 1：整体替换，扔掉手里的一切换新的（行对象按值复用旧引用，语义仍是整体替换）。
       this.setState({
-        snapshot: frame.payload.snapshot,
+        snapshot,
         planDirectoryRevision: this.state.planDirectoryRevision + 1,
         // snapshot 整体替换后 real-user query 集合可能已变，终态缓存必须失效。
         turnNavigatorDirectoryRevision: this.state.turnNavigatorDirectoryRevision + 1,
       });
       this.subscriptionHasAppliedBase = true;
-      this.reconcileOptimistic(frame.payload.snapshot);
-      this.reconcileAcceptedInputProjection(frame.payload.snapshot);
-      // initial 丢失时，publisher 允许完整 online snapshot 建立首个
+      this.reconcileOptimistic(snapshot);
+      this.reconcileAcceptedInputProjection(snapshot);
+      // Bug 原因：initial 丢失时，publisher 允许完整 online snapshot 建立首个
       // applied base；其中的持久 transition 可能早于本次订阅，不能冒充实时新事件。
       // 首帧只播种观察基线，后续 online 跃迁才通知 pane。
-      this.observeModelTransition(frame.payload.snapshot, context.online && hadAppliedBase);
+      this.observeModelTransition(snapshot, context.online && hadAppliedBase);
       if (context.subscribeMode !== null && context.frameReceivedAt !== undefined) {
         const snapshotAppliedAt = monotonicNow();
         this.sessionOpenRendererTiming = {
@@ -716,8 +732,8 @@ export class ConversationProjectionStore {
       return;
     }
     const applied = applyConversationDeltas(current, frame.payload.deltas);
-    // seq 是快照对齐水位，delta 帧应用完推进到帧右端点。
-    const next = { ...applied, seq: frame.toSeq };
+    // seq 是快照对齐水位（R-03），delta 帧应用完推进到帧右端点。
+    const next = this.shareDeltaRows({ ...applied, seq: frame.toSeq }, frame.payload.deltas);
     logSubagentProjectionTransition(this.topic, current, next, "deltas");
     const removedFromRowId = frame.payload.deltas.reduce<number | null>(
       (earliest, delta) =>
@@ -751,6 +767,54 @@ export class ConversationProjectionStore {
     this.reconcileAcceptedInputProjection(next);
     this.observeModelTransition(next, context.online);
     if (context.recovery) this.markRecoveryFrameSeen();
+    for (const listener of this.liveDeltaListeners) listener(frame.payload.deltas);
+  }
+
+  /**
+   * Bug 原因：整份 snapshot 的行全是新反序列化对象，历史 snapshot 被闭包链留住时每份各持
+   * 一套大字符串（同一 inputText 上百份）。这里把值相等的行 / 子值换回池中旧引用。
+   */
+  /** rows/range 补拉的历史行与池中仍存活的旧行共享（冷打开后往上翻时常见）。 */
+  private shareRows(rows: readonly ConversationRow[]): ConversationRow[] {
+    return rows.map((row) => this.rowPool.shareRow(this.topic, row));
+  }
+
+  private shareSnapshotRows(snapshot: ConversationSnapshot): ConversationSnapshot {
+    const window = this.rowPool.shareWindow(
+      this.topic,
+      snapshot.rows.window,
+      this.state.snapshot?.rows.window,
+    );
+    return window === snapshot.rows.window
+      ? snapshot
+      : { ...snapshot, rows: { ...snapshot.rows, window } };
+  }
+
+  /** row.upserted / row.appended 的新行做共享；row.delta 只登记，避免流式逐帧深比较。 */
+  private shareDeltaRows(
+    snapshot: ConversationSnapshot,
+    deltas: readonly ConversationDelta[],
+  ): ConversationSnapshot {
+    const shareIds = new Set<number>();
+    const rememberIds = new Set<number>();
+    for (const delta of deltas) {
+      if (delta.op === "row.upserted" || delta.op === "row.appended") shareIds.add(delta.row.rowId);
+      else if (delta.op === "row.delta") rememberIds.add(delta.rowId);
+    }
+    if (shareIds.size === 0 && rememberIds.size === 0) return snapshot;
+    let window: ConversationRow[] | null = null;
+    snapshot.rows.window.forEach((row, index) => {
+      if (shareIds.has(row.rowId)) {
+        const shared = this.rowPool.shareRow(this.topic, row);
+        if (shared !== row) {
+          window ??= [...snapshot.rows.window];
+          window[index] = shared;
+        }
+      } else if (rememberIds.has(row.rowId)) {
+        this.rowPool.remember(this.topic, row);
+      }
+    });
+    return window === null ? snapshot : { ...snapshot, rows: { ...snapshot.rows, window } };
   }
 
   private observeModelTransition(snapshot: ConversationSnapshot, online: boolean): void {
@@ -766,13 +830,24 @@ export class ConversationProjectionStore {
   }
 
   /** physical assembly fault：旧 projection 保持可见，active sub 上 single-flight 恢复。 */
-  handleAssemblyFault(subscriptionId: string, deliveryKind?: TopicFrameDeliveryKind): void {
+  handleAssemblyFault(
+    subscriptionId: string,
+    deliveryKind?: TopicFrameDeliveryKind,
+    reasonCode?: string,
+  ): void {
     if (this.closed || subscriptionId !== this.state.subscriptionId) return;
     if (
       this.awaitingInitial?.subscriptionId === subscriptionId &&
       (deliveryKind === "initial" || deliveryKind === "recovery" || deliveryKind === undefined)
     ) {
       this.awaitingInitial = null;
+    }
+    // 内容确定性失败不进瞬态阶梯（04-sync 封闭规则 11）：resume 只会把同一批 delta 再投一遍，
+    // 必然再被拒；deliveryKind 也不改变结论——本端读不懂这份内容。唯一可能产出不同字节的是
+    // 强制 snapshot，所以直接跳到它，它再被内容拒绝就停手，不把订阅烧在必然失败的重试上。
+    if (isDeterministicContentFault(reasonCode)) {
+      this.requestRecovery(true, { contentFault: true });
+      return;
     }
     // 缺失/伪 deliveryKind 会以 undefined typed fault 到达；若 recovery 已在途，
     // 必须 fail closed/升级，不能把坏 recovery 当普通 burst 后永远等待。
@@ -785,15 +860,18 @@ export class ConversationProjectionStore {
     this.requestRecovery(recoveryFault);
   }
 
-  private requestRecovery(recoveryEvent = false): void {
+  private requestRecovery(recoveryEvent = false, options: { contentFault?: boolean } = {}): void {
     if (this.closed) return;
     const subscriptionId = this.state.subscriptionId;
     if (!subscriptionId) {
       void this.connect({ forceSnapshot: true });
       return;
     }
+    const contentFault = options.contentFault === true;
     const existing = this.recovery;
     if (existing) {
+      // 一旦本次 flight 里出现过内容失败，终态就归内容失败：后续瞬态 fault 不该把它洗白。
+      if (contentFault) existing.contentFault = true;
       if (!recoveryEvent) return;
       if (existing.forceSnapshot) {
         this.failRecovery("fault.subscription.recoveryFailed");
@@ -819,9 +897,11 @@ export class ConversationProjectionStore {
       forceSnapshot: false,
       postRecoveryGapPending: false,
       frameDeadline: null,
+      contentFault,
     };
     this.recovery = recovery;
-    this.issueRecovery(recovery, false);
+    // 内容失败跳过 resume 档直接强制 snapshot；瞬态失败仍按原阶梯先试 resume。
+    this.issueRecovery(recovery, contentFault);
   }
 
   private issueRecovery(
@@ -908,7 +988,8 @@ export class ConversationProjectionStore {
       recovery.frameDeadline = null;
       if (this.closed || this.recovery !== recovery || recovery.validFrameSeen) return;
       if (!recovery.forceSnapshot) this.issueRecovery(recovery, true);
-      else this.failRecovery("fault.subscription.recoveryFrameTimedOut");
+      else
+        this.failRecovery("fault.subscription.recoveryFrameTimedOut", { contentEligible: false });
     }, PROTOCOL_V4_LIMITS.logicalFrameAssemblyTimeoutMs);
   }
 
@@ -925,11 +1006,19 @@ export class ConversationProjectionStore {
     this.recovery = null;
   }
 
-  private failRecovery(reasonCode: string): void {
+  /**
+   * `contentEligible: false` 给**超时**终态用：deadline 没等到 recovery 帧是传输症状，即使本次
+   * flight 起因是内容失败，也不该被重标成 contentRejected——那会连带取消一次仍然有意义的重试。
+   */
+  private failRecovery(reasonCode: string, options: { contentEligible?: boolean } = {}): void {
     if (!this.recovery) return;
+    // 内容确定性失败与传输失败必须可区分：前者重连不会变好，遥测按 code 聚合时也不该把一次
+    // 版本失配读成网络抖动（reasonCode 词表见 wire-fault.ts）。
+    const contentFault = this.recovery.contentFault && options.contentEligible !== false;
+    const code = contentFault ? SUBSCRIPTION_CONTENT_REJECTED : reasonCode;
     this.discardRecovery();
-    logger.warn(`[v4-store] ${this.topic} recovery fail-closed: ${reasonCode}`);
-    this.setState({ status: "error", lastError: reasonCode });
+    logger.warn(`[v4-store] ${this.topic} recovery fail-closed: ${code}`);
+    this.setState({ status: "error", lastError: code });
   }
 
   private handleRuntimeRestart(reason?: "runtimeRestart" | "transportReplaced"): void {
@@ -981,7 +1070,7 @@ export class ConversationProjectionStore {
       // 在途期间游标失效（row.removed 截断 / snapshot resync 整体替换）→ 结果作废，
       // 防止把权威侧已移除的历史行复活；下次触发按新窗口重新拉。
       if (current.rows.window[0]?.rowId !== beforeRowId) return;
-      const window = mergeOlderRows(current.rows.window, result.rows);
+      const window = mergeOlderRows(current.rows.window, this.shareRows(result.rows));
       if (window === null) return;
       this.setState({
         snapshot: { ...current, rows: { ...current.rows, window } },
@@ -1092,7 +1181,7 @@ export class ConversationProjectionStore {
       );
       if (realUserQueryCount < 2) {
         if (preserveIncompleteLeadingTurn) {
-          const window = mergeOlderRows(current.rows.window, olderRows);
+          const window = mergeOlderRows(current.rows.window, this.shareRows(olderRows));
           if (window === null) return stale(initialLogEpoch);
           committed = true;
           this.setState({
@@ -1123,7 +1212,7 @@ export class ConversationProjectionStore {
         this.turnNavigatorHydrationTerminal = result;
         return result;
       }
-      const window = mergeOlderRows(current.rows.window, olderRows);
+      const window = mergeOlderRows(current.rows.window, this.shareRows(olderRows));
       if (window === null) return stale(initialLogEpoch);
       committed = true;
       this.setState({

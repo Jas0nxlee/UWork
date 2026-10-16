@@ -46,7 +46,16 @@ jobs:
       - name: Validate complete desktop Agent and shared runtime build
         run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
-        run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs
+        run: >-
+          node --test packages/safe-extract-zip/test/*.test.cjs
+          packages/safe-extract-zip/contract.test.ts
+          scripts/test/desktop-release.test.mjs
+          scripts/test/desktop-asar-runtime.test.mjs
+          scripts/test/desktop-packaging-config.test.mjs
+          scripts/test/web-remote-uwork-integration.test.mjs
+          scripts/test/arms-patch-install-contract.test.mjs
+          scripts/test/generate-third-party-notices.test.mjs
+          scripts/third-party-notices.test.mjs
       - name: Validate provider, enterprise login, and AIHub skill source behavior
         run: >-
           pnpm exec tsx --test
@@ -69,7 +78,7 @@ jobs:
           packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
-          packages/services/test/appCaCert.test.ts
+          packages/services/test/appCaCertSecurity.test.mts
           scripts/test/dependencySecurity.test.ts
           scripts/test/mcpOAuthIssuer.test.ts
       - name: Dependency release gate

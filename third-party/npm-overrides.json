@@ -387,34 +387,89 @@
     "evidence": "The package does not declare a license field; its license contains the MIT grant and copyright notice."
   },
   {
-    "package": "@rrweb/types@2.1.6",
+    "package": "@rrweb/types@2.0.0",
     "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
     "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-14",
+      "registryUrl": "https://registry.npmjs.org/%40rrweb%2Ftypes/2.0.0",
+      "registryGitHead": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "npmTarball": "https://registry.npmjs.org/@rrweb/types/-/types-2.0.0.tgz",
+      "npmIntegrity": "sha512-p76i3Bdm/cjb/6NGqmFj0LkGXqC2dXs70AwirgVAsE1ndIa00TJo48La5yobHLsBOk5bfRHy6Yd+9O9VFKhAwQ==",
+      "sourceRevision": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/packages/types/package.json",
+      "sourcePackageJsonSha256": "8108485e2be55a98f545979f853999dfd71c70794a3fb6f09f288fd016f82251",
+      "result": "The exact npm version gitHead and lockfile integrity identify this official source revision. Its package manifest declares version 2.0.0 and MIT; the monorepo root LICENSE is retained byte-exact."
+    }
   },
   {
-    "package": "@rrweb/utils@2.1.6",
+    "package": "@rrweb/utils@2.0.0",
     "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
     "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-14",
+      "registryUrl": "https://registry.npmjs.org/%40rrweb%2Futils/2.0.0",
+      "registryGitHead": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "npmTarball": "https://registry.npmjs.org/@rrweb/utils/-/utils-2.0.0.tgz",
+      "npmIntegrity": "sha512-0Q9djyxlwG1fs1TxT7VnKtt33tHku6PENlUAKSXZg8QSSI6aUXdCNZkkBt3JAgbBYVrGhQsYrz+DkCdAXqxs1w==",
+      "sourceRevision": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/packages/utils/package.json",
+      "sourcePackageJsonSha256": "2a8e1dcae338e41c14301f650309c94abed40f46fb78d9a96c3c9541689134ca",
+      "result": "The exact npm version gitHead and lockfile integrity identify this official source revision. Its package manifest declares version 2.0.0 and MIT; the monorepo root LICENSE is retained byte-exact."
+    }
   },
   {
-    "package": "rrdom@2.1.6",
+    "package": "rrdom@2.0.0",
     "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
     "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-14",
+      "registryUrl": "https://registry.npmjs.org/rrdom/2.0.0",
+      "registryGitHead": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "npmTarball": "https://registry.npmjs.org/rrdom/-/rrdom-2.0.0.tgz",
+      "npmIntegrity": "sha512-Yv+T/IBngNEjhbRv6yJzKdbhgMOiRCV+UA3R0HOpx4yySc8vl4I11Xr5BxCYrnt00l7CGjHbFB9VULEvcg1u6w==",
+      "sourceRevision": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/packages/rrdom/package.json",
+      "sourcePackageJsonSha256": "e0b61f46c101df7242f74f7897d951d6df7c26efca89486fbb398b0abc1f0ad9",
+      "result": "The exact npm version gitHead and lockfile integrity identify this official source revision. Its package manifest declares version 2.0.0 and MIT; the monorepo root LICENSE is retained byte-exact."
+    }
   },
   {
-    "package": "rrweb-snapshot@2.1.6",
+    "package": "rrweb-snapshot@2.0.0",
     "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
     "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-14",
+      "registryUrl": "https://registry.npmjs.org/rrweb-snapshot/2.0.0",
+      "registryGitHead": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "npmTarball": "https://registry.npmjs.org/rrweb-snapshot/-/rrweb-snapshot-2.0.0.tgz",
+      "npmIntegrity": "sha512-mDYvvHVXYUD6wZj2AGz5UuupnYnhrWUmF+Hm+haZtVPx8bK3hpAMpu7YjPAoHVluv6KZJNJvVb/6HeBKwXTAvA==",
+      "sourceRevision": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/packages/rrweb-snapshot/package.json",
+      "sourcePackageJsonSha256": "2d36939f7f06d228843187d5207d1865ec46b52695562f5dfed0e8d81b235ce7",
+      "result": "The exact npm version gitHead and lockfile integrity identify this official source revision. Its package manifest declares version 2.0.0 and MIT; the monorepo root LICENSE is retained byte-exact."
+    }
   },
   {
-    "package": "rrweb@2.1.6",
+    "package": "rrweb@2.0.0",
     "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
     "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-14",
+      "registryUrl": "https://registry.npmjs.org/rrweb/2.0.0",
+      "registryGitHead": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "npmTarball": "https://registry.npmjs.org/rrweb/-/rrweb-2.0.0.tgz",
+      "npmIntegrity": "sha512-ID7NE8OdfAbxZKlTPc/EdL/8sLhTOVB1aZKoQ/M0peKGYB7dIDj0hsdJo+OVXfpiYMTtGzXnKfnMVUj4LnsrhQ==",
+      "sourceRevision": "c826076ce529c411b32372d540e70a8a3a9577c2",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/rrweb-io/rrweb/c826076ce529c411b32372d540e70a8a3a9577c2/packages/rrweb/package.json",
+      "sourcePackageJsonSha256": "64cd4b00d01673766d59bb2051973f84f8b5ee817f8167562c7ab1af6cf600f9",
+      "result": "The exact npm version gitHead and lockfile integrity identify this official source revision. Its package manifest declares version 2.0.0 and MIT; the monorepo root LICENSE is retained byte-exact."
+    }
   },
   {
     "package": "@arms/rum-browser@0.1.8",

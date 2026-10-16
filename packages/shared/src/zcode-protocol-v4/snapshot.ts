@@ -60,6 +60,7 @@ export const activeWorkSummarySchema = z.object({
     "turnSteer",
   ]),
   foregroundExecutionId: z.string().min(1).optional(),
+  sourceCommandId: z.string().min(1).optional(),
   startedAt: timestampSchema,
 });
 export type ActiveWorkSummary = z.infer<typeof activeWorkSummarySchema>;
@@ -244,7 +245,8 @@ export const permissionRequestPayloadSchema = z.object({
   freeText: z.boolean().optional(),
   origin: zcodeInteractionRequestOriginSchema.optional(),
   // 工具自报的确认预览，复用 row 的 display 投影（同一有界形状）。缺省 = 纯文本 ask。
-  display: toolCallDisplaySchema.optional(),
+  // 同样不设门：预览解析失败退化成纯文本 ask，不拒整份 snapshot（见 toolDisplay.ts 注释）。
+  display: toolCallDisplaySchema.optional().catch(undefined),
   // 独立 additive 能力：旧 UI 忽略此字段，仍只显示原 options，不出现半实现授权入口。
   fullAccessOption: permissionOptionSchema
     .extend({
@@ -502,6 +504,8 @@ export const conversationSnapshotSchema = z.object({
   // 旧快照/旧发送端不携带此字段 → 解析得 null,不破坏兼容性(遵守冻结规则)。
   // pendingCount === 0 时投影层置 null(提示条消失)。
   workspaceHookAdmission: workspaceHookAdmissionStateSchema.nullable().default(null),
+  // （2026-09-12）：原 additive 字段 pluginUiSurfaces 已删除，插件面板 widgetState 只留在
+  // 宿主 renderer 内存。
   // B 区
   rows: rowsWindowSchema,
 });

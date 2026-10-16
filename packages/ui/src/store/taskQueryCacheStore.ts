@@ -17,7 +17,7 @@ import {
 import { notifyTaskLifecycle } from "@/lib/taskLifecycleEvents.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 
-interface TaskListMembershipState {
+export interface TaskListMembershipState {
   pinned: boolean;
   archived: boolean;
 }
@@ -932,6 +932,12 @@ export const useTaskQueryCacheStore = create<TaskQueryCacheState>()((set) => ({
     })),
 }));
 
+export function selectTaskListCacheResult(queryKey: TaskListCacheKey) {
+  return (state: TaskQueryCacheState): CachedTaskListResult | null => {
+    return state.resultsByQueryKey[queryKey] ?? null;
+  };
+}
+
 export function invalidateTaskQueryCacheByScopes(
   scopes: Array<{ workspacePath: string; workspaceIdentity?: string }>,
 ): void {
@@ -948,6 +954,14 @@ export function markTaskQueryCacheScopesStale(
     buildTaskWorkspaceKey(scope.workspacePath, scope.workspaceIdentity),
   );
   useTaskQueryCacheStore.getState().markWorkspaceKeysStale(workspaceKeys);
+}
+
+export function upsertTaskQueryCacheTaskMeta(task: ZCodeTaskMeta): void {
+  useTaskQueryCacheStore.getState().upsertTaskMeta(task);
+}
+
+export function updateTaskQueryCacheTaskMetaPreservingMembership(task: ZCodeTaskMeta): void {
+  useTaskQueryCacheStore.getState().updateTaskMetaPreservingMembership(task);
 }
 
 export function applyTaskQueryCacheMutation(params: {

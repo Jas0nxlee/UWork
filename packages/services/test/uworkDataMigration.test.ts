@@ -49,6 +49,29 @@ test("migration retains all UWork state and relocates metadata without copying b
     assert.equal(await readFile(join(old, ".zcode", "private"), "utf8"), "unchanged");
   }));
 
+test("migration ignores an existing upstream v2 tree and retains UWork state", async () =>
+  fixture(async (root) => {
+    const old = join(root, "old"),
+      next = join(root, "new");
+    await mkdir(join(old, ".uwork", "v2"), { recursive: true });
+    await writeFile(join(old, ".uwork", "v2", "tasks.json"), '{"uwork":true}');
+    await mkdir(join(old, ".zcode", "v2"), { recursive: true });
+    await writeFile(join(old, ".zcode", "v2", "tasks.json"), '{"upstream":true}');
+
+    await copyDataDirectory(old, next);
+
+    assert.equal(
+      await readFile(join(next, ".uwork", "v2", "tasks.json"), "utf8"),
+      '{"uwork":true}',
+    );
+    assert.equal(await readFile(join(old, ".uwork", "v2", "tasks.json"), "utf8"), '{"uwork":true}');
+    assert.equal(
+      await readFile(join(old, ".zcode", "v2", "tasks.json"), "utf8"),
+      '{"upstream":true}',
+    );
+    await assert.rejects(readFile(join(next, ".zcode", "v2", "tasks.json")), { code: "ENOENT" });
+  }));
+
 test("target conflicts and copy failures preserve old state without migration residue", async () =>
   fixture(async (root) => {
     const old = join(root, "old"),
