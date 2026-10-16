@@ -164,22 +164,20 @@ export async function preprocessDocx(bytes: ArrayBuffer): Promise<DocxPreflightR
 }
 
 /** 把 findings 总结成给用户看的一行（用于护栏横幅）。 */
+/**
+ * 横幅只列**真会丢内容**的特性——目前只有脚注/尾注（插件不写回 footnotes.xml）。
+ *
+ * 修订与批注**不在这里**：它们按 Word 的样子显示在正文里、保存时原样写回（见 docxRevisions.ts）；
+ * 超链接/公式的文字保得住（归一化时拆壳/取文字），内容控件/域/编号只是结构降级、形态差异在正文里看得见。
+ *
+ * ⚠️ 这份清单就是"要不要弹横幅"的判据（`loadDocument` 用它），所以它必须与 `normalizeDocumentXml`
+ * 的实际行为一致——两者不一致就等于"用户被问了一堆其实不会发生的事"（真机踩过：修订/批注还在清单里）。
+ * 回归检查里对**这个函数**也做了断言，不只是归一化清单。
+ */
 export function summarizeFindings(findings: DocxFindings): string[] {
   const lines: string[] = [];
-  const { inserted, deleted, formatChanges } = findings.revisions;
-  if (inserted || deleted || formatChanges) {
-    lines.push(
-      `修订 ${inserted} 处插入 / ${deleted} 处删除 / ${formatChanges} 处格式（会按"接受"处理，修订标记不再写回）`,
-    );
+  if (findings.footnotes) {
+    lines.push(`脚注/尾注 ${findings.footnotes} 处（脚注内容不会写回文件——这些内容会丢）`);
   }
-  if (findings.comments) lines.push(`批注 ${findings.comments} 处（锚点会去掉，批注内容不会写回）`);
-  if (findings.footnotes)
-    lines.push(`脚注/尾注 ${findings.footnotes} 处（脚注内容不会写回——这些内容会丢）`);
-  if (findings.hyperlinks) lines.push(`超链接 ${findings.hyperlinks} 处（变成普通文字）`);
-  if (findings.formulas) lines.push(`公式 ${findings.formulas} 处（变成文字，排版丢失）`);
-  if (findings.contentControls)
-    lines.push(`内容控件 ${findings.contentControls} 处（变成普通文字）`);
-  if (findings.fields) lines.push(`域 ${findings.fields} 处（保留当前显示值，域不再自动更新）`);
-  if (findings.numbering) lines.push(`${findings.numbering} 处编号列表（编号变成普通段落）`);
   return lines;
 }

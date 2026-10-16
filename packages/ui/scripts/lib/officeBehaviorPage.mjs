@@ -16,7 +16,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
   import docxPlugin from "/ce/docx.js";
   import { layoutBalloons } from "/dispatcher.js";
   import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from "/dispatcher.js";
-  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
+  import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings } from "/dispatcher.js";
 
   window.__load = async (url) => {
     document.getElementById("host").replaceChildren();
@@ -80,7 +80,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 
   window.__elements = () => window.__editor.command.getValue().data.main;
 
-  window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml };
+  window.__preflight = { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings };
   /**
    * 审阅（Word 的接受/拒绝）：枚举 → 逐条处理 → 全部处理，断言每步的剩余数与文字结果。
    */
@@ -385,7 +385,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { documentText } from ${JSON.stringify(join(editorDir, "engineCommands.ts"))};`,
       `export { createEditorOptions, createInitialData } from ${JSON.stringify(join(editorDir, "officeEditorOptions.ts"))};`,
       `export { scrollAfterZoom } from ${JSON.stringify(join(editorDir, "pageViewport.ts"))};`,
-      `export { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from ${JSON.stringify(join(editorDir, "docxPreflight.ts"))};`,
+      `export { preprocessDocx, analyzeDocumentXml, normalizeDocumentXml, summarizeFindings } from ${JSON.stringify(join(editorDir, "docxPreflight.ts"))};`,
       `export { probeWriteSupport } from ${JSON.stringify(join(editorDir, "fileWriteSupport.ts"))};`,
       `export { preserveHeaderFooter } from ${JSON.stringify(join(editorDir, "docxHeaderFooter.ts"))};`,
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
