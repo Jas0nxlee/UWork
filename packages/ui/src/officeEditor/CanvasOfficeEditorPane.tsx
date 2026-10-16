@@ -297,7 +297,7 @@ export function CanvasOfficeEditorPane({
               <li key={line}>{line}</li>
             ))}
           </ul>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pt-1">
             <button
               type="button"
               className="rounded border border-amber-400 px-2 py-1 hover:bg-amber-500/20"
@@ -318,6 +318,7 @@ export function CanvasOfficeEditorPane({
               想保住这些特性（例如逐条接受/拒绝修订），请用对话卡片或侧栏的审阅面板。
             </span>
           </div>
+          <div className="pt-1 text-amber-200/70">文档还没打开，点上面的按钮才会载入</div>
         </div>
       ) : null}
       {/* 容器必须可滚动：canvas-editor 把所有页面画在同一张 canvas 上，滚动由外层承担。
@@ -338,7 +339,7 @@ export function CanvasOfficeEditorPane({
       />
       {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
       <div
-        hidden={writeBlocked !== null}
+        hidden={writeBlocked !== null || pendingPreflight !== null}
         id="office-editor-scroll"
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-auto bg-surface"
