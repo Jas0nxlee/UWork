@@ -108,3 +108,32 @@ sequenceDiagram
 - 从 App 内 Bash 工具启动 dev 时，宿主会注入 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，桌面主进程优先采用该显式路径（指向已安装版本的 CDN builtin 缓存，无 `ucas` 模板），表现为 `Provider Template 不存在: ucas` 且播种失败。用 `env -u ZCODE_BUILTIN_PROVIDER_CONFIG_FILE -u ZCODE_PERSONAL_PROVIDER_CONFIG_FILE pnpm dev:desktop:test` 或在普通终端启动即可恢复。
 - Host 有意剔除 `NODE_EXTRA_CA_CERTS`（统一走桌面 custom CA 设置，`settings.httpProxyCaCertPath`）；本机模拟 HTTPS 控制面时用 `NODE_TLS_REJECT_UNAUTHORIZED=0`，仅限测试。
 - 仍未验证：真实企业微信扫码、真实 ucas-proxy 服务、网关面板的视觉呈现与交互（需要 CDP/browser-harness 授权）。
+
+## P1 身份失效与提交边界 2026-10-16
+
+- IdentitySessionStore 是设备会话唯一 owner。网关捕获完整 session record（revision、principal），续期可在同 revision 下换 token；退出、切换或同账号重新登录形成新 revision，旧请求不能写 Provider、持久化旧网关状态或发布旧结果/错误。
+- 内部 store 端口增加 `withCurrentSession(expectedRecord, operation)`：在既有身份事务/跨 Host 文件锁内重读并核验 revision 和 principal，匹配时才执行 operation；不匹配返回 undefined。空会话记录也可核验，用于未登录视图。该端口不暴露到 Renderer/RPC。
+- 所有网络工作在身份锁外执行；Provider 写入、网关状态写入和最终视图提交在身份锁内完成。退出与提交按同一锁线性化：退出 tombstone 先完成则旧提交拒绝；提交已持锁则先完成、退出随后清除身份，已提交 Provider Key 按既有规则保留。不靠超时解决竞态。
+- 写入意图在调用时立即启动身份读取，与元数据 hydration 并发；配置读取或排队期间身份失效则拒绝，不重试绑定另一个账号。只有 getView 的纯读取路径可重试获取最新身份。排队捕获 Promise 的异常必须立即接住，再在原队列位置向调用方传播，不能产生未处理拒绝。
+- guard 回调接收锁内最新 record，既允许同代际正常续期，也在本机提交前拒绝已过期会话。
+- sync/replace-key、用量、模型读取、applyModels、错误和初始视图均服从同一会话 guard。派生视图只为已接受的会话 revision 服务，不以旧账号快照替新账号写模型。
+- 验收包含网络在途退出/切换、同账号重新登录、晚到用量/模型/异常、Provider 提交锁前身份改变及锁内提交/退出顺序；保留正常同步、补缺 Key、显式替换和模型追加幂等性。
+
+```mermaid
+sequenceDiagram
+  participant Gw as UcasGatewayService
+  participant Api as 网络请求（锁外）
+  participant Store as IdentitySessionStore
+  participant Provider as Provider 配置 owner
+  Gw->>Store: read record A/revision
+  Gw->>Api: 资料 / Key / 端点 / 模型 / 用量
+  Note over Store: logout 或切换写入新 revision
+  Api-->>Gw: A 的晚到响应
+  Gw->>Store: withCurrentSession(A)
+  alt revision/principal 已改变
+    Store-->>Gw: 拒绝，committed=false
+  else 仍是 A
+    Store->>Provider: 同一身份锁内提交配置
+    Store->>Gw: 持久化网关状态并发布无凭据视图
+  end
+```

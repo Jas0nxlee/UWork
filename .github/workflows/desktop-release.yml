@@ -64,6 +64,9 @@ jobs:
           packages/services/test/enterpriseIdentity.test.ts
           packages/services/test/enterpriseIdentityNative.test.ts
           packages/services/test/enterpriseIdentitySharedStore.test.ts
+          packages/services/test/identitySessionGuard.test.mts
+          packages/services/test/ucasGatewayService.test.ts
+          packages/services/test/ucasGatewayIdentityRace.test.mts
           packages/services/test/enterpriseIdentityOrganizations.test.ts
           packages/services/test/wecomIdentityAdapter.test.ts
           packages/services/test/wecomIdentityConfig.test.ts
@@ -81,6 +84,13 @@ jobs:
           packages/services/test/appCaCertSecurity.test.mts
           scripts/test/dependencySecurity.test.ts
           scripts/test/mcpOAuthIssuer.test.ts
+      - name: Validate HTTP binding and capability authentication
+        run: >-
+          pnpm exec vitest run
+          packages/server/test/serverInfoHttp.test.ts
+          packages/server/test/hostCapability.test.ts
+          packages/server/test/botsHttp.test.ts
+          packages/desktop/test/serverRemoteConnection.test.ts
       - name: Dependency release gate
         run: pnpm audit --prod --audit-level=high --json > dependency-audit.json
       - name: Preserve dependency audit
