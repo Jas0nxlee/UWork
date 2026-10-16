@@ -13,6 +13,14 @@ export interface CommentGroupsHandle {
   command: Record<string, unknown>;
 }
 
+export interface CommentAnchor {
+  id: string;
+  /** 锚点矩形（文档坐标，已按缩放换算）；没有锚点时为 null。 */
+  anchor: { x: number; y: number; width: number; height: number } | null;
+  /** 卡片高度估算（先按内容行数估，渲染后由 DOM 回填精确值）。 */
+  height: number;
+}
+
 export function useCommentGroups() {
   const groupsRef = useRef<Map<string, string>>(new Map());
 
@@ -56,5 +64,48 @@ export function useCommentGroups() {
     groupsRef.current.delete(comment.id);
   }, []);
 
-  return { groupComments, locateComment, forgetComment };
+  /**
+   * 量锚点位置：`getGroupRectList(groupId)` 给的是**文档坐标**（含跨页偏移），乘缩放就是屏幕位置。
+   * 没有锚点矩形的批注（正文里没有对应文字）返回 null，由列表兜底展示。
+   */
+  const measureComments = useCallback(
+    (
+      editor: CommentGroupsHandle,
+      comments: DocumentComment[],
+      scale: number,
+    ): Map<string, CommentAnchor> => {
+      const commands = editor.command;
+      const measure = new Map<string, CommentAnchor>();
+      for (const comment of comments) {
+        const groupId = groupsRef.current.get(comment.id);
+        const rects = groupId
+          ? ((
+              commands.getGroupRectList as
+                | ((
+                    id: string,
+                  ) => Array<{ x: number; y: number; width: number; height: number }> | null)
+                | undefined
+            )?.(groupId) ?? null)
+          : null;
+        const first = rects?.[0] ?? null;
+        measure.set(comment.id, {
+          id: comment.id,
+          anchor: first
+            ? {
+                x: first.x * scale,
+                y: first.y * scale,
+                width: first.width * scale,
+                height: first.height * scale,
+              }
+            : null,
+          // 卡片高度估算：作者行 + 内容行（内容按每 28 字一行粗估），Word 的批注框也是固定宽度自动换行
+          height: 34 + Math.max(1, Math.ceil((comment.text.length || 1) / 28)) * 18,
+        });
+      }
+      return measure;
+    },
+    [],
+  );
+
+  return { groupComments, locateComment, forgetComment, measureComments };
 }

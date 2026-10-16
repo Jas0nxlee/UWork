@@ -21,7 +21,7 @@ import {
   type RevisionPreservationState,
 } from "./docxRevisions.js";
 import { composeExportedDocx } from "./officeExportPipeline.js";
-import { useCommentGroups } from "./useCommentGroups.js";
+import { useCommentGroups, type CommentAnchor } from "./useCommentGroups.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import type { EngineCommand } from "./engineCommands.js";
 import { logger } from "@/logger.js";
@@ -60,6 +60,12 @@ export interface UseOfficeDocumentResult {
   gotoComment: (index: number) => void;
   /** 删除第 n 条批注（去掉锚点，正文保留；保存时写回文件）。 */
   deleteComment: (index: number) => Promise<void>;
+  /** 量批注锚点位置（Word 的批注框按这个高度对齐）。 */
+  measureComments: (
+    editor: OfficeEditorHandle,
+    comments: DocumentComment[],
+    scale: number,
+  ) => Map<string, CommentAnchor>;
   /** 修订清单（Word 的"审阅"是按这个列表逐条走的）。 */
   revisions: RevisionItem[];
   /** 当前选中的修订序号（-1＝没选）。 */
@@ -139,7 +145,7 @@ export function useOfficeDocument({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
-  const { groupComments, locateComment, forgetComment } = useCommentGroups();
+  const { groupComments, locateComment, forgetComment, measureComments } = useCommentGroups();
 
   /** 导入字节并回报解析耗时（超过阈值就如实提示"会很卡"，而不是让用户以为卡是 bug）。 */
   const importBytes = useCallback(
@@ -391,6 +397,7 @@ export function useOfficeDocument({
     currentComment,
     gotoComment,
     deleteComment,
+    measureComments,
     revisions,
     currentRevision,
     setCurrentRevision,

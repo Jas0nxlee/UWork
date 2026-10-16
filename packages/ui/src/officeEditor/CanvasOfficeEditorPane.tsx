@@ -17,7 +17,9 @@ import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CommentAnchor } from "./useCommentGroups.js";
 import { OfficeCommentList } from "./OfficeCommentList.js";
+import { OfficeEditorSurface } from "./OfficeEditorSurface.js";
 import { OfficeGuardNotices } from "./OfficeGuardNotices.js";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
@@ -79,6 +81,7 @@ export function CanvasOfficeEditorPane({
     currentComment,
     gotoComment,
     deleteComment,
+    measureComments,
     revisions,
     currentRevision,
     setCurrentRevision,
@@ -95,6 +98,8 @@ export function CanvasOfficeEditorPane({
   // 引擎按容器宽度铺画布、页面从 x=0 起画（天生贴左）。所以把编辑区宽度收到**纸张宽度**，
   // 再由外层 flex 居中——这就是 Word/WPS「纸张居中、两侧留灰边」的做法（真机反馈）。
   const [pageSize, setPageSize] = useState({ width: 794, scale: 1 });
+  /** 批注锚点位置（Word 的批注框要贴在对齐锚点的高度上）。 */
+  const [commentAnchors, setCommentAnchors] = useState<Map<string, CommentAnchor>>(new Map());
 
   useEffect(() => {
     const host = hostRef.current;
@@ -170,6 +175,25 @@ export function CanvasOfficeEditorPane({
   const engineUndoRef = useRef({ canUndo: false, canRedo: false });
   // 只用来触发重渲染：版面栈/撤销可用性发生在 React 之外，功能区要重算"撤销是否能点"
   const [, setHistoryVersion] = useState(0);
+
+  /**
+   * 重新量批注锚点：导入后、缩放后、内容变化后都要量（Word 的批注框跟着文字动）。
+   * 内容变化用 200ms 去抖，避免每次按键都算一遍。
+   */
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || comments.length === 0) {
+      setCommentAnchors(new Map());
+      return;
+    }
+    const measure = () => setCommentAnchors(measureComments(editor, comments, pageSize.scale));
+    const timer = setTimeout(measure, 120);
+    window.addEventListener("resize", measure);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", measure);
+    };
+  }, [comments, editorRef, measureComments, pageSize.scale, pageSize.width]);
 
   /**
    * 缩放后把滚动位置按比例搬过去（DOM 已更新完再算，避免读到旧的滚动范围）。
@@ -349,26 +373,26 @@ export function CanvasOfficeEditorPane({
         inTable={inTable}
         run={runRibbon}
       />
-      <OfficeCommentList
-        comments={comments}
-        current={currentComment}
-        onPick={gotoComment}
-        onDelete={(index) => void deleteComment(index)}
-      />
-      {/* 外层负责滚动；内层宽度＝纸张宽度×缩放，靠 mx-auto 居中（面板拉宽/变窄时纸张跟着居中）。 */}
-      <div
-        hidden={writeBlocked !== null || pendingPreflight !== null}
-        id="office-editor-scroll"
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto bg-surface"
-      >
-        <div
-          ref={hostRef}
-          id="office-editor-host"
-          className="mx-auto"
-          style={{ width: Math.round(pageSize.width * pageSize.scale) }}
+      {/* 无锚点的批注（正文里找不到对应文字）兜底列出来；有锚点的都走右侧批注框 */}
+      {comments.some((comment) => !commentAnchors.get(comment.id)?.anchor) ? (
+        <OfficeCommentList
+          comments={comments.filter((comment) => !commentAnchors.get(comment.id)?.anchor)}
+          current={-1}
+          onPick={() => undefined}
+          onDelete={(index) => void deleteComment(index)}
         />
-      </div>
+      ) : null}
+      <OfficeEditorSurface
+        hostRef={hostRef}
+        scrollRef={scrollRef}
+        hidden={writeBlocked !== null || pendingPreflight !== null}
+        pageWidth={Math.round(pageSize.width * pageSize.scale)}
+        comments={comments}
+        anchors={commentAnchors}
+        activeComment={currentComment}
+        onPickComment={gotoComment}
+        onDeleteComment={(index) => void deleteComment(index)}
+      />
     </div>
   );
 }

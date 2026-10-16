@@ -14,6 +14,7 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
 <script type="module">
   import Editor from "/ce/canvas-editor.js";
   import docxPlugin from "/ce/docx.js";
+  import { layoutBalloons } from "/dispatcher.js";
   import { probeWriteSupport, preserveHeaderFooter, applyTrackedChanges, acceptedText, rejectedText, applyRevisionView, restoreRevisions, buildRevisionView, listRevisions, resolveRevisions } from "/dispatcher.js";
   import { runEngineCommand, createFindSession, createLayoutHistory, createEditorOptions, createInitialData, documentText, scrollAfterZoom, preprocessDocx, analyzeDocumentXml, normalizeDocumentXml } from "/dispatcher.js";
 
@@ -325,6 +326,18 @@ export const BEHAVIOR_PAGE = `<!doctype html><meta charset="utf-8">
     return await probeWriteSupport(fileService, "/x");
   };
 
+  /** 批注框排版（纯函数，见 commentBalloons.ts）：重叠让位、按锚点排序、无锚点的排最后。 */
+  window.__balloonCase = () =>
+    layoutBalloons(
+      [
+        { id: "b", anchorTop: 40, height: 60 },
+        { id: "a", anchorTop: 10, height: 60 },
+        { id: "c", anchorTop: 60, height: 40 },
+        { id: "d", anchorTop: null, height: 30 },
+      ],
+      { minTop: 0 },
+    );
+
   /** 缩放后的滚动锚点（纯函数，见 pageViewport.ts）。 */
   window.__zoomScroll = (input) => scrollAfterZoom(input);
 
@@ -378,6 +391,7 @@ export async function bundleDispatcher(dir, editorDir) {
       `export { applyTrackedChanges, acceptedText, rejectedText } from ${JSON.stringify(join(editorDir, "docxTrackChanges.ts"))};`,
       `export { applyRevisionView, restoreRevisions, buildRevisionView } from ${JSON.stringify(join(editorDir, "docxRevisions.ts"))};`,
       `export { listRevisions, resolveRevisions } from ${JSON.stringify(join(editorDir, "docxReview.ts"))};`,
+      `export { layoutBalloons } from ${JSON.stringify(join(editorDir, "commentBalloons.ts"))};`,
     ].join("\n"),
     "utf8",
   );

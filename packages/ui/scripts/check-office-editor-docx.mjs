@@ -144,6 +144,15 @@ async function main() {
     "定位（executeLocationGroup）与删除（executeDeleteGroup）都在真引擎上生效",
   );
 
+  // 批注框排版（Word 的批注框：按锚点高度对齐、重叠往下让、无锚点排最后）
+  const balloons = await page.evaluate(() => window.__balloonCase());
+  const byId = Object.fromEntries(balloons.map((entry) => [entry.id, entry.top]));
+  // a 在 10（高 60）→ b 想贴 40 但会压在 a 上，被让到 78；c 想贴 60 同样重叠 → 146；无锚点的排最后
+  check(
+    byId.a === 10 && byId.b === 78 && byId.c === 146 && byId.d === 194,
+    `批注框排版正确（按锚点排序且重叠让位：a=${byId.a} b=${byId.b} c=${byId.c} 无锚点=${byId.d} 在最后）`,
+  );
+
   // 页眉页脚：源有则原样保留（含 logo 等侧车文件），源没有则不让插件默认页脚留下来
   const hfCases = await page.evaluate(() => window.__headerFooterCases());
   check(
