@@ -209,6 +209,100 @@ window.__xlsx = {
   },
 };
 
+
+/**
+ * 产品**生命周期钩子**的检查入口（check-office-excel-flow.mjs 用）：
+ * 把 useExcelDocument 真挂进一个 React 组件里跑，配一个假的 IFileService，
+ * 于是"读文件 → 护栏 → 改 → 差分写回 → 产物校验 → 调 writeBinaryFile"这条真路径全在回归范围内。
+ */
+window.__flow = {
+  async start(options = {}) {
+    window.__flowCalls = [];
+    window.__flowDirty = null;
+    // 必须清掉上一次的状态：否则下面的等待循环会读到**上一个实例**的 ready=true 直接返回
+    window.__flowState = null;
+    window.__flowSheets = options.sheets ?? null;
+    const service = {
+      readBinaryPreview: async () => ({
+        path: "/tmp/表.xlsx",
+        dataBase64: options.base64,
+        totalBytes: options.totalBytes ?? 4096,
+      }),
+      stat: async () => ({ mtimeMs: 1700000000000 }),
+      writeBinaryFile: async (args) => {
+        window.__flowCalls.push(args);
+        if (options.failWrite) throw new Error("File revision mismatch: expected 1 got 2");
+        return { revision: { size: 11, mtimeMs: 12 }, backup: "/tmp/表.xlsx.bak", bytes: 123 };
+      },
+    };
+    root?.unmount();
+    host.replaceChildren();
+    const container = document.createElement("div");
+    container.style.height = "100%";
+    host.append(container);
+    root = createRoot(container);
+    root.render(createElement(FlowHost, { service }));
+    // 载入是异步的（要解压 + exceljs 解析 + 护栏）：等到"就绪"或者明确失败/拒绝为止，
+    // 固定 sleep 会让断言读到"正在打开…"这种中间态
+    const deadline = Date.now() + (options.waitMs ?? 20000);
+    while (Date.now() < deadline) {
+      const state = window.__flowState;
+      if (state?.ready === true) break;
+      if (state && /失败|过大|不支持|只读/.test(state.status) && !state.busy) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    // 再等一帧：React 的状态提交是异步的，状态栏文案（"已保存/没有检测到改动"）常在这一帧才到
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return window.__flow.state();
+  },
+  state: () => {
+    const state = window.__flowState;
+    if (!state) return null;
+    return {
+      status: state.status,
+      ready: state.ready,
+      dirty: state.dirty,
+      busy: state.busy,
+      writeBlocked: state.writeBlocked,
+      readOnly: state.guard?.readOnly ?? null,
+      notices: state.guard?.notices ?? [],
+      sheetNames: state.sheets?.map((sheet) => sheet.name) ?? null,
+    };
+  },
+  setSheets: (sheets) => {
+    window.__flowSheets = sheets;
+  },
+  sheets: () => window.__flowSheets,
+  async save() {
+    await window.__flowState.save();
+    // 同上：save 里的 setStatus 要等 React 提交后才是新的
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  },
+  calls: () => window.__flowCalls,
+  dirty: () => window.__flowDirty,
+  base64: (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(offset, offset + 0x8000)));
+    }
+    return btoa(binary);
+  },
+};
+
+function FlowHost({ service }) {
+  const state = window.app.useExcelDocument({
+    fileService: service,
+    path: "/tmp/表.xlsx",
+    getSheets: () => window.__flowSheets ?? undefined,
+    onDirtyChange: (dirty) => {
+      window.__flowDirty = dirty;
+    },
+  });
+  window.__flowState = state;
+  return null;
+}
+
 window.__ready = true;
 `;
 

@@ -59,13 +59,17 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
   const baselineRef = useRef<Sheet[] | null>(null);
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
 
-  const setDirty = useCallback(
-    (value: boolean) => {
-      setDirtyState(value);
-      onDirtyChange?.(value);
-    },
-    [onDirtyChange],
-  );
+  /**
+   * 脏标记回调**必须放进 ref**：`onDirtyChange` 通常是父组件里的内联箭头函数（每次渲染都是新的），
+   * 一旦进依赖，`setDirty` → `loadDocument` → 挂载 effect 会**每次渲染都重新载入一次**，
+   * 表现就是"一直停在正在打开…"（这条由 check-office-excel-flow.mjs 抓出来）。
+   */
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  const setDirty = useCallback((value: boolean) => {
+    setDirtyState(value);
+    onDirtyChangeRef.current?.(value);
+  }, []);
 
   const loadDocument = useCallback(async () => {
     setReady(false);
