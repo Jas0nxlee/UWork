@@ -71,7 +71,8 @@ export function PptxTextEditorPane({
       ) : null}
       <div className="border-b border-border bg-surface px-3 py-2 text-[11px] text-foreground-subtle">
         只编辑**文字**：版式、图片、动画、母版、备注原样保留（只替换改过的那几张幻灯片 XML）。
-        同一段里的多种字体在被改动的那一行会折叠成首个字体；文本框位置/大小请在 PowerPoint/WPS 里调整。
+        同一段里的多种字体在被改动的那一行会折叠成首个字体；文本框位置/大小请在 PowerPoint/WPS
+        里调整。
       </div>
       {slides === null ? (
         <div className="flex flex-1 items-center justify-center text-xs text-foreground-subtle">
@@ -93,9 +94,14 @@ export function PptxTextEditorPane({
                 onClick={() => setActiveSlide(index)}
               >
                 <span className="pr-1 text-foreground-subtle">第 {index + 1} 页</span>
-                {item.blocks.length === 0 ? <span className="text-foreground-subtlest">（无文字）</span> : null}
+                {item.blocks.length === 0 ? (
+                  <span className="text-foreground-subtlest">（无文字）</span>
+                ) : null}
                 <div className="truncate text-[11px] text-foreground-subtle">
-                  {item.blocks.flatMap((block) => block.lines).join(" ").slice(0, 24) || "—"}
+                  {item.blocks
+                    .flatMap((block) => block.lines)
+                    .join(" ")
+                    .slice(0, 24) || "—"}
                 </div>
               </button>
             ))}

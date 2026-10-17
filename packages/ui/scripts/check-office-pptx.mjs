@@ -74,7 +74,8 @@ async function main() {
     `拆开的 run 拼回一整行、段内换行拆成两行（${JSON.stringify(first.blocks[0].lines)}）`,
   );
   check(
-    parsed.parts.includes("ppt/media/image1.png") && parsed.parts.includes("ppt/notesSlides/notesSlide1.xml"),
+    parsed.parts.includes("ppt/media/image1.png") &&
+      parsed.parts.includes("ppt/notesSlides/notesSlide1.xml"),
     `素材与备注都在（${parsed.parts.filter((name) => /media|notesSlide/.test(name)).join("、")}）`,
   );
 
@@ -120,7 +121,10 @@ async function main() {
     written.tableLines?.length === 1 && written.secondSlideLines?.length === 1,
     `同页另一块与另一页都没被动（表格 ${JSON.stringify(written.tableLines)}｜第 2 页 ${JSON.stringify(written.secondSlideLines)}）`,
   );
-  check(written.validation.ok, `产物通过校验（${written.validation.issues.join("；") || "无问题"}）`);
+  check(
+    written.validation.ok,
+    `产物通过校验（${written.validation.issues.join("；") || "无问题"}）`,
+  );
 
   // ③ 段落数变化：新增行要沿用首段样式（这里是 20pt 粗体），而不是无样式的默认 run
   const grown = await page.evaluate(async () => {
@@ -137,7 +141,9 @@ async function main() {
     `加行后段落数与文字都对（${grown.runs.join("|")}）`,
   );
   check(
-    grown.paragraphs.every((paragraph) => paragraph.includes('sz="2000"') && paragraph.includes('b="1"')),
+    grown.paragraphs.every(
+      (paragraph) => paragraph.includes('sz="2000"') && paragraph.includes('b="1"'),
+    ),
     "新增的行沿用了首段样式（20pt 粗体）",
   );
 
@@ -165,7 +171,10 @@ async function main() {
     const bytesA = await zipA.generateAsync({ type: "arraybuffer" });
     // 坏产物 B：把第 1 页的文字清空
     const zipB = await window.__pptx.rawZip(window.__pptxSource);
-    zipB.file("ppt/slides/slide1.xml", '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree/></p:cSld></p:sld>');
+    zipB.file(
+      "ppt/slides/slide1.xml",
+      '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree/></p:cSld></p:sld>',
+    );
     const bytesB = await zipB.generateAsync({ type: "arraybuffer" });
     // 坏产物 C：删掉一张幻灯片
     const zipC = await window.__pptx.rawZip(window.__pptxSource);
@@ -173,9 +182,15 @@ async function main() {
     const bytesC = await zipC.generateAsync({ type: "arraybuffer" });
     return {
       modified: await window.__pptx.validate(bytesA, window.__pptxSource, { editedSlides: [] }),
-      emptied: await window.__pptx.validate(bytesB, window.__pptxSource, { editedSlides: ["ppt/slides/slide1.xml"] }),
+      emptied: await window.__pptx.validate(bytesB, window.__pptxSource, {
+        editedSlides: ["ppt/slides/slide1.xml"],
+      }),
       missing: await window.__pptx.validate(bytesC, window.__pptxSource, { editedSlides: [] }),
-      clean: await window.__pptx.validate(await read.sourceXml ? window.__pptxSource : window.__pptxSource, window.__pptxSource, {}),
+      clean: await window.__pptx.validate(
+        (await read.sourceXml) ? window.__pptxSource : window.__pptxSource,
+        window.__pptxSource,
+        {},
+      ),
       zipSourceOk: Boolean(zipSource),
     };
   });
@@ -219,7 +234,10 @@ async function main() {
     const bytes = await (await fetch("/office-sample.pptx")).arrayBuffer();
     const deck = await window.__pptx.readDeck(bytes);
     const part = deck.slides[0].partName;
-    const patched = window.__pptx.patch(deck.sourceXml.get(part), 0, ["季度经营回顾（改过）", "2026 Q3"]);
+    const patched = window.__pptx.patch(deck.sourceXml.get(part), 0, [
+      "季度经营回顾（改过）",
+      "2026 Q3",
+    ]);
     const current = new Map(deck.sourceXml);
     current.set(part, patched);
     const written = await window.__pptx.write({ source: bytes, baseline: deck.sourceXml, current });
@@ -242,11 +260,11 @@ async function main() {
     sample.lines.join("|") === "季度经营回顾（改过）|2026 Q3",
     `真样本改字后读回来是对的（${JSON.stringify(sample.lines)}）`,
   );
-  check(sample.validation.ok, `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`);
   check(
-    sample.rendered.slides === 4,
-    `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`,
+    sample.validation.ok,
+    `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`,
   );
+  check(sample.rendered.slides === 4, `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`);
 
   await harness.close();
   if (failures.length > 0) {

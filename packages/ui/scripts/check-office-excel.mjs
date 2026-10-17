@@ -110,7 +110,8 @@ async function main() {
   // ④ 界面编辑（正对照）：点进网格 → 用方向键走到目标格 → 输入 → 回车，值必须变。
   // 为什么用方向键而不是按坐标点：canvas 里"点到第几格"要靠表头/列宽/行高算，算错就变成
   // 点进了别的格子——那样"改不动"的断言会**假通过**。走到哪一格由引擎自己回话（选区地址）。
-  const address = () => page.evaluate(() => window.__excel.api().current.getSelectionCoordinates()[0]);
+  const address = () =>
+    page.evaluate(() => window.__excel.api().current.getSelectionCoordinates()[0]);
   const colOf = (address) => address.replace(/\d+/g, "");
   const rowOf = (address) => Number(address.replace(/\D+/g, ""));
   const gridBox = await page.locator("#host canvas").first().boundingBox();

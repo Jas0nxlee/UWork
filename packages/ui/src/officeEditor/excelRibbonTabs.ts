@@ -57,7 +57,10 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
         label: "对齐",
         essential: true,
         items: [
-          button("左对齐", "左对齐", "executeRowFlex", { args: ["left"], icon: "AlignLeft24Regular" }),
+          button("左对齐", "左对齐", "executeRowFlex", {
+            args: ["left"],
+            icon: "AlignLeft24Regular",
+          }),
           button("居中", "水平居中", "executeRowFlex", {
             args: ["center"],
             icon: "TextAlignCenter24Regular",
@@ -78,7 +81,10 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
             kind: "select",
             label: "格式",
             title: "数字格式",
-            options: NUMBER_FORMATS.map((preset) => ({ label: preset.label, args: [preset.label] })),
+            options: NUMBER_FORMATS.map((preset) => ({
+              label: preset.label,
+              args: [preset.label],
+            })),
           },
         ],
       },
@@ -136,7 +142,9 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
       },
       {
         label: "工作表",
-        items: [button("新建工作表", "新增一张工作表", "excelAddSheet", { icon: "TableSimple24Regular" })],
+        items: [
+          button("新建工作表", "新增一张工作表", "excelAddSheet", { icon: "TableSimple24Regular" }),
+        ],
       },
       {
         label: "计算",
@@ -158,7 +166,9 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
           button("自动求和", "在选区下方写入 =SUM(…)", "excelAutoSum", {
             icon: "MathFormula24Regular",
           }),
-          button("重新计算", "重新计算所有公式", "excelRecalculate", { icon: "ArrowRedo24Regular" }),
+          button("重新计算", "重新计算所有公式", "excelRecalculate", {
+            icon: "ArrowRedo24Regular",
+          }),
         ],
       },
     ],

@@ -15,6 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXCEL_PAGE, bundleExcelEntry } from "./lib/officeExcelPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { createReport } from "./lib/checkReport.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -35,7 +36,13 @@ async function main() {
       bundleExcelEntry(dir, {
         repoRoot,
         editorDir,
-        modules: ["xlsxWorkbook.ts", "xlsxValidate.ts", "xlsxPreflight.ts", "excelStructure.ts"],
+        modules: [
+          "xlsxWorkbook.ts",
+          "xlsxRead.ts",
+          "xlsxValidate.ts",
+          "xlsxPreflight.ts",
+          "excelStructure.ts",
+        ],
         sampleSheets: [],
       }),
     viewport: { width: 900, height: 700 },
@@ -43,14 +50,8 @@ async function main() {
   stage("页面就绪");
   const page = harness.page;
 
-  const failures = [];
-  const check = (ok, message) => {
-    if (ok) console.log(`ok   ${message}`);
-    else {
-      console.log(`FAIL ${message}`);
-      failures.push(message);
-    }
-  };
+  const report = createReport();
+  const { check } = report;
 
   await page.waitForFunction(() => window.__ready === true, undefined, { timeout: 60000 });
 
@@ -64,14 +65,20 @@ async function main() {
     const edited = {
       ...data,
       celldata: data.celldata.map((entry) =>
-        entry.r === 1 && entry.c === 0 ? { ...entry, v: { ...entry.v, v: "香蕉", m: "香蕉" } } : entry,
+        entry.r === 1 && entry.c === 0
+          ? { ...entry, v: { ...entry.v, v: "香蕉", m: "香蕉" } }
+          : entry,
       ),
     };
     const current = [edited, ...read.sheets.slice(1)];
     const written = await window.__xlsx.write({ source: bytes, baseline: read.sheets, current });
     const inspected = await window.__xlsx.inspect(written.bytes);
     const validation = await window.__xlsx.validate(written.bytes, bytes);
-    const again = await window.__xlsx.write({ source: bytes, baseline: read.sheets, current: read.sheets });
+    const again = await window.__xlsx.write({
+      source: bytes,
+      baseline: read.sheets,
+      current: read.sheets,
+    });
     return {
       sheets: read.sheets.map((sheet) => ({ name: sheet.name, hide: sheet.hide })),
       active: read.activeSheet,
@@ -111,7 +118,10 @@ async function main() {
     `超链接地址读出来（${roundTrip.hyperlink?.["2_0"]?.linkAddress}）`,
   );
   check(Boolean(roundTrip.merged?.["4_0"]), "合并区域读出来（A5:B5）");
-  check(roundTrip.width === 145 && roundTrip.height === 40, `列宽/行高换算（${roundTrip.width}px / ${roundTrip.height}px）`);
+  check(
+    roundTrip.width === 145 && roundTrip.height === 40,
+    `列宽/行高换算（${roundTrip.width}px / ${roundTrip.height}px）`,
+  );
   check(
     roundTrip.frozen?.type === "both" && roundTrip.frozen?.range?.row_focus === 1,
     `冻结窗格读出来（${JSON.stringify(roundTrip.frozen)}）`,
@@ -119,7 +129,10 @@ async function main() {
   check(roundTrip.rows >= 60, `网格规模够用（${roundTrip.rows} 行）`);
 
   check(roundTrip.changedCells === 1, `只写改了的那一格（changedCells=${roundTrip.changedCells}）`);
-  check(roundTrip.inspected.a2 === "香蕉", `改动落盘（A2=${JSON.stringify(roundTrip.inspected.a2)}）`);
+  check(
+    roundTrip.inspected.a2 === "香蕉",
+    `改动落盘（A2=${JSON.stringify(roundTrip.inspected.a2)}）`,
+  );
   check(
     roundTrip.inspected.a2note === "这里是批注",
     `批注原样保留（${JSON.stringify(roundTrip.inspected.a2note)}）`,
@@ -128,8 +141,14 @@ async function main() {
     roundTrip.inspected.a3?.hyperlink === "https://example.com/apple",
     `超链接原样保留（${roundTrip.inspected.a3?.hyperlink}）`,
   );
-  check(roundTrip.inspected.validations === 1, `数据验证原样保留（${roundTrip.inspected.validations} 条）`);
-  check(roundTrip.inspected.b3numFmt === "0.00", `数字格式原样保留（${roundTrip.inspected.b3numFmt}）`);
+  check(
+    roundTrip.inspected.validations === 1,
+    `数据验证原样保留（${roundTrip.inspected.validations} 条）`,
+  );
+  check(
+    roundTrip.inspected.b3numFmt === "0.00",
+    `数字格式原样保留（${roundTrip.inspected.b3numFmt}）`,
+  );
   check(
     String(roundTrip.inspected.b4?.formula ?? "").length > 0,
     `公式原样保留（${roundTrip.inspected.b4?.formula}）`,
@@ -143,7 +162,10 @@ async function main() {
       Math.abs((roundTrip.inspected.rowHeight ?? 0) - 30) < 0.6,
     `列宽/行高原样保留（${roundTrip.inspected.columnWidth} / ${roundTrip.inspected.rowHeight}）`,
   );
-  check(roundTrip.inspected.frozen === "frozen", `冻结窗格原样保留（${roundTrip.inspected.frozen}）`);
+  check(
+    roundTrip.inspected.frozen === "frozen",
+    `冻结窗格原样保留（${roundTrip.inspected.frozen}）`,
+  );
   check(roundTrip.inspected.hidden === "hidden", `隐藏表原样保留（${roundTrip.inspected.hidden}）`);
   check(
     roundTrip.inspected.notesA2 === 42,
@@ -153,14 +175,21 @@ async function main() {
     roundTrip.validation.ok,
     `产物校验通过（${roundTrip.validation.issues.join("；") || "无问题"}）`,
   );
-  check(roundTrip.untouchedChanged === 0, `没改就不写（changedCells=${roundTrip.untouchedChanged}）`);
+  check(
+    roundTrip.untouchedChanged === 0,
+    `没改就不写（changedCells=${roundTrip.untouchedChanged}）`,
+  );
 
   // ② 表级别改动：改名 / 新增 / 删除 之后，别的表的数据不能跟着错位
   const sheetLevel = await page.evaluate(async () => {
     const { bytes } = await window.__xlsx.fixture();
     const read = await window.__xlsx.read(bytes);
     const renamed = [{ ...read.sheets[0], name: "报表" }, ...read.sheets.slice(1)];
-    const written = await window.__xlsx.write({ source: bytes, baseline: read.sheets, current: renamed });
+    const written = await window.__xlsx.write({
+      source: bytes,
+      baseline: read.sheets,
+      current: renamed,
+    });
     const inspected = await window.__xlsx.inspect(written.bytes, "报表");
     const removed = await window.__xlsx.write({
       source: bytes,
@@ -170,10 +199,19 @@ async function main() {
     const inserted = await window.__xlsx.write({
       source: bytes,
       baseline: read.sheets,
-      current: [read.sheets[0], { name: "新表", celldata: [{ r: 0, c: 0, v: { v: 1 } }] }, ...read.sheets.slice(1)],
+      current: [
+        read.sheets[0],
+        { name: "新表", celldata: [{ r: 0, c: 0, v: { v: 1 } }] },
+        ...read.sheets.slice(1),
+      ],
     });
     return {
-      renamed: { names: inspected.sheetNames, a2: inspected.a2, notesA2: inspected.notesA2, changed: written.changedCells },
+      renamed: {
+        names: inspected.sheetNames,
+        a2: inspected.a2,
+        notesA2: inspected.notesA2,
+        changed: written.changedCells,
+      },
       removed: { notes: removed.notes },
       inserted: {
         notes: inserted.notes,
@@ -248,7 +286,8 @@ async function main() {
     const bytes = await (await fetch("/office-sample.xlsx")).arrayBuffer();
     const read = await window.__xlsx.read(bytes);
     const sheet = read.sheets[0];
-    const cellAt = (r, c) => sheet.celldata.find((entry) => entry.r === r && entry.c === c)?.v ?? null;
+    const cellAt = (r, c) =>
+      sheet.celldata.find((entry) => entry.r === r && entry.c === c)?.v ?? null;
     const edited = {
       ...sheet,
       celldata: sheet.celldata.map((entry) =>
@@ -281,7 +320,10 @@ async function main() {
     sample.edited === 999 && sample.note === "这个价格是含税的" && sample.validations === 1,
     `真样本改一格后批注/数据验证仍在（B3=${sample.edited}）`,
   );
-  check(sample.validation.ok, `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`);
+  check(
+    sample.validation.ok,
+    `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`,
+  );
 
   // ⑥ 结构化编辑（插入行）写回真样本：值下移、公式引用跟着改
   const structural = await page.evaluate(async () => {
@@ -315,15 +357,15 @@ async function main() {
     structural.a2 == null && structural.a3 === "笔记本" && structural.note === "这个价格是含税的",
     `插入行后内容整体下移、第 2 行为空（A2=${JSON.stringify(structural.a2)}，A3=${JSON.stringify(structural.a3)}，批注=${JSON.stringify(structural.note)}）`,
   );
-  check(
-    structural.d4formula === "B4*C4",
-    `插入行后公式引用跟着改（D4=${structural.d4formula}）`,
-  );
+  check(structural.d4formula === "B4*C4", `插入行后公式引用跟着改（D4=${structural.d4formula}）`);
   check(
     structural.validationAddresses.length === 1 && structural.validationAddresses[0] === "C3",
     `插入行后数据验证跟着下移（${structural.validationAddresses.join("、")}）`,
   );
-  check(structural.validation.ok, `插入行后的产物通过校验（${structural.validation.issues.join("；") || "无问题"}）`);
+  check(
+    structural.validation.ok,
+    `插入行后的产物通过校验（${structural.validation.issues.join("；") || "无问题"}）`,
+  );
 
   // ⑦ **引擎形状**的表（只有 data 矩阵、没有 celldata）也要能差分写回。
   // 这条是补一个曾经差点上线的坑：编辑位从 getAllSheets() 拿到的是 data 矩阵（引擎把 celldata 删了），
@@ -346,7 +388,9 @@ async function main() {
         ? {
             ...sheet,
             data: sheet.data.map((row, r) =>
-              row.map((cell, c) => (r === 1 && c === 0 ? { ...cell, v: "引擎形状", m: "引擎形状" } : cell)),
+              row.map((cell, c) =>
+                r === 1 && c === 0 ? { ...cell, v: "引擎形状", m: "引擎形状" } : cell,
+              ),
             ),
           }
         : sheet,
@@ -381,12 +425,7 @@ async function main() {
   );
 
   await harness.close();
-  if (failures.length > 0) {
-    console.log(`\n${failures.length} 条未通过`);
-    process.exitCode = 1;
-  } else {
-    console.log("\nxlsx 适配层检查全部通过");
-  }
+  report.finish("xlsx 适配层检查全部通过");
 }
 
 main().catch((error) => {

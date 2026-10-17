@@ -107,7 +107,10 @@ function mergeKey(rect: { r: number; c: number }): string {
 }
 
 /** 合并区域：改动点之前不变、之后整体平移、跨越改动点的收缩、被完全覆盖的丢掉。 */
-function transformMerges(config: SheetConfig | undefined, edit: StructureEdit): SheetConfig["merge"] {
+function transformMerges(
+  config: SheetConfig | undefined,
+  edit: StructureEdit,
+): SheetConfig["merge"] {
   const merges = config?.merge;
   if (!merges) return undefined;
   const next: NonNullable<SheetConfig["merge"]> = {};

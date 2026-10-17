@@ -96,7 +96,10 @@ window.__excel = {
   /** 走**我们自己的**命令调度（excelCommands.ts），把状态栏消息带回来。 */
   async run(command, args) {
     const messages = [];
-    const handled = window.app.runExcelCommand(
+    let thrown = null;
+    const handled = (() => {
+      try {
+        return window.app.runExcelCommand(
       {
         api: () => apiRef.current,
         setStatus: (message) => messages.push(message),
@@ -109,11 +112,16 @@ window.__excel = {
           window.__flowRecordStructureEdit?.(edit, sheetName);
         },
       },
-      command,
-      args ?? [],
-    );
+          command,
+          args ?? [],
+        );
+      } catch (error) {
+        thrown = String(error).slice(0, 200);
+        return false;
+      }
+    })();
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    return { handled, messages };
+    return { handled, messages, thrown };
   },
   /** exceljs 能不能在浏览器里跑（读 + 写 + 公式）——Excel 编辑位的 I/O 全靠它。 */
   excelRoundTrip: async () => {
@@ -276,6 +284,7 @@ window.__flow = {
       busy: state.busy,
       writeBlocked: state.writeBlocked,
       readOnly: state.guard?.readOnly ?? null,
+      pendingStructureEdits: state.structureEditCount?.() ?? 0,
       notices: state.guard?.notices ?? [],
       sheetNames: state.sheets?.map((sheet) => sheet.name) ?? null,
     };
@@ -284,6 +293,8 @@ window.__flow = {
     window.__flowSheets = sheets;
   },
   sheets: () => window.__flowSheets,
+  /** 直接触发钩子的"记录结构操作"（验证编辑位那条接线：记下 → 保存时用 → 保存后清空）。 */
+  recordStructureEdit: (edit, sheetName) => window.__flowState?.recordStructureEdit(edit, sheetName),
   async save() {
     await window.__flowState.save();
     // 同上：save 里的 setStatus 要等 React 提交后才是新的

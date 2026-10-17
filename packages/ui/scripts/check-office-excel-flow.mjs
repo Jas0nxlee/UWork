@@ -24,11 +24,21 @@ async function main() {
   const harness = await startOfficeHarness({
     prefix: "office-excel-flow-",
     pages: { "index.html": EXCEL_PAGE },
+    copies: {
+      [join(repoRoot, "packages/ui/test/fixtures/office-sample.xlsx")]: "office-sample.xlsx",
+    },
     prepareDir: (dir) =>
       bundleExcelEntry(dir, {
         repoRoot,
         editorDir,
-        modules: ["xlsxWorkbook.ts", "xlsxValidate.ts", "xlsxPreflight.ts", "useExcelDocument.ts"],
+        modules: [
+          "xlsxWorkbook.ts",
+          "xlsxRead.ts",
+          "xlsxValidate.ts",
+          "xlsxPreflight.ts",
+          "useExcelDocument.ts",
+          "excelStructure.ts",
+        ],
         sampleSheets: [],
       }),
     viewport: { width: 900, height: 700 },
@@ -53,7 +63,9 @@ async function main() {
     window.__flowFixture = bytes;
     return {
       state: window.__flow.state(),
-      read: await window.__xlsx.read(bytes).then((result) => result.sheets.map((sheet) => sheet.name)),
+      read: await window.__xlsx
+        .read(bytes)
+        .then((result) => result.sheets.map((sheet) => sheet.name)),
     };
   });
   check(opened.state.ready === true, `打开后进入就绪（ready=${opened.state.ready}）`);
@@ -88,7 +100,9 @@ async function main() {
     await api.save();
     const calls = api.calls();
     const call = calls[calls.length - 1];
-    const written = call ? Uint8Array.from(atob(call.dataBase64), (char) => char.charCodeAt(0)) : null;
+    const written = call
+      ? Uint8Array.from(atob(call.dataBase64), (char) => char.charCodeAt(0))
+      : null;
     const inspected = written ? await window.__xlsx.inspect(written.buffer, "数据") : null;
     const validation = written
       ? await window.__xlsx.validate(written.buffer, window.__flowFixture)
@@ -115,6 +129,69 @@ async function main() {
   check(
     saved.state.status.includes("已保存") && saved.state.dirty === false && saved.dirty === false,
     `保存后状态与脏标记复位（${saved.state.status}）`,
+  );
+
+  // ②b 行列结构操作 → 保存：验的是**编辑位那条接线**（记下操作 → 写回时在文件上整行搬移 → 保存后清空）。
+  // 这里刻意不用引擎：命令层由 check-office-excel-ui 覆盖、写回由 check-office-excel-io 覆盖，
+  // 这一条只盯"钩子有没有把操作交给写回、交完之后有没有清干净"——中间少一根线，用户看到的就是
+  // "插了行，批注/公式却留在了别处"。
+  const structural = await page.evaluate(async () => {
+    const bytes = await (await fetch("/office-sample.xlsx")).arrayBuffer();
+    await window.__flow.start({ base64: window.__flow.base64(bytes) });
+    const edit = { kind: "row", mode: "insert", index: 1, count: 1 };
+    // 引擎形状的当前表：把导入快照按"在第 2 行上方插一行"变换一次（等价于用户在表格里插了一行）
+    const read = await window.__xlsx.read(bytes);
+    const shifted = window.app.applyStructureEdit(
+      read.sheets[0],
+      window.app.cellEntries(read.sheets[0]),
+      edit,
+    ).sheet;
+    window.__flow.setSheets([shifted, ...read.sheets.slice(1)]);
+    const before = window.__flow.state().pendingStructureEdits;
+    window.__flow.recordStructureEdit(edit, read.sheets[0].name);
+    const recorded = window.__flow.state().pendingStructureEdits;
+    await window.__flow.save();
+    const cleared = window.__flow.state().pendingStructureEdits;
+    const call = window.__flow.calls()[window.__flow.calls().length - 1];
+    const report = {};
+    if (call) {
+      const written = Uint8Array.from(atob(call.dataBase64), (char) => char.charCodeAt(0));
+      const workbook = new window.ExcelJS.Workbook();
+      await workbook.xlsx.load(written.buffer);
+      const sheet = workbook.getWorksheet(read.sheets[0].name);
+      report.a2 = sheet?.getCell("A2").value ?? null;
+      report.a3 = sheet?.getCell("A3").value ?? null;
+      report.note = sheet?.getCell("A3").note ? String(sheet.getCell("A3").note) : null;
+      report.formula = sheet?.getCell("D3").value?.formula ?? null;
+      report.validations = Object.keys(sheet?.dataValidations?.model ?? {});
+    }
+    return {
+      before,
+      recorded,
+      cleared,
+      report,
+      status: window.__flow.state().status,
+      writes: window.__flow.calls().length,
+    };
+  });
+  check(
+    structural.before === 0 && structural.recorded === 1 && structural.cleared === 0,
+    `结构操作被编辑位记下、写回后清空（${structural.before} → ${structural.recorded} → ${structural.cleared}）`,
+  );
+  check(structural.writes === 1, `结构操作触发了写回（${structural.writes} 次）`);
+  check(
+    structural.report.a2 === null &&
+      structural.report.a3 === "笔记本" &&
+      structural.report.note === "这个价格是含税的",
+    `插入行后文件里内容下移、批注跟着走（A2=${JSON.stringify(structural.report.a2)}，A3=${JSON.stringify(structural.report.a3)}，批注=${JSON.stringify(structural.report.note)}）`,
+  );
+  check(
+    structural.report.formula === "B3*C3",
+    `插入行后公式引用跟着改（D3=${structural.report.formula}）`,
+  );
+  check(
+    structural.report.validations.includes("C3"),
+    `插入行后数据验证跟着走（${structural.report.validations.join("、")}）`,
   );
 
   // ③ 没改动就不写盘

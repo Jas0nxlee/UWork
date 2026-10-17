@@ -53,10 +53,7 @@ async function readParts(bytes: ArrayBuffer): Promise<ZipParts | null> {
 function textLengthOf(xml: string): number {
   const document = new DOMParser().parseFromString(xml, "application/xml");
   const nodes = Array.from(
-    document.getElementsByTagNameNS(
-      "http://schemas.openxmlformats.org/drawingml/2006/main",
-      "t",
-    ),
+    document.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "t"),
   );
   return nodes.reduce((total, node) => total + (node.textContent ?? "").length, 0);
 }

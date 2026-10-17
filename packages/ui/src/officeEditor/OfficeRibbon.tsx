@@ -226,7 +226,13 @@ function planGroups(
   return states;
 }
 
-export function OfficeRibbon({ style, inTable = false, run, tabs: customTabs, hint }: OfficeRibbonProps) {
+export function OfficeRibbon({
+  style,
+  inTable = false,
+  run,
+  tabs: customTabs,
+  hint,
+}: OfficeRibbonProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const groupNodes = useRef(new Map<string, HTMLDivElement>());

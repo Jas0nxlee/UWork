@@ -68,7 +68,10 @@ function richTextToPlain(richText: Array<{ text?: string }> | undefined): string
   return (richText ?? []).map((run) => run.text ?? "").join("");
 }
 
-function resultOf(value: { result?: unknown; error?: string }): string | number | boolean | undefined {
+function resultOf(value: {
+  result?: unknown;
+  error?: string;
+}): string | number | boolean | undefined {
   if (value.error) return value.error;
   const result = value.result;
   if (result === null || result === undefined) return undefined;
@@ -162,7 +165,10 @@ export function readCell(cell: ExcelCell): ReadCellResult | undefined {
 export function writeCell(target: ExcelCell, cell: Cell): void {
   if (typeof cell.f === "string" && cell.f.length > 0) {
     const result = typeof cell.v === "number" || typeof cell.v === "boolean" ? cell.v : undefined;
-    target.value = { formula: cell.f.replace(/^=/, ""), ...(result === undefined ? {} : { result }) };
+    target.value = {
+      formula: cell.f.replace(/^=/, ""),
+      ...(result === undefined ? {} : { result }),
+    };
   } else if (typeof cell.v === "string" && cell.ct?.t === "d") {
     const parsed = new Date(cell.v);
     target.value = Number.isNaN(parsed.getTime()) ? cell.v : parsed;
@@ -288,7 +294,9 @@ export function cellAddress(row: number, column: number): string {
 }
 
 /** "A1:C3" → { r, c, rs, cs }（零基、含端点）。 */
-export function rangeToRect(range: string): { r: number; c: number; rs: number; cs: number } | null {
+export function rangeToRect(
+  range: string,
+): { r: number; c: number; rs: number; cs: number } | null {
   const match = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(range.replace(/\$/g, ""));
   if (!match) return null;
   const [, firstColumn, firstRow, lastColumn, lastRow] = match;

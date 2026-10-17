@@ -81,9 +81,7 @@ function blockLabel(txBody: Element): string {
   let node: Element | null = txBody;
   while (node) {
     if (node.namespaceURI === P_NS && node.localName === "sp") {
-      const name = node
-        .getElementsByTagNameNS(P_NS, "cNvPr")[0]
-        ?.getAttribute("name");
+      const name = node.getElementsByTagNameNS(P_NS, "cNvPr")[0]?.getAttribute("name");
       return name && name.length > 0 ? name : "文本框";
     }
     if (node.namespaceURI === P_NS && node.localName === "graphicFrame") {
@@ -227,7 +225,8 @@ export async function writeDeckSlides(input: {
 /** 幻灯片数（校验用）。 */
 export function countSlides(bytes: ArrayBuffer): Promise<number> {
   return JSZip.loadAsync(bytes).then(
-    (zip) => Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length,
+    (zip) =>
+      Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length,
   );
 }
 

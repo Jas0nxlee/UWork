@@ -48,7 +48,19 @@ function ensureSheetData(api: WorkbookInstance, sheet: Sheet | undefined): Sheet
 }
 
 /** "清除格式"要清的所有格式位（值一律 null，引擎按缺省处理）。 */
-const STYLE_ATTRIBUTES = ["bl", "it", "un", "cl", "bg", "fc", "ff", "fs", "ht", "vt", "tb"] as const;
+const STYLE_ATTRIBUTES = [
+  "bl",
+  "it",
+  "un",
+  "cl",
+  "bg",
+  "fc",
+  "ff",
+  "fs",
+  "ht",
+  "vt",
+  "tb",
+] as const;
 
 /** "B2" / "B2:C3" → 单块选区（引擎的 getSelectionCoordinates 给的地址格式）。 */
 function parseCoordinate(text: string): SingleRange | null {
@@ -175,9 +187,12 @@ export function runExcelCommand(
     case "executeItalic":
     case "executeUnderline":
     case "executeStrikeout": {
-      const attribute = { executeBold: "bl", executeItalic: "it", executeUnderline: "un", executeStrikeout: "cl" }[
-        command
-      ] as "bl" | "it" | "un" | "cl";
+      const attribute = {
+        executeBold: "bl",
+        executeItalic: "it",
+        executeUnderline: "un",
+        executeStrikeout: "cl",
+      }[command] as "bl" | "it" | "un" | "cl";
       // 读回来的是"引擎规范化过的值"：开着是 1，关着是字符串 "0"（不是 0）。
       // 拿 `current === 1` 当开关判断的话，取消加粗会变成"再加粗一次"（实测踩过）
       const current = api.getCellValue(cell.row, cell.column, { type: attribute });

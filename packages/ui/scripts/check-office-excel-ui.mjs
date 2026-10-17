@@ -17,6 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXCEL_PAGE, bundleExcelEntry } from "./lib/officeExcelPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { createUiDriver, runRibbonCommandMatrix } from "./lib/officeExcelUiDriver.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -50,7 +51,14 @@ async function main() {
       bundleExcelEntry(dir, {
         repoRoot,
         editorDir,
-        modules: ["excelCommands.ts", "excelRibbonTabs.ts", "ribbonItemSupport.ts"],
+        modules: [
+          "excelCommands.ts",
+          "excelRibbonTabs.ts",
+          "ribbonItemSupport.ts",
+          "excelStructure.ts",
+          "xlsxWorkbook.ts",
+          "xlsxRead.ts",
+        ],
         sampleSheets: SAMPLE,
       }),
     viewport: { width: 1200, height: 800 },
@@ -68,76 +76,8 @@ async function main() {
   };
 
   await page.waitForFunction(() => window.__ready === true, undefined, { timeout: 60000 });
-  const mount = async () => {
-    await page.evaluate((data) => window.__excel.mount({ data }), SAMPLE);
-    await page.waitForSelector("#host canvas", { timeout: 20000 });
-  };
+  const { mount, runCase } = createUiDriver({ page, mountData: SAMPLE });
   await mount();
-
-  // —— 选区：点网格 + 方向键走到目标格（可选 Shift 扩选）——
-  const address = () =>
-    page.evaluate(() => window.__excel.api().current?.getSelectionCoordinates()?.[0] ?? "");
-  const columnOf = (value) => value.replace(/\d+/g, "");
-  const rowOf = (value) => Number(value.replace(/\D+/g, ""));
-  const walkTo = async (target) => {
-    const trace = [];
-    // 先点一下网格：焦点不在格子上时，方向键根本没人听（walkTo 会一路超时，
-    // 后面的断言就全变成"改到了 A1"）
-    const box = await page.locator("#host canvas").first().boundingBox();
-    await page.mouse.click(Math.round(box.x + 200), Math.round(box.y + 60));
-    await page.waitForTimeout(80);
-    for (let step = 0; step < 80; step += 1) {
-      const current = await address();
-      if (trace.length < 10) trace.push(current);
-      if (step === 79 && current !== target) {
-        console.log(`     诊断 walkTo(${target}): ${trace.join(" → ")} …超时`);
-      }
-      if (current === target) return true;
-      const currentColumn = columnOf(current);
-      const targetColumn = columnOf(target);
-      if (currentColumn !== targetColumn) {
-        await page.keyboard.press(currentColumn < targetColumn ? "ArrowRight" : "ArrowLeft");
-      } else {
-        await page.keyboard.press(rowOf(current) < rowOf(target) ? "ArrowDown" : "ArrowUp");
-      }
-      // 引擎把选区落到 context 是异步的：读太早会拿到**上一次**的地址，于是同方向连按、
-      // 一路顶到边界再也回不来（walkTo 假失败，后面的断言全变成"改到了 A1"）
-      await page.waitForTimeout(60);
-    }
-    return false;
-  };
-  /** 从 `from` 扩选到 `to`（Shift + 方向键），得到一块多格选区。 */
-  const selectRange = async (from, to) => {
-    const box = await page.locator("#host canvas").first().boundingBox();
-
-    await page.mouse.click(Math.round(box.x + 200), Math.round(box.y + 60));
-
-    if (!(await walkTo(from))) return false;
-    await page.keyboard.down("Shift");
-    // 按**差值**扩选（不是"按一下就够"）：A1→A3 需要两下方向键
-    const columnDelta = to.length && columnOf(from) !== columnOf(to) ? columnOf(to).length - columnOf(from).length : 0;
-    for (let step = 0; step < Math.abs(columnDelta); step += 1) {
-      await page.keyboard.press(columnDelta > 0 ? "ArrowRight" : "ArrowLeft");
-    }
-    const rowDelta = rowOf(to) - rowOf(from);
-    for (let step = 0; step < Math.abs(rowDelta); step += 1) {
-      await page.keyboard.press(rowDelta > 0 ? "ArrowDown" : "ArrowUp");
-    }
-    await page.keyboard.up("Shift");
-    await page.waitForTimeout(60);
-    return true;
-  };
-
-  /** 每条断言都在**新挂载的实例**上跑：坏状态不互相污染，一条断言只验一件事。 */
-  const runCase = async ({ steps = [], from, to, command, args = [], read }) => {
-    await mount();
-    for (const [name, stepArgs] of steps) {
-      await page.evaluate(([n, a]) => window.__excel.run(n, a), [name, stepArgs]);
-    }
-    const selected = to ? await selectRange(from, to) : await walkTo(from);
-    await page.evaluate(([n, a]) => window.__excel.run(n, a), [command, args]);
-    return { selected, value: await page.evaluate(read) };
-  };
 
   // ② 加粗：切换语义（再点一次要取消），并且真的落到格子数据上
   const bold = await runCase({
@@ -189,7 +129,9 @@ async function main() {
     `合并居中生效（${merge.value.merge.join(",")}，水平对齐 ${merge.value.ht}）`,
   );
   const unmerged = await page.evaluate(async () => {
-    const before = Object.keys(window.__excel.api().current.getAllSheets()[0].config?.merge ?? {}).length;
+    const before = Object.keys(
+      window.__excel.api().current.getAllSheets()[0].config?.merge ?? {},
+    ).length;
     await window.__excel.run("excelUnmerge");
     return {
       before,
@@ -222,7 +164,10 @@ async function main() {
     command: "excelClearFormat",
     read: () => {
       const api = window.__excel.api().current;
-      return { bold: api.getCellValue(0, 0, { type: "bl" }), value: api.getCellValue(0, 0, { type: "v" }) };
+      return {
+        bold: api.getCellValue(0, 0, { type: "bl" }),
+        value: api.getCellValue(0, 0, { type: "v" }),
+      };
     },
   });
   // 读数口径：开着是 1、关着是字符串 "0"（引擎规范化过的），所以判"没加粗"而不是 === "0"
@@ -354,7 +299,11 @@ async function main() {
   const added = await runCase({
     from: "A1",
     command: "excelAddSheet",
-    read: () => window.__excel.api().current.getAllSheets().map((sheet) => sheet.name),
+    read: () =>
+      window.__excel
+        .api()
+        .current.getAllSheets()
+        .map((sheet) => sheet.name),
   });
   check(added.value.length === 2, `新增工作表落到表数据上（${added.value.join("、")}）`);
 
@@ -376,101 +325,39 @@ async function main() {
   );
 
   /**
-   * ⑩ 命令矩阵**最后再跑**：它会把一个实例用到"选区乱掉"的状态（结构性命令 + 新增表），
-   * 前面那些效果断言需要干净的实例。所以矩阵放在最后，用来证明"整条功能区跑完引擎还活着、
-   * 每条命令都被调度器接住"。
+   * ⑩ 命令矩阵**最后再跑**：它会把一个实例用到"选区乱掉"的状态，前面的效果断言需要干净的实例。
+   * 矩阵证明的是：每条命令都被调度器接住、跑完引擎还活着。
    */
-  const runMatrix = async () => {
-    const matrix = await page.evaluate(async () => {
-      const tabs = window.app.EXCEL_RIBBON_TABS;
-      const commands = [];
-      for (const tab of tabs) {
-        for (const group of tab.groups) {
-          for (const item of group.items) {
-            if (item.kind === "command") commands.push({ command: item.command, args: item.args ?? [] });
-            // 下拉走的是"标题 → 命令"的映射（与视图件里同一份 optionsCommand）
-            if (item.kind === "select") {
-              for (const option of item.options ?? []) {
-                commands.push({ command: window.app.optionsCommand(item.title), args: option.args });
-              }
-            }
-          }
-        }
-      }
-      const results = [];
-      for (const entry of commands) {
-        let error = null;
-        let handled = false;
-        let message = "";
-        try {
-          const outcome = await window.__excel.run(entry.command, entry.args);
-          handled = outcome.handled;
-          message = outcome.messages.join(" / ");
-        } catch (thrown) {
-          error = String(thrown).slice(0, 160);
-        }
-        const alive = window.__excel.api().current != null;
-        let shape = null;
-        if (alive) {
-          const engine = window.__excel.api().current;
-          const sheet = engine.getSheet?.() ?? engine.getAllSheets()?.[0];
-          shape = {
-            name: sheet?.name,
-            rows: sheet?.data?.length,
-            cols: sheet?.data?.[0]?.length,
-            selection: engine.getSelectionCoordinates?.(),
-          };
-        }
-        results.push({ ...entry, handled, message, error, alive, shape });
-        if (error || !alive) break;
-      }
-      return {
-        tabs: tabs.map((tab) => ({ id: tab.id, groups: tab.groups.length })),
-        results,
-      };
-    });
-    check(matrix.tabs.length >= 4, `功能区标签齐备（${matrix.tabs.map((tab) => tab.id).join("/")}）`);
-    const unknown = matrix.results.filter((item) => !item.handled);
-    check(
-      unknown.length === 0,
-      unknown.length === 0
-        ? `功能区的 ${matrix.results.length} 条命令全部被调度器接住`
-        : `有命令没实现：${unknown.map((item) => item.command).join("、")}`,
+  const matrix = await runRibbonCommandMatrix(page);
+  check(matrix.tabs.length >= 4, `功能区标签齐备（${matrix.tabs.map((tab) => tab.id).join("/")}）`);
+  const unknown = matrix.results.filter((item) => !item.handled);
+  check(
+    unknown.length === 0,
+    unknown.length === 0
+      ? `功能区的 ${matrix.results.length} 条命令全部被调度器接住`
+      : `有命令没实现：${unknown.map((item) => item.command).join("、")}`,
+  );
+  const broken = matrix.results.filter((item) => !item.alive || item.error);
+  if (broken.length > 0) {
+    // 崩在"下一条命令"上很常见（React 的卸载是异步的）：把最后几条的形状打出来对时间线
+    console.log(
+      "     诊断（最后 6 条）：" +
+        matrix.results
+          .slice(-6)
+          .map(
+            (item) => `${item.command}${item.alive ? "" : "(dead)"}${JSON.stringify(item.shape)}`,
+          )
+          .join(" → "),
     );
-    const broken = matrix.results.filter((item) => !item.alive || item.error);
-    if (broken.length > 0) {
-      // 崩在"下一条命令"上很常见（React 的卸载是异步的）：把最后几条的形状打出来对时间线
-      console.log(
-        "     诊断（最后 6 条）：" +
-          matrix.results
-            .slice(-6)
-            .map(
-              (item) => `${item.command}${item.alive ? "" : "(dead)"}${JSON.stringify(item.shape)}`,
-            )
-            .join(" → "),
-      );
-    }
-    check(
-      broken.length === 0,
-      broken.length === 0
-        ? "跑完整个命令矩阵后引擎仍然可用"
-        : `这些命令把引擎弄挂了：${broken
-            .map((item) => `${item.command}:${item.error ?? "引擎实例没了"}`)
-            .join("、")}`,
-    );
-
-    /**
-     * ③ 没有假按钮：网格线开关是**故意不做**的（引擎的 updateSheet 只认数据矩阵、不认表级字段，
-     * 做了也是"点了没反应"）。行列结构操作与整表选中这一轮已经做完（见上面的断言）。
-     */
-    const forbidden = matrix.results.filter((item) => /excelToggleGridLines/.test(item.command));
-    check(
-      forbidden.length === 0,
-      "功能区没有「点了没反应」的命令（网格线开关）",
-    );
-
-  };
-  await runMatrix();
+  }
+  check(
+    broken.length === 0,
+    broken.length === 0
+      ? "跑完整个命令矩阵后引擎仍然可用"
+      : `这些命令把引擎弄挂了：${broken.map((item) => `${item.command}:${item.error ?? "引擎实例没了"}`).join("、")}`,
+  );
+  const forbidden = matrix.results.filter((item) => /excelToggleGridLines/.test(item.command));
+  check(forbidden.length === 0, "功能区没有「点了没反应」的命令（网格线开关）");
 
   await harness.close();
   if (failures.length > 0) {

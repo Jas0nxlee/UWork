@@ -16,7 +16,8 @@ import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import { analyzeXlsx, summarizeXlsxFindings, type XlsxFindings } from "./xlsxPreflight.js";
 import { validateXlsxCandidate } from "./xlsxValidate.js";
-import { readXlsxToSheets, writeSheetsToXlsx, type StructureOp } from "./xlsxWorkbook.js";
+import { writeSheetsToXlsx, type StructureOp } from "./xlsxWorkbook.js";
+import { readXlsxToSheets } from "./xlsxRead.js";
 import type { StructureEdit } from "./excelStructure.js";
 
 /** 应用内编辑的体积上限：xlsx 是压缩包，24 MB 的文件解出来通常是它的十几倍。 */
@@ -232,5 +233,8 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
     loadDocument,
     save,
     recordStructureEdit,
+    /** 还没写回文件的行列结构操作数（检查与调试用；保存后归零）。
+     *  用函数而不是值：ref 变了不会触发重渲染，取快照会一直读到旧数。 */
+    structureEditCount: () => structureEditsRef.current.length,
   };
 }
