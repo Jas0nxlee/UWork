@@ -2,12 +2,13 @@ import { memo, useEffect, useMemo, useState } from "react";
 import type { ImConversationSummary, ImDirectoryUser } from "@zcode/shared";
 import { MessagesSquareIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
-import { Input } from "@/components/ui/input.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
 import { cn } from "@/components/lib/utils.js";
 import type { MessagesSidePaneTab } from "@/lib/workspaceSidePane.js";
 import { ImConversationPanel } from "./ImConversationPanel.js";
+import { ImDirectoryPicker, type ImPickerMode } from "./ImDirectoryPicker.js";
+import { ImGroupSettings } from "./ImGroupSettings.js";
 import { useIm } from "./useIm.js";
 
 /**
@@ -27,6 +28,8 @@ export const MessagesSidePane = memo(function MessagesSidePane({
   const [selected, setSelected] = useState<string | null>(tab.conversationId ?? null);
   const [directory, setDirectory] = useState<ImDirectoryUser[]>([]);
   const [picking, setPicking] = useState(false);
+  const [pickerMode, setPickerMode] = useState<ImPickerMode>("dm");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // DM 的标题要从 dmKey 里认出对方（服务端存的是排序后的两个成员 id），名字取自通讯录。
   // 通讯录规模很小（一期 14 人），进面板拉一次就够。
@@ -118,9 +121,9 @@ export const MessagesSidePane = memo(function MessagesSidePane({
           {picking ? (
             <ImDirectoryPicker
               users={directory}
-              emptyLabel={t("im.noDirectory")}
-              placeholder={t("im.searchPeople")}
-              onPick={(user) => {
+              mode={pickerMode}
+              onModeChange={setPickerMode}
+              onPickDm={(user) => {
                 if (!im.service) return;
                 void im.service
                   .createDm(user.id)
@@ -130,6 +133,17 @@ export const MessagesSidePane = memo(function MessagesSidePane({
                   })
                   .catch((error: unknown) => logger.warn("[im] 发起单聊失败", error));
               }}
+              onCreateGroup={(memberIds, title) => {
+                if (!im.service) return;
+                void im.service
+                  .createGroup({ memberIds, title: title || t("im.untitled") })
+                  .then((conversation) => {
+                    setSelected(conversation.id);
+                    setPicking(false);
+                  })
+                  .catch((error: unknown) => logger.warn("[im] 建群失败", error));
+              }}
+              onClose={() => setPicking(false)}
             />
           ) : null}
           <ul className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -160,13 +174,23 @@ export const MessagesSidePane = memo(function MessagesSidePane({
         </div>
 
         <div className="min-w-0 flex-1">
-          {active ? (
+          {active && settingsOpen && active.kind !== "dm" ? (
+            <ImGroupSettings
+              service={im.service}
+              conversation={active}
+              directory={directory}
+              selfUserId={selfUserId}
+              onClose={() => setSettingsOpen(false)}
+              onChanged={() => void im.refresh()}
+            />
+          ) : active ? (
             <ImConversationPanel
               service={im.service}
               conversationId={active.id}
               selfUserId={selfUserId}
               title={titleOf(active)}
               subtitle={subtitleOf(active)}
+              onOpenSettings={active.kind === "dm" ? undefined : () => setSettingsOpen(true)}
             />
           ) : (
             <ImNotice text={t("im.pickConversation")} />
@@ -201,52 +225,5 @@ function ConnectionBadge({ status, label }: { status: string; label: (id: string
     <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
       {label(id)}
     </span>
-  );
-}
-
-function ImDirectoryPicker({
-  users,
-  placeholder,
-  emptyLabel,
-  onPick,
-}: {
-  users: ImDirectoryUser[];
-  placeholder: string;
-  emptyLabel: string;
-  onPick: (user: ImDirectoryUser) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const filtered = users.filter(
-    (user) =>
-      !query || (user.name ?? "").includes(query) || (user.department ?? "").includes(query),
-  );
-  return (
-    <div className="border-b border-border p-2">
-      <Input
-        autoFocus
-        className="h-7 text-xs"
-        placeholder={placeholder}
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      <ul className="mt-1 max-h-48 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <li className="px-1 py-1.5 text-[11px] text-muted-foreground">{emptyLabel}</li>
-        ) : (
-          filtered.map((user) => (
-            <li key={user.id}>
-              <button
-                type="button"
-                className="flex w-full flex-col items-start rounded px-1 py-1 text-left hover:bg-accent"
-                onClick={() => onPick(user)}
-              >
-                <span className="text-xs text-foreground">{user.name ?? user.id}</span>
-                <span className="text-[10px] text-muted-foreground">{user.department ?? ""}</span>
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
-    </div>
   );
 }

@@ -19,6 +19,7 @@ import type { Sheet } from "@fortune-sheet/core";
 import { Workbook, type WorkbookInstance } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
 import type { IFileService } from "@zcode/services";
+import { createRoot } from "react-dom/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
@@ -42,6 +43,65 @@ function emptySheet(): Sheet[] {
 
 const ALIGN_TO_CODE: Record<number, string> = { 1: "left", 0: "center", 2: "right" };
 
+/**
+ * 把工作簿挂到**它自己的 React root** 里。
+ *
+ * 为什么这么做：真机反馈"点单元格选不中/跳回 A1"，查下来是引擎的"行列 ↔ 像素"命中表算成了 NaN
+ * （名字框显示 `A1:NaN`）。对照实验里，同一个引擎版本、同一套 props：
+ *   - 单独挂在一个 React root 里（就是本组件这种形状）→ 正常；
+ *   - 嵌在编辑位的组件树里 → 必现。
+ * 所以宿主改成"编辑位管自己的状态，引擎在自己的 root 里跑"，两边互不干扰；
+ * 引擎实例仍然通过 `apiRef` 交回给编辑位（功能区、保存、上报脏标记都用它）。
+ */
+function EngineHost({
+  hostRef,
+  apiRef,
+  data,
+  allowEdit,
+  hooks,
+  onOp,
+  cacheKey,
+}: {
+  hostRef: React.RefObject<HTMLDivElement | null>;
+  apiRef: React.RefObject<WorkbookInstance | null>;
+  data: Sheet[];
+  allowEdit: boolean;
+  hooks: { afterSelectionChange: () => void; afterUpdateCell: () => void };
+  onOp: () => void;
+  /** 换文件/重新加载时用它强制重建（对应原来挂在 <Workbook key> 上的那个键）。 */
+  cacheKey: string;
+}) {
+  const onOpRef = useRef(onOp);
+  onOpRef.current = onOp;
+  const hooksRef = useRef(hooks);
+  hooksRef.current = hooks;
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const root = createRoot(host);
+    root.render(
+      <Workbook
+        ref={apiRef as never}
+        data={data}
+        allowEdit={allowEdit}
+        showToolbar={false}
+        showFormulaBar
+        showSheetTabs
+        lang="zh"
+        hooks={hooksRef.current}
+        onOp={() => onOpRef.current()}
+      />,
+    );
+    return () => {
+      // 先卸载再清空宿主：引擎的 canvas 不会被 React 自己摘掉，留着会让下一次挂载画出两份
+      root.unmount();
+      host.replaceChildren();
+    };
+    // data 变了要重建（引擎只在挂载时吃一次 data）；其余 props 走 ref，避免无谓重建
+  }, [apiRef, data, hostRef]);
+  return <div key={cacheKey} ref={hostRef} className="h-full w-full" />;
+}
+
 export function ExcelEditorPane({
   fileService,
   path,
@@ -50,6 +110,8 @@ export function ExcelEditorPane({
   onExit,
 }: ExcelEditorPaneProps) {
   const apiRef = useRef<WorkbookInstance | null>(null);
+  /** 引擎自己的宿主（见 EngineHost：引擎在自己的 React root 里跑）。 */
+  const engineHostRef = useRef<HTMLDivElement | null>(null);
   const [selectionStyle, setSelectionStyle] = useState<RibbonStyle | null>(null);
   const [selection, setSelection] = useState("");
 
@@ -202,21 +264,16 @@ export function ExcelEditorPane({
       />
       <div className="min-h-0 flex-1" onMouseUp={syncSelectionStyle} onKeyUp={syncSelectionStyle}>
         {sheets ? (
-          <Workbook
-            key={`${path}:${loadCount}`}
-            ref={apiRef}
+          <EngineHost
+            hostRef={engineHostRef}
+            apiRef={apiRef}
             data={data}
             allowEdit={!readOnly}
-            showToolbar={false}
-            showFormulaBar
-            showSheetTabs
-            lang="zh"
             hooks={hooks}
-            // 脏标记只看 op（immer 补丁）：onChange 连选区变化都会触发，
-            // 用它当 "未保存" 会让用户刚点一下格子就看到"未保存"（真机最忌讳这种假信号）
-            // 引擎在**渲染期**（reducer 里）算补丁并回调 onOp：这里同步 setState 会让 React
-            // 边渲染边更新另一个组件，它自己那一轮的布局测量会被打断——命中表就变成 NaN
-            // （真机表现：点单元格闪一下、选不中）。所以推到微任务里再标脏。
+            cacheKey={`${path}:${loadCount}`}
+            // 脏标记只看 op（immer 补丁）：onChange 连选区变化都会触发，用它当"未保存"会假报；
+            // 另外 onOp 是引擎在**渲染期**回调的，这里推到微任务再 setState（否则 React 会报
+            // "边渲染边更新另一个组件"）
             onOp={() => queueMicrotask(() => setDirty(true))}
           />
         ) : (

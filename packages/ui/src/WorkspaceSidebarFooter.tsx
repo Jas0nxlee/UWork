@@ -28,10 +28,12 @@ import {
 } from "lucide-react";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { useImUnread } from "@/im/useImSidebar.js";
 import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
 import type { Theme } from "@/useTheme.js";
+import { WorkspaceWebRemoteControlTrigger } from "@/WorkspaceWebRemoteControlTrigger.js";
 
 const DESKTOP_ZOOM_MIN_LEVEL = -3;
 const DESKTOP_ZOOM_MAX_LEVEL = 5;
@@ -45,6 +47,10 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onMessagesButtonClick,
   settingsButtonMode = "settings",
   isDesktop = false,
+  workspacePath,
+  workspaceIdentity,
+  workspaceRemoteSessionId,
+  activeTaskId,
   className,
 }: {
   theme: Theme;
@@ -56,6 +62,11 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onMessagesButtonClick?: () => void;
   settingsButtonMode?: "settings" | "back";
   isDesktop?: boolean;
+  /** 当前 workspace 的远控入口参数；只透传，状态所有者仍在 Host。 */
+  workspacePath?: string;
+  workspaceIdentity?: string;
+  workspaceRemoteSessionId?: string;
+  activeTaskId?: string | null;
   className?: string;
 }) {
   const { intl } = useZCodeIntl();
@@ -76,6 +87,12 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
     settingsButtonMode === "back"
       ? intl.formatMessage({ id: "workspace.backToWorkspace" })
       : intl.formatMessage({ id: "settings.title" });
+  // 未读来自服务端视图（见 useImUnread）；有未读时把数字也放进提示语，鼠标悬停即可知道有几条。
+  const imUnread = useImUnread();
+  const messagesLabel =
+    imUnread > 0
+      ? `${intl.formatMessage({ id: "im.title" })} (${imUnread})`
+      : intl.formatMessage({ id: "im.title" });
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [desktopZoomLevel, setDesktopZoomLevel] = useState(0);
   const runDesktopZoomCommand = useCallback(
@@ -245,17 +262,35 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
+          {isDesktop && workspacePath ? (
+            <WorkspaceWebRemoteControlTrigger
+              workspacePath={workspacePath}
+              workspaceIdentity={workspaceIdentity}
+              remoteSessionId={workspaceRemoteSessionId}
+              initialTaskId={activeTaskId ?? undefined}
+              compact
+            />
+          ) : null}
           {onMessagesButtonClick ? (
-            <ControlHintTooltip title={intl.formatMessage({ id: "im.title" })}>
+            <ControlHintTooltip title={messagesLabel}>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-lg"
+                className="relative"
                 data-testid="sidebar-messages-button"
-                aria-label={intl.formatMessage({ id: "im.title" })}
+                aria-label={messagesLabel}
                 onClick={onMessagesButtonClick}
               >
                 <MessagesSquare className="size-4" />
+                {imUnread > 0 ? (
+                  <span
+                    data-testid="sidebar-messages-unread"
+                    className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-primary px-1 text-[9px] leading-4 text-primary-foreground"
+                  >
+                    {imUnread > 99 ? "99+" : imUnread}
+                  </span>
+                ) : null}
               </Button>
             </ControlHintTooltip>
           ) : null}

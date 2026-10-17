@@ -56,6 +56,18 @@ async function main() {
   stage("页面就绪");
   const page = harness.page;
 
+  /** 轮询读一个值直到稳定（引擎把状态提交到 context 是异步的：等一帧往往不够）。 */
+  const readSettled = async (read, { attempts = 8, delay = 100 } = {}) => {
+    let previous = await page.evaluate(read);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      await page.waitForTimeout(delay);
+      const current = await page.evaluate(read);
+      if (JSON.stringify(current) === JSON.stringify(previous)) return current;
+      previous = current;
+    }
+    return previous;
+  };
+
   const failures = [];
   const check = (ok, message) => {
     if (ok) console.log(`ok   ${message}`);
@@ -84,24 +96,24 @@ async function main() {
 
   // ② API 写入 → 读回（功能区走的就是这套 API）。
   // fortune-sheet 的 API 是 dispatch 到 React store，**同一 tick 里读回来还是旧值**，所以等一帧。
-  const apiWrite = await page.evaluate(async () => {
-    const api = window.__excel.api().current;
-    api.setCellValue(1, 1, "写入测试");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    return window.__excel.cell(1, 1, "v");
+  await page.evaluate(() => {
+    window.__excel.api().current.setCellValue(1, 1, "写入测试");
   });
+  const apiWrite = await readSettled(() => window.__excel.cell(1, 1, "v"));
   check(apiWrite === "写入测试", `WorkbookInstance API 能写入（B2=${JSON.stringify(apiWrite)}）`);
 
   // ③ 公式：设 f 后 calculateFormula，m 要是算出来的值
-  const formula = await page.evaluate(async () => {
+  await page.evaluate(() => {
     const api = window.__excel.api().current;
     api.setCellValue(2, 1, 4);
     api.setCellValue(2, 2, 5);
     api.setCellFormat(2, 3, "f", "=SUM(B3:C3)");
     api.calculateFormula();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    return { m: window.__excel.cell(2, 3, "m"), v: window.__excel.cell(2, 3, "v") };
   });
+  const formula = await readSettled(() => ({
+    m: window.__excel.cell(2, 3, "m"),
+    v: window.__excel.cell(2, 3, "v"),
+  }));
   check(
     String(formula.m) === "9" || String(formula.v) === "9",
     `公式能算（SUM(B3:C3)=${JSON.stringify(formula.m ?? formula.v)}）`,

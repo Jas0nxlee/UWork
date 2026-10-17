@@ -224,7 +224,7 @@ function resolveSidebarTaskViewMode(params: {
 
 export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   workspacePath,
-  workspaceRemoteSessionId: _workspaceRemoteSessionId,
+  workspaceRemoteSessionId,
   activePreviewPath,
   onSelectTask,
   onStartDraftInWorkspace,
@@ -1896,6 +1896,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             onSettingsButtonClick={openSettingsTab}
             onMessagesButtonClick={onOpenMessages}
             isDesktop={isDesktop}
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            workspaceRemoteSessionId={workspaceRemoteSessionId}
+            activeTaskId={activeTaskId}
           />
         </div>
         <div

@@ -21,12 +21,15 @@ export const ImConversationPanel = memo(function ImConversationPanel({
   selfUserId,
   title,
   subtitle,
+  onOpenSettings,
 }: {
   service: IImService | null;
   conversationId: string;
   selfUserId: string | null;
   title: string;
   subtitle?: string;
+  /** 群/频道才有群设置；单聊不传（标题栏就不出现入口）。 */
+  onOpenSettings?: () => void;
 }) {
   const { intl } = useZCodeIntl();
   const conversation = useImConversation(service, conversationId);
@@ -73,6 +76,15 @@ export const ImConversationPanel = memo(function ImConversationPanel({
         <span className="truncate text-sm font-medium text-foreground">{title}</span>
         {subtitle ? (
           <span className="truncate text-xs text-muted-foreground">{subtitle}</span>
+        ) : null}
+        {onOpenSettings ? (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={onOpenSettings}
+          >
+            {intl.formatMessage({ id: "im.groupSettings" })}
+          </button>
         ) : null}
         {conversation.hasMore ? (
           <Button

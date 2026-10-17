@@ -328,6 +328,74 @@ async function main() {
    * ⑩ 命令矩阵**最后再跑**：它会把一个实例用到"选区乱掉"的状态，前面的效果断言需要干净的实例。
    * 矩阵证明的是：每条命令都被调度器接住、跑完引擎还活着。
    */
+  /**
+   * ⑨ 编辑位形状下的**单元格选中**：这条是补一个曾经漏掉的回归——四套门禁全绿，但真机上
+   * "点单元格选不中、跳回 A1"（引擎的"行列 ↔ 像素"命中表算成 NaN）。
+   * 裸挂载同一个引擎是好的、嵌在编辑位的组件树里就坏，根因是宿主形状：
+   * 引擎现在挂在**它自己的 React root** 里（见 ExcelEditorPane 的 EngineHost）。
+   * 所以这条断言必须走**真编辑位**（__excelPane），不能只测裸引擎。
+   */
+  const paneSelection = await page.evaluate(async () => {
+    const { bytes } = await window.__xlsx.fixture();
+    return window.__excelPane.mount(bytes);
+  });
+  check(paneSelection === true, "编辑位能挂起来（引擎实例就绪）");
+  await page.waitForFunction(
+    () => {
+      const canvas = document.querySelector("#host canvas");
+      return canvas && canvas.getBoundingClientRect().height > 100;
+    },
+    undefined,
+    { timeout: 20000 },
+  );
+  await page.waitForTimeout(800);
+  const panePoint = await page.evaluate(() => {
+    const rect = document.querySelector("#host canvas").getBoundingClientRect();
+    return { x: Math.round(rect.x + 140), y: Math.round(rect.y + 80) };
+  });
+  const paneSelections = [];
+  for (const [dx, dy] of [
+    [0, 0],
+    [120, 40],
+  ]) {
+    await page.mouse.click(panePoint.x + dx, panePoint.y + dy);
+    await page.waitForTimeout(400);
+    paneSelections.push(
+      await page.evaluate(
+        () => window.__officeExcelApi?.current?.getSelectionCoordinates?.()?.[0] ?? null,
+      ),
+    );
+  }
+  check(
+    paneSelections.every((address) => address && !address.includes("NaN") && address !== "A1"),
+    `编辑位里点单元格能选中（点到的格子：${paneSelections.join(" → ")}）`,
+  );
+  // 打字：往**当前选中的那一格**里敲，然后读同一格（不能固定读 A 列——点到的是哪一格由点击决定）
+  const readSelectedCell = () =>
+    page.evaluate(() => {
+      const api = window.__officeExcelApi.current;
+      const address = api.getSelectionCoordinates()?.[0] ?? "";
+      const letters = address.replace(/\d+/g, "");
+      const row = Number(address.replace(/\D+/g, "")) - 1;
+      let column = 0;
+      for (const char of letters.toUpperCase()) column = column * 26 + (char.charCodeAt(0) - 64);
+      column -= 1;
+      return { address, row, column, value: api.getCellValue(row, column, { type: "v" }) };
+    });
+  const beforeTyping = await readSelectedCell();
+  await page.keyboard.type("7", { delay: 40 });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(400);
+  // 回车会把选区下移一格（引擎行为），所以按**打字前那一格**的坐标回读
+  const afterTyping = await page.evaluate(
+    ([row, column]) => window.__officeExcelApi.current.getCellValue(row, column, { type: "v" }),
+    [beforeTyping.row, beforeTyping.column],
+  );
+  check(
+    String(afterTyping) === "7" && String(beforeTyping.value) !== "7",
+    `编辑位里能直接打字改值（${beforeTyping.address}：${JSON.stringify(beforeTyping.value)} → ${JSON.stringify(afterTyping)}）`,
+  );
+
   const matrix = await runRibbonCommandMatrix(page);
   check(matrix.tabs.length >= 4, `功能区标签齐备（${matrix.tabs.map((tab) => tab.id).join("/")}）`);
   const unknown = matrix.results.filter((item) => !item.handled);

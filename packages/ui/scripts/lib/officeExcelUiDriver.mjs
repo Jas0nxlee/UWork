@@ -5,6 +5,12 @@
  * 而且这部分踩过的坑不少（程序化 setSelection 不落地、方向键读太早会拿到上一次的地址、
  * 重挂载必须换干净容器），放在一个文件里只写一遍。
  */
+/**
+ * 引擎把命令的结果提交到 context 是**异步**的（dispatch → React 提交），
+ * 所以每条命令之后统一等一小拍，否则断言会偶发读到上一拍的值（加粗/取消合并都栽过）。
+ */
+const SETTLE_MS = 160;
+
 export function createUiDriver({ page, mountData }) {
   const mount = async () => {
     await page.evaluate((data) => window.__excel.mount({ data }), mountData);
@@ -66,6 +72,7 @@ export function createUiDriver({ page, mountData }) {
     }
     const selected = to ? await selectRange(from, to) : await walkTo(from);
     await page.evaluate(([n, a]) => window.__excel.run(n, a), [command, args]);
+    await page.waitForTimeout(SETTLE_MS);
     return { selected, value: await page.evaluate(read) };
   };
 

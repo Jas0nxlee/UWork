@@ -7,6 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { EXCEL_PANE_HARNESS } from "./officeExcelPaneHarness.mjs";
 
 export const EXCEL_PAGE = `<!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="/excel.css">
@@ -86,48 +87,6 @@ window.__excel = {
       }),
     );
     // React 19 的 root.render 是并发调度，等两帧再让断言去读 DOM/canvas
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return true;
-  },
-  /**
-   * 把工作簿挂在**和编辑位一样的嵌套里**（上方一条 40px 的"工具栏" + 一层 flex-1 包裹）：
-   * 用来验证"点不到单元格"是不是嵌套/布局造成的（裸挂能用、编辑位里不能用）。
-   */
-  async mountNested(options = {}) {
-    window.__changeCount = 0;
-    window.__opCount = 0;
-    root?.unmount();
-    host.replaceChildren();
-    const container = document.createElement("div");
-    container.style.height = "100%";
-    host.append(container);
-    root = createRoot(container);
-    root.render(
-      createElement(
-        "div",
-        { style: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 } },
-        createElement(
-          "div",
-          { style: { height: 40, flexShrink: 0, background: "#eee" } },
-          "假工具栏",
-        ),
-        createElement(
-          "div",
-          { style: { flex: "1 1 0%", minHeight: 0 } },
-          createElement(Workbook, {
-            ref: apiRef,
-            data: options.data ?? window.app.sampleSheets(),
-            allowEdit: true,
-            showToolbar: false,
-            showFormulaBar: true,
-            showSheetTabs: true,
-            lang: "zh",
-            hooks: {},
-            onOp: () => {},
-          }),
-        ),
-      ),
-    );
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return true;
   },
@@ -378,76 +337,10 @@ function FlowHost({ service }) {
   return null;
 }
 
-/**
- * 把**产品里的编辑位**（ExcelEditorPane）整块挂起来——真机那个"点单元格闪一下"的 bug
- * 只有"编辑位 + 引擎 + 我们的命令"一起跑才复现，裸引擎的检查覆盖不到。
- */
-window.__excelPane = {
-  async mount(bytes) {
-    window.__paneCalls = [];
-    window.__paneReads = 0;
-    window.__paneService = {
-      readBinaryPreview: async () => {
-        window.__paneReads += 1;
-        return {
-          path: "/tmp/表.xlsx",
-          dataBase64: window.__flow.base64(bytes),
-          totalBytes: bytes.byteLength,
-        };
-      },
-      stat: async () => ({ mtimeMs: 1700000000000 }),
-      writeBinaryFile: async (args) => {
-        window.__paneCalls.push(args);
-        return { revision: { size: 1, mtimeMs: 2 }, backup: "/tmp/表.xlsx.bak", bytes: args.dataBase64.length };
-      },
-    };
-    const host = document.getElementById("host");
-    host.replaceChildren();
-    const container = document.createElement("div");
-    container.style.height = "100%";
-    host.append(container);
-    window.__paneRoot?.unmount();
-    window.__paneRoot = createRoot(container);
-    window.__paneRoot.render(
-      createElement(ExcelEditorPane, {
-        fileService: window.__paneService,
-        path: "/tmp/表.xlsx",
-      }),
-    );
-    // 等编辑位把文件读进来
-    for (let tick = 0; tick < 100; tick += 1) {
-      if (window.__officeExcelApi?.current) break;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    return Boolean(window.__officeExcelApi?.current);
-  },
-  api: () => window.__officeExcelApi?.current ?? null,
-  status: () => document.querySelector("[data-office-toolbar]")?.textContent?.slice(0, 90) ?? "",
-  calls: () => window.__paneCalls ?? [],
-};
-
-/** 一份 xlsx 里还有哪些公式（诊断用：结构编辑会把公式整行搬走）。 */
-window.__formulaReport = async (bytes) => {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(bytes);
-  const out = [];
-  for (const worksheet of workbook.worksheets) {
-    worksheet.eachRow({ includeEmpty: false }, (row) => {
-      row.eachCell({ includeEmpty: false }, (cell) => {
-        const value = cell.value;
-        if (value && typeof value === "object" && "formula" in value) {
-          out.push(worksheet.name + "!" + cell.address + "=" + value.formula);
-        }
-      });
-    });
-  }
-  return out;
-};
-
 window.__ready = true;
 `;
 
-const ENTRY = ENTRY_HEAD + ENTRY_COMPONENT + ENTRY_XLSX;
+const ENTRY = ENTRY_HEAD + ENTRY_COMPONENT + EXCEL_PANE_HARNESS + ENTRY_XLSX;
 
 /**
  * 写入口 + 打产物（CSS 也要单独落盘：页面用 <link> 引）。
@@ -484,7 +377,8 @@ export async function bundleExcelEntry(dir, options) {
     // 入口写在临时目录里，裸包名靠 nodePaths 才能找到仓库的 node_modules
     nodePaths: [join(options.repoRoot, "node_modules")],
     define: {
-      "process.env.NODE_ENV": options.reactMode === "development" ? '"development"' : '"production"',
+      "process.env.NODE_ENV":
+        options.reactMode === "development" ? '"development"' : '"production"',
       "process.env.PROBE_NO_HOOKS": process.env.PROBE_NO_HOOKS === "1" ? "true" : "false",
     },
     // fortune-sheet 的样式由它自己的包内 CSS 带进来；两边都要落盘
