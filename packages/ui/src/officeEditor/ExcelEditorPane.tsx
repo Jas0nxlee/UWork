@@ -19,7 +19,7 @@ import type { Sheet } from "@fortune-sheet/core";
 import { Workbook, type WorkbookInstance } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
 import type { IFileService } from "@zcode/services";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
 import { EXCEL_RIBBON_TABS } from "./excelRibbonTabs.js";
@@ -130,6 +130,27 @@ export function ExcelEditorPane({
     [getSheets, recordStructureEdit, setStatus, syncSelectionStyle],
   );
 
+  // 与 Word 编辑位同款：把引擎实例挂到 globalThis，真机排查（或自动化）时能直接读状态。
+  // 卸载时清掉：不然排查会读到**已经死掉的实例**（表现为"点选区没反应"，冤枉活着的那个）。
+  useEffect(() => {
+    const global = globalThis as Record<string, unknown>;
+    global.__officeExcelMounts = ((global.__officeExcelMounts as number) ?? 0) + 1;
+    global.__officeExcelApi = apiRef;
+    return () => {
+      global.__officeExcelUnmounts = ((global.__officeExcelUnmounts as number) ?? 0) + 1;
+      if (global.__officeExcelApi === apiRef) global.__officeExcelApi = null;
+    };
+  }, []);
+
+  // 与 Word 编辑位同款：把引擎实例挂到 globalThis，真机排查（或自动化）时能直接读状态
+  useEffect(() => {
+    const global = globalThis as Record<string, unknown>;
+    global.__officeExcelApi = apiRef;
+    return () => {
+      if (global.__officeExcelApi === apiRef) global.__officeExcelApi = null;
+    };
+  }, []);
+
   const readOnly = guard?.readOnly === true || writeBlocked !== null;
   // 引擎的 data 是**非受控**的（只在挂载时读一次），所以：数据没到就不挂载，
   // 换文件/重新加载用 key 强制重建（见 useExcelDocument 的 loadCount）
@@ -193,7 +214,10 @@ export function ExcelEditorPane({
             hooks={hooks}
             // 脏标记只看 op（immer 补丁）：onChange 连选区变化都会触发，
             // 用它当 "未保存" 会让用户刚点一下格子就看到"未保存"（真机最忌讳这种假信号）
-            onOp={() => setDirty(true)}
+            // 引擎在**渲染期**（reducer 里）算补丁并回调 onOp：这里同步 setState 会让 React
+            // 边渲染边更新另一个组件，它自己那一轮的布局测量会被打断——命中表就变成 NaN
+            // （真机表现：点单元格闪一下、选不中）。所以推到微任务里再标脏。
+            onOp={() => queueMicrotask(() => setDirty(true))}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-foreground-subtle">

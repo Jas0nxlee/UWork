@@ -10,7 +10,14 @@ import { join } from "node:path";
 
 export const EXCEL_PAGE = `<!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="/excel.css">
-<style>html,body{margin:0;height:100%}#host{height:100%}</style>
+<style>
+html,body{margin:0;height:100%}#host{height:100%}
+/* 编辑位用的是 Tailwind 工具类，检查页不加载 Tailwind：这里补上用到的那几个，
+   否则画布高度算出来是 0，点不到单元格（不是产品问题，是检查页缺样式） */
+.flex{display:flex}.flex-col{flex-direction:column}.h-full{height:100%}.min-h-0{min-height:0}
+.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.overflow-hidden{overflow:hidden}
+.overflow-y-auto{overflow-y:auto}.items-center{align-items:center}.justify-center{justify-content:center}
+</style>
 <div id="host"></div>
 <script type="module" src="/excel.js"></script>`;
 
@@ -21,6 +28,7 @@ import { Workbook } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
+import { ExcelEditorPane } from "./app.js";
 import * as app from "./app.js";
 
 window.ExcelJS = ExcelJS;
@@ -78,6 +86,48 @@ window.__excel = {
       }),
     );
     // React 19 的 root.render 是并发调度，等两帧再让断言去读 DOM/canvas
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return true;
+  },
+  /**
+   * 把工作簿挂在**和编辑位一样的嵌套里**（上方一条 40px 的"工具栏" + 一层 flex-1 包裹）：
+   * 用来验证"点不到单元格"是不是嵌套/布局造成的（裸挂能用、编辑位里不能用）。
+   */
+  async mountNested(options = {}) {
+    window.__changeCount = 0;
+    window.__opCount = 0;
+    root?.unmount();
+    host.replaceChildren();
+    const container = document.createElement("div");
+    container.style.height = "100%";
+    host.append(container);
+    root = createRoot(container);
+    root.render(
+      createElement(
+        "div",
+        { style: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 } },
+        createElement(
+          "div",
+          { style: { height: 40, flexShrink: 0, background: "#eee" } },
+          "假工具栏",
+        ),
+        createElement(
+          "div",
+          { style: { flex: "1 1 0%", minHeight: 0 } },
+          createElement(Workbook, {
+            ref: apiRef,
+            data: options.data ?? window.app.sampleSheets(),
+            allowEdit: true,
+            showToolbar: false,
+            showFormulaBar: true,
+            showSheetTabs: true,
+            lang: "zh",
+            hooks: {},
+            onOp: () => {},
+          }),
+        ),
+      ),
+    );
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return true;
   },
@@ -328,6 +378,54 @@ function FlowHost({ service }) {
   return null;
 }
 
+/**
+ * 把**产品里的编辑位**（ExcelEditorPane）整块挂起来——真机那个"点单元格闪一下"的 bug
+ * 只有"编辑位 + 引擎 + 我们的命令"一起跑才复现，裸引擎的检查覆盖不到。
+ */
+window.__excelPane = {
+  async mount(bytes) {
+    window.__paneCalls = [];
+    window.__paneReads = 0;
+    window.__paneService = {
+      readBinaryPreview: async () => {
+        window.__paneReads += 1;
+        return {
+          path: "/tmp/表.xlsx",
+          dataBase64: window.__flow.base64(bytes),
+          totalBytes: bytes.byteLength,
+        };
+      },
+      stat: async () => ({ mtimeMs: 1700000000000 }),
+      writeBinaryFile: async (args) => {
+        window.__paneCalls.push(args);
+        return { revision: { size: 1, mtimeMs: 2 }, backup: "/tmp/表.xlsx.bak", bytes: args.dataBase64.length };
+      },
+    };
+    const host = document.getElementById("host");
+    host.replaceChildren();
+    const container = document.createElement("div");
+    container.style.height = "100%";
+    host.append(container);
+    window.__paneRoot?.unmount();
+    window.__paneRoot = createRoot(container);
+    window.__paneRoot.render(
+      createElement(ExcelEditorPane, {
+        fileService: window.__paneService,
+        path: "/tmp/表.xlsx",
+      }),
+    );
+    // 等编辑位把文件读进来
+    for (let tick = 0; tick < 100; tick += 1) {
+      if (window.__officeExcelApi?.current) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return Boolean(window.__officeExcelApi?.current);
+  },
+  api: () => window.__officeExcelApi?.current ?? null,
+  status: () => document.querySelector("[data-office-toolbar]")?.textContent?.slice(0, 90) ?? "",
+  calls: () => window.__paneCalls ?? [],
+};
+
 /** 一份 xlsx 里还有哪些公式（诊断用：结构编辑会把公式整行搬走）。 */
 window.__formulaReport = async (bytes) => {
   const workbook = new ExcelJS.Workbook();
@@ -365,6 +463,9 @@ export async function bundleExcelEntry(dir, options) {
       ...options.modules.map(
         (name) => `export * from ${JSON.stringify(join(options.editorDir, name))};`,
       ),
+      `export { ExcelEditorPane } from ${JSON.stringify(
+        join(options.editorDir, "ExcelEditorPane.tsx"),
+      )};`,
       `export const sampleSheets = () => (${JSON.stringify(options.sampleSheets, null, 1)});`,
     ].join("\n"),
     "utf8",
@@ -382,7 +483,10 @@ export async function bundleExcelEntry(dir, options) {
     absWorkingDir: options.repoRoot,
     // 入口写在临时目录里，裸包名靠 nodePaths 才能找到仓库的 node_modules
     nodePaths: [join(options.repoRoot, "node_modules")],
-    define: { "process.env.NODE_ENV": '"production"' },
+    define: {
+      "process.env.NODE_ENV": options.reactMode === "development" ? '"development"' : '"production"',
+      "process.env.PROBE_NO_HOOKS": process.env.PROBE_NO_HOOKS === "1" ? "true" : "false",
+    },
     // fortune-sheet 的样式由它自己的包内 CSS 带进来；两边都要落盘
     loader: { ".css": "css", ".ttf": "dataurl", ".woff": "dataurl", ".woff2": "dataurl" },
   });

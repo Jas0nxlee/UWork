@@ -628,6 +628,189 @@ compose 里 msgbus 加 `DATABASE_URL`、挂 `internal` 网络、去掉 `msgbus-d
 2. UI 的 e2e：按仓库约定补 `packages/ui/test/*.e2e.mjs`（需要 browser-harness 授权）。
 3. 两层 nginx 接线与上线（`Upgrade` + `proxy_read_timeout`），属部署范围。
 
+## 十、频道模型调研与目标架构（2026-10-17）
+
+问题：现有模型（`conversations(kind=dm|group|channel)` + `members` + `messages` 三张表）离 Discord 的
+频道体系差多远？要不要换一个更成熟的开源架构？
+
+### 10.1 现状缺口（对照我们的真实 schema）
+
+| 维度 | Discord | 我们 | 判定 |
+| --- | --- | --- | --- |
+| 容器层级 | Guild → Category → Channel → Thread | `conversations` 平铺 | **缺**：没有"空间/团队"层，channel 与 group 是平级兄弟 |
+| 分组 | Category（≤50 个频道，不参与权限继承） | 无 | **缺**：没有侧栏分组 |
+| 频道类型 | text/announcement/forum/media/voice + 线程三种 | `kind='channel'` 语义未定义 | **缺**：类型没有行为差异 |
+| 话题 | 线程：public 必须从消息长出，private 可独立 | 无 | **缺**：讨论无法收束，全员挤一条流 |
+| 权限 | role + 频道级 allow/deny 覆盖（8 步决议，**specificity 胜出**而非"deny 永远赢"） | owner/member + 应用级白名单 | **缺**：没有频道级 ACL，做不到"部门可见" |
+| 消息 | 回复引用、reactions、@、置顶、附件、编辑 | 纯文本 + 撤回（留痕） | 缺绝大多数 |
+| 未读 | Discord **没有**公开的已读 API（客户端自管） | `last_read_seq`（够用） | 我们更完整，但缺"公开/私密已读"的区分 |
+| 搜索/管理/留存 | 有，但企业要的合规/留存 Discord 都没有 | 无 | 缺；但 Discord 也不是参考对象 |
+
+结论：**"太简单"是事实**，缺的是"空间 → 频道 → 话题"三层结构 + 频道级权限 + 话题化讨论。
+
+### 10.2 成熟开源方案调研（均为 2026-10-17 实查，含许可与活跃度）
+
+**整包采用**（我们只写 UI，做它 API 的客户端）：
+
+| 项目 | 提供什么 | **致命阻塞** |
+| --- | --- | --- |
+| **Zulip**（Apache-2.0，26.0k★，昨日推送） | **唯一原生支持外部 JWT**（`JWT_AUTH_KEYS` + `/api/v1/jwt/fetch_api_key`，payload 只认 email）；话题模型最正统（"话题是标签，不是消息"）；频道文件夹、每频道权限、无 open-core 目录 | 运维是 Django+Tornado+PG+Redis+RabbitMQ+memcached 的**整套 appliance**；实时是长轮询；**"超过 10 人的组织"要用它的手机推送要付费**；话题优先的 UX 对 205 个用惯企微的人是强加 |
+| **Mattermost**（MIT 二进制/AGPL 源，39.4k★） | 频道+线程+每用户未读计数最完整；REST v4 有 549 个接口；管理员可给任意用户签发 token | **SSO 已从 Team Edition 移除（OIDC/SAML/LDAP 全付费）**；WebSocket 事件 API 官方文档已下线（反向工程）；合规/留存/HA/企业搜索全付费 |
+| **OpenIM**（Apache-2.0，16.7k★） | 身份最贴合（"业务后端是唯一事实源"，userID 由调用方给，后端签发 IM token）；有官方 Electron SDK | **完全没有频道/话题**（群 + 会话只有客户端分组）→ 直接不满足需求；7 个核心容器（mongo/redis/kafka/etcd/minio/…）；JS SDK 与 Web/管理台是 ARR 闭源 |
+| **Matrix/Synapse**（AGPL-3.0） | 唯一**标准协议**；Spaces/Rooms/Threads 都稳定；Application Service 可"以成员身份说话"（agent 的理想模型）；power levels 是最完整的每房间覆盖 | 你得**写一个 Matrix 客户端**（`/sync` + E2EE + 设备验证）；单租户下联邦/E2EE 是纯负担；无原生外部 JWT（要 appservice 或密码 provider 模块） |
+| **Rocket.Chat**（MIT + ee/，46.3k★） | 模型最贴需求（channels/teams/discussions/threads + 房间级角色）；官方 compose 只要 2 个容器 | 现代 REST 类型里**没有 JWT 登录**；DDP（Meteor）协议要自己实现；guest 与自定义角色是企业版 |
+| **Tinode**（GPL-3.0，13.5k★） | 最轻量最 API-first（纯 Go，WS JSON，无强制 Web UI）；位图访问模式 + 每用户覆盖设计干净 | **没有频道/分组/话题/角色/组织**：`head.thread` 明确只是"给扁平消息打标签"；GPL-3.0 对"交付设备"有传染性 |
+
+**抄模型**（我们继续自己写服务端，但按成熟模型设计）：
+
+- **Mattermost 的骨架**最贴需求：`Team → Channel → (Thread)`，线程是"可关注、有未读计数的实体"
+  （`get-user-threads`/`start-following-thread`/`update-threads-read-for-user`），未读是成员行上的**计数器**
+  （`msg_count` / `msg_count_root` / `mention_count` / `urgent_mention_count`），权限用 **scheme + 频道覆盖**。
+- **Matrix 的权限**：数字 power level 同时管"某用户"和"某类事件"，是"每频道覆盖"最好的答案（抄想法，别抄 AGPL 代码）。
+- **Zulip 的话题**：话题是消息上的**字符串标签**，不是容器——"第一条消息没有特殊性"这条洞见让
+  改名/移动话题变成一次批量更新，而不是 schema 操作，也没有孤儿话题要清理。
+- **Tailchat 的权限点用字符串**（`core.message` 这种命名空间）而非位域：插件/扩展能自己加权限点，
+  位域会冻结权限词表。
+
+### 10.3 目标模型（建议）
+
+在现有 3 张表上演进，不推倒重来：
+
+```
+space(id, org_id, name, visibility)                        -- 取代现在平铺的 channel/group 容器
+section(id, space_id, name, position)                      -- 只做侧栏分组，零 ACL 语义
+channel(id, space_id, section_id?, name, topic, kind: text|announcement|forum,
+        access: public|space_private|invite_only, retention_days?, permission_scheme_id?)
+channel_override(channel_id, subject_kind: role|user, subject_id, allow: text[], deny: text[])
+role(id, space_id, name, rank, permissions: text[])        -- 命名权限点，不是位域
+message(... 现有字段 + thread_topic TEXT? + reply_to_id?)   -- 话题=标签（Zulip 式），回复=指针
+thread_follow(principal_id, topic_or_root_id, subscribed, last_read_message_id)
+read_state(principal_id, scope: channel|topic, scope_id,
+           fully_read_id, last_read_public_id, last_read_private_id,
+           unread_count, unread_root_count, mention_count, urgent_mention_count)
+```
+
+### 10.4 三条必须避开的坑（都有实证）
+
+1. **别把"线程"做成容器**。Spacebar 开发六年仍未实现 message threads；Discord 用一套 channel 类型枚举
+   + 独立 `ThreadMember` 表表达线程 = 等于第二套频道系统。Zulip/Slack/Matrix 都收敛到"消息上的扁平关系
+   + 每用户关注/已读状态"。
+2. **别抄位域权限 + rank 阶梯**。Stoat 需要写注释限制"只用低 52 位以适配 JS"；位域还冻结权限词表。
+   用命名权限点 + 行级 allow/deny 覆盖（同一套词表，用户覆盖胜过角色，deny 在**同一层**内先于 allow）。
+3. **别把已读状态混成一个数**。Matrix 有三个：`m.read`（同事可见）、`m.read.private`（只用于清通知）、
+   `m.fully_read`（UI 回到哪里）。合成一个数要么泄露"谁读过"（企业里的隐私问题），要么通知清不掉。
+   另外**"分类"不是权限边界**：Matrix 的 `restricted` 加入规则只在 join 时校验一次，被移出空间的人
+   仍保有已加入房间的访问权——空间授予的可见性必须**展开成成员行并每次请求重新校验**。
+
+### 10.5 分期（在现有实现上叠加）
+
+- **P1 空间与频道**：`space` + `section` + `channel.access`；把现有 `kind='channel'` 的会话迁移成
+  `space` 下的频道；频道级 `permission_scheme` 先只做 `public | space_private | invite_only` 三档。
+- **P2 话题与未读**：消息加 `topic`（Zulip 式标签）+ `reply_to_id`；未读从"一个 `last_read_seq`"升级为
+  频道 + 话题两级计数（含 `mention_count`）。
+- **P3 富消息**：附件（对象存储）、@提及（写入时就解析成 mention 行，读取不再重解析）、reactions、置顶、搜索。
+- **P4 管理与治理**：频道归档、留存策略（`retention_days`）、审计事件表、离职自动退群。
+- **P5（可选）agent 作为成员**：`principal.kind = 'user' | 'agent'`——这正是 Matrix Application Service 的
+  简化版，也是我们"agent 进频道"差异化能力的落点。
+
+### 10.6 但"替代企微"这件事，调研给的结论是：手机决定一切
+
+- **中国没有统一推送**：自建 App 要接入小米/华为/OPPO/vivo/魅族/荣耀 + APNs 各自的 SDK 与开发者账号；
+  OpenIM 官方只推荐个推（GeTui），野火开源了 `push_server` 覆盖全部厂商——这本身就是"这块很难"的证据。
+- **iOS 内部分发是制度成本**：Apple Developer Enterprise Program 299 USD/年，要求"100 名以上员工"、
+  D-U-N-S、合规主体、验证面试，且每年复核。企微已经解决了分发，且人人已装。
+- **企微的会话存档不是免费的**：它是**需要下单购买、会过期**的权益（错误码 `301052` 服务已过期 /
+  `701139` 无法创建订单），需要客户端 ≥2.8.9 + 每个员工的告知页面 + 可信 IP + 自备 RSA 公钥，
+  **只能看到至少一方开启了存档的会话**，且**只能拉 5 天内**的消息（必须常驻拉取）。
+- **最省力的接入点是"智能机器人长连接"**：无需公网 IP、无需加解密、30 秒心跳、群内 @ 触发、
+  `stream.id` 流式输出——与我们已有的 WS 传输、流式回复、bots provider 结构几乎一一对应。
+
+结论：**公司级通信继续以企微为载体（身份 + 通讯录 + 手机可达），我们自己的频道体系做"团队内部 + 产品面"**，
+不走"自建 IM 替代企微"的路。这条判断与 §10.2 的取舍独立——即使整包采用某个开源 IM，手机可达性这关一样要过。
+
+## 十一、移动端：iOS / Android / 鸿蒙（2026-10-17 调研）
+
+前提（负责人口径）："到时候可能也会发布 UWork，只要能够适配 iOS、安卓、鸿蒙。"——即要**自建移动端 App**，
+不只是手机网页。这一条直接决定了推送与分发必须先解决。
+
+### 11.1 我们已经有什么（仓库实测）
+
+`packages/android` 已经是一个 **Kotlin + Jetpack Compose 应用**（约 1,238 行）：Compose 里用 `AndroidView`
+托管 WebView（加载 `packages/web` 的页面）、**前台保活服务** `RemoteControlKeepAliveService`
+（注释写明"前台服务不能保证 WebView socket 永不断……真正的状态恢复交给 web 端可重复快照协议"）、
+扫码、深链（`zcode://remote` 与 `https://zcode.z.ai/remote`）、通知权限——**但没有任何推送 SDK、没有登录、没有聊天页**。
+
+也就是说：**架构方向已经对了（一套 Web UI + 薄原生壳）**，Android 壳要补的是推送、身份与分发，
+iOS 与鸿蒙是从零写壳（但同样只是壳）。保活服务本身是为"没有推送"打的补丁——有了推送，模型反过来：
+**推送唤醒 → App 重连 → 用 `since` 补洞**（我们的协议已经支持）。
+
+### 11.2 三个平台的硬事实（均为官方文档实查）
+
+| | iOS | Android | 鸿蒙 NEXT |
+| --- | --- | --- | --- |
+| 复用现有壳 | 否（要新写壳） | **可以**（现有壳基础上加推送/登录） | **完全不能**：NEXT（= HarmonyOS 5）**不跑 APK**，要新写 ArkTS 应用 |
+| 内部分发 | **App Store 走不通**：WebView 套壳撞 4.2，远控类撞 **4.2.7（要求主机与客户端在同一局域网、且"云应用瘦客户端不适合上架"）**；→ **Enterprise Program：299 USD/年**，要求**报名主体自身 ≥100 名员工**（明确不接受分支机构）、D-U-N-S、验证面试、每年复核 | 直接发 APK 在国内企业内部很常见（自建更新或 MDM）；但**不上架会影响推送权限**（见右） | **In-house/指定设备发布**：每个 Profile 100 台设备、最多 100 个 Profile（205 人足够），**支持手机**；企业开发者账号需营业执照 + 对公账户 |
+| 推送 | APNs，一个团队 key 打所有 App，无日配额 | **厂商碎、且与上架绑定**：小米"必须完成上架后才能启用推送"；OPPO 自 2024-07-29 起**非商店安装失去公信**；vivo 自 2025-02-17 起**非商店安装默认关闭运营消息**；华为/荣耀/魅族另有各自账号与分类审核 | Push Kit **免费**；但**未申请"自分类权益"时每天每设备只有 2 条**；IM 属"服务与通讯类"不受条数限制（华为原文举例就是"企业内部办公应用，同事间的点对点聊天消息"），需申请，约 3 个工作日 |
+| 后台 | 静默推送不保证送达（"每小时别超过两三條"、被强杀即丢弃）→ 聊天必须发**可见通知** | 进程被杀后只有厂商通道能到；各 OEM 要用户手动加白名单（自启动/后台保护） | **WebView 后台什么都拿不到**（文档明确挂起后不能用网络与定时器）→ 实时只能靠原生推送 |
+| 特别约束 | Enterprise 报名主体必须是**有 ≥100 员工的法人实体**（三家子公司要注意报哪个主体） | 各厂商还要申请渠道/模板/自分类权益（属"账号文书"而非代码） | **不能自带 WebView 内核**，只能用系统的 Chromium，且随系统版本从 **M99 / M114 / M132 / M144** 不等 → 我们的 web 包必须至少在 M114 与 M144 上测过 |
+
+**最容易漏的一条合规**：**工信部 APP 备案对所有 App 都强制**（即使不上任何商店）——需提供包名/Bundle ID、
+公钥、Android 的 MD5 或 iOS 的 SHA-1、SDK 厂商清单，约 20 个工作日审核，且**备案号要在 App 内展示**；
+未备案会被接入商拦截域名。
+
+### 11.3 建议顺序（先让"消息能到人"，再让壳变真）
+
+1. **P0 通知先用企微应用消息**（与 §10.6 同一条）：零成本、几天可上；我们已有身份集成与 agentId。
+   配额对 205 人很宽（每应用 200 人次/天 × 账号上限；单成员 30 次/分钟、1000 次/小时）。
+   代价：无角标控制、点通知不能深链、通知落在企微的托盘里。
+2. **P1 移动网页先当"移动端 v1"**：现有 `/remote/v4` 页 + 聊天面板，零分发零审核，iOS/Android 都能用。
+3. **P2 iOS 壳（走 Enterprise，不走 App Store）**：iOS 只有一个推送通道（APNs），没有厂商泥潭；
+   **报名周期是最长的一环，现在就该启动**——先确认三家子公司里哪个主体自身 ≥100 名员工。
+4. **P3 Android 壳**：用聚合器（极光/个推）而不是逐个接 7 家 SDK；但要接受"非商店安装的通知降级"这个上限，
+   真要"像微信一样可靠"就得上架小米/OPPO/vivo 商店拿正式权限。
+5. **P4 鸿蒙 NEXT**：**代码量很小**（ArkTS 壳 + ArkWeb 组件 + Push Kit 处理，几百行），
+   期间 4–8 周主要是账号/资质/审核。**先做一件事**：向 `agconnect@huawei.com` 书面确认
+   "**In-house（指定设备发布）的应用能否使用 Push Kit**"——这是整个方案成立与否的唯一未验证点。
+
+### 11.4 服务端无论走哪条路都要补的（推送基础设施）
+
+- `device_token(user_id, platform, vendor, token, app_version, push_enabled, muted_until, last_seen_at)`，
+  唯一键 `(vendor, token)`；收到 `410 Unregistered`／厂商回执失效／登出时删除。
+- `push_job(...)` **与消息写入同一事务**——这样"通知描述的是一条不存在的消息"在结构上不可能发生。
+- 推送决策顺序：在线且有前台会话 → 不推；免打扰/静音 → 不推但未读照涨；否则**每会话一条 + 折叠键**
+  （`apns-collapse-id` ≤64 字节，Android 各家对应）。
+- **角标必须是"该用户总未读"的绝对值**，不是 `+1`——JPush 服务端 SDK 默认 `+1`、MIUI 默认"收通知 +1 / 打开清零"，
+  这正是"角标只显示新消息数"的成因。未读以服务端为准（我们的 `last_seq - last_read_seq`），
+  手机上任何一端已读都要让其它端的角标一起降下来。
+
+**这一步的实质**：移动端不是"适配三个平台"，而是"**推送体系 + 三套壳 + 三套分发资质**"，
+其中代码量最小、流程最长。真正的先手是把 P0（企微通知）做掉，让聊天先可用，再去啃壳与资质。
+
+### 11.5 分发决策：内部分发、不上架（2026-10-17 定）
+
+负责人口径："不需要上架，把 APK 做好分发给大家直接安装，之后上架再说。" 这条在安卓与鸿蒙上成立，
+但在 iOS 上不成立，而且会改变推送的可靠性边界：
+
+- **Android：可行且常见**，但要自己补上商店本来提供的东西：
+  ① **更新机制**（同签名 key + `REQUEST_INSTALL_PACKAGES` 自更新，或 MDM）——否则用户永远停在旧版本，
+  所以服务端必须能**强制最低客户端版本**；
+  ② **安装引导**：各 OEM 默认会杀后台，需引导用户加白名单（小米自启动管理/神隐模式、华为自启动+后台保护、
+  OPPO 纯净后台+自启动+锁定、vivo i管家自启动+内存白名单、魅族自启动+待机耗电）——这是给 205 人发的操作说明，
+  不是代码问题；
+  ③ **推送权限会打折**（不上架的直接代价，详见 §11.2 与调研补充：小米被指"必须上架才能启用推送"，
+  OPPO/vivo 对非商店安装降级，华为/荣耀/魅族相对友好）。
+- **iOS：不上架 ≠ 不需要企业资质。** iOS 没有"允许未知来源"这个开关，205 台 iPhone 要装我们的 App，
+  **只有 Enterprise Program 一条路**（299 USD/年 + 报名主体自身 ≥100 员工）。所以"之后上架再说"在 iOS 上
+  等于"iOS 先不做"——要么现在启动 Enterprise 报名（周期最长，先确认三家子公司里哪个主体自身 ≥100 员工），
+  要么明确把 iOS 排到后面。
+- **鸿蒙：In-house/指定设备发布本身就是"不上架"路径**，而且正好绕开公开市场对 WebView 套壳的第 3.5 条拒绝。
+  100 台设备/Profile、最多 100 个 Profile，205 人够用。但仍需企业开发者账号（营业执照 + 对公账户）。
+- **工信部 APP 备案照做**：不上架也要备案（约 20 个工作日），且**备案号要在 App 内展示**，否则接入商可拦域名。
+
+**对通知策略的影响**：不上架让"厂商推送"这条链在部分机型上不可靠甚至不可用，因此
+**企微应用消息从"过渡方案"升级为首要通知通道**（见 §10.6 / §11.3 的 P0）——它免费、配额对 205 人很宽、
+且完全不依赖任何 App 分发状态。
+
 ## 相关文档
 
 - `specs/mobile-web-control-self-hosted.md`（relay 自建、加固清单、出境连接清单、手机页托管）
