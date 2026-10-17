@@ -581,6 +581,47 @@ REST `DELETE /api/conversations/:id/messages/:messageId` 成功后向会话成�
 迁移成本：store 层是纯 SQL + better-sqlite3 的同步 API，换 pg 要把它改成异步（`IImService` 本来就是
 async，改动面集中在 store 与其测试），表结构可平移（没用到 SQLite 特有语法），约一天工作量。
 
+### 第八轮（同日）：存储从 SQLite 迁到 PostgreSQL（生产已切换）
+
+**为什么换**（负责人口径）：SQLite 用同步驱动会占住事件循环——与 control-plane 那次冻结事故同一类风险；
+且单文件单实例，做不了多实例与零停机发布。换异步驱动后 DB 等待不再阻塞事件循环，同时具备 HA 空间。
+实测吞吐（3,050 条/秒 vs 需求 ~12 条/秒）本来够用，所以这次迁移解决的是**卡顿风险与扩展性**，不是吞吐。
+
+**代码改动**：
+
+- store 的 11 个方法全部改 async；14 个调用点加 `await`（其中 `ws.ts` 的两处强制了"先落库、再广播"的顺序）；
+- SQL 方言：`MAX(a,b)` → `GREATEST`、`BEGIN IMMEDIATE` 的写锁语义 → `UPDATE conversations SET last_seq = last_seq + 1 RETURNING last_seq`
+  的**行锁**（并发写同一会话由行锁串行化，实测 20 条并发得到 1..23 连续无洞）；3 处 pragma 删除；
+- **顺手修掉 N+1**：会话列表原本"逐个查最后一条消息"，现在用 `LEFT JOIN LATERAL` 一次取回；
+- `pg` 默认把 `int8` 解析成字符串，统一在池初始化处转 number（毫秒时间戳远小于 2^53）；
+- **测试从内存 SQLite 改为真实 PostgreSQL**：每个用例一个独立 schema（毫秒级创建/销毁、天然隔离可并行），
+  断言仍打真库——内存模拟会掩盖 `ON CONFLICT`、部分唯一索引、行锁这些真正要验的行为；
+- 依赖：msgbus 去掉 better-sqlite3、加 `pg`；`tsconfig` 增加 `exclude`（**测试与 src/testing 不进产物**）。
+
+**部署**：生产在已有 postgres 实例里新建 `msgbus` 角色与 database（不动 new-api 的库）；
+compose 里 msgbus 加 `DATABASE_URL`、挂 `internal` 网络、去掉 `msgbus-data` 卷；原有数据
+（1 会话 / 2 成员 / 1 消息，含那条被撤回的痕迹）已导入 PG。
+
+**两个上线坑**：
+
+1. **排除上传目录会留下旧副本**：上一版把 `src/testing` 留在生产，新代码不再需要它，但 `tsc` 仍会编译它 →
+   构建失败（3 个类型错）。修法不只是删文件，而是让 `tsconfig.json` 直接排除测试与脚手架
+   ——产物里永不含测试代码，这类"本地删了、生产还在"的失败不会再发生。
+2. **compose 去掉卷 + 构建失败 → 旧镜像起不来**：`up -d` 在构建失败后回退到上一版镜像，而旧镜像写
+   `/data/msgbus.db`、卷已被移除 → 崩溃重启循环（IM 短暂不可用）。教训：**改容器挂载与镜像内容是同一批操作时，
+   先确认构建成功再 `up -d`**。
+
+**验证记录（本轮实际执行）**：
+
+- 本地：msgbus **55 条用例全绿**（新增两条并发用例：20 条并发发送 seq 必须是连续 1..20；并发重发同一
+  `client_msg_id` 只落一行），`tsc --noEmit` 干净。
+- 生产（临时 schema，不动真实会话）：顺序写入 seq `[1,2,3]` → 再并发 20 条后全部 seq 为 **1..23 连续无洞**；
+  幂等重发返 `duplicated`；撤回后**库里留原文 `"x"`、对外下发 `""`**；
+- 生产端到端：`/api/conversations` 经 23090 返回导入的那条 DM（含已撤回消息）；**WS 经 nginx 握手拿到 `ready`**；
+  网关回归 `handoff/start=201`、`health=200`；8 个容器、msgbus healthy。
+- 回滚材料：旧 SQLite 卷 `ucas-proxy-prod_msgbus-data` 保留未删；源码备份在
+  `/home/services/ucas-proxy/backups/im-pg-*`。**注意**：镜像是同 tag 覆盖的，回滚需要回退源码后重新构建。
+
 ### 下一步（按依赖顺序）
 
 1. 桌面真机联调：起本地 msgbus（可配存根 control-plane，或与真网关同机）→ 打开侧栏「消息」→ 单聊/群聊往返、断线重连补洞、未读角标。

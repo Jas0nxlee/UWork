@@ -34,6 +34,7 @@ const SAMPLE = [
       { r: 2, c: 0, v: { v: 3 } },
       { r: 0, c: 1, v: { v: "文字" } },
       { r: 1, c: 1, v: { v: "第二行" } },
+      { r: 4, c: 0, v: { f: "=SUM(A1:A3)", v: 6, m: "6" } },
     ],
   },
 ];
@@ -259,6 +260,96 @@ async function main() {
     `冻结落到表数据上（${JSON.stringify(frozen.value)}）`,
   );
 
+  // ⑦b 行列结构操作：自己算 + 整表回灌（引擎自己的那两个 API 会崩，见 excelStructure.ts）
+  const inserted = await runCase({
+    from: "A2",
+    command: "excelInsertRowAbove",
+    read: () => {
+      const api = window.__excel.api().current;
+      return {
+        values: [0, 1, 2, 3].map((row) => api.getCellValue(row, 0, { type: "v" })),
+        formula: String(api.getCellValue(5, 0, { type: "f" }) ?? "").replace(/<[^>]+>/g, ""),
+        rows: api.getAllSheets()[0].row,
+      };
+    },
+  });
+  check(
+    inserted.selected &&
+      JSON.stringify(inserted.value.values) === JSON.stringify([1, null, 2, 3]) &&
+      inserted.value.rows === 41,
+    `插入行把内容整体下移（A1..A4=${JSON.stringify(inserted.value.values)}，表 ${inserted.value.rows} 行）`,
+  );
+  check(
+    inserted.value.formula.includes("SUM(A1:A4)"),
+    `公式引用跟着改（${inserted.value.formula}）`,
+  );
+
+  const deleted = await runCase({
+    from: "A2",
+    command: "excelDeleteRow",
+    read: () => {
+      const api = window.__excel.api().current;
+      return {
+        values: [0, 1, 2].map((row) => api.getCellValue(row, 0, { type: "v" })),
+        formula: String(api.getCellValue(3, 0, { type: "f" }) ?? "").replace(/<[^>]+>/g, ""),
+      };
+    },
+  });
+  check(
+    JSON.stringify(deleted.value.values) === JSON.stringify([1, 3, null]),
+    `删除行把内容整体上移（A1..A3=${JSON.stringify(deleted.value.values)}）`,
+  );
+  check(
+    deleted.value.formula.includes("SUM(A1:A2)"),
+    `删除后公式引用被收缩（${deleted.value.formula}）`,
+  );
+
+  const columnCase = await runCase({
+    from: "B1",
+    steps: [],
+    command: "excelInsertColumnLeft",
+    read: () => {
+      const api = window.__excel.api().current;
+      return {
+        b1: api.getCellValue(0, 1, { type: "v" }),
+        c1: api.getCellValue(0, 2, { type: "v" }),
+        columns: api.getAllSheets()[0].column,
+      };
+    },
+  });
+  check(
+    columnCase.value.c1 === "文字" && columnCase.value.columns === 13,
+    `插入列把内容右移（B1=${JSON.stringify(columnCase.value.b1)}，C1=${JSON.stringify(columnCase.value.c1)}，表 ${columnCase.value.columns} 列）`,
+  );
+
+  // 整表选中：选区要落在表格实际范围（越界会让后面的写格式把引擎写崩）
+  const selectAll = await runCase({
+    from: "A1",
+    command: "excelSelectAll",
+    read: () => {
+      const api = window.__excel.api().current;
+      return {
+        coordinates: api.getSelectionCoordinates(),
+        selection: api.getSelection(),
+      };
+    },
+  });
+  check(
+    selectAll.value.coordinates?.[0] === `A1:L40`,
+    `整表选中落在实际范围（${selectAll.value.coordinates?.join(",")}）`,
+  );
+  const selectAllWrite = await page.evaluate(async () => {
+    await window.__excel.run("executeBold");
+    return {
+      bold: window.__excel.api().current.getCellValue(0, 0, { type: "bl" }),
+      alive: window.__excel.api().current != null,
+    };
+  });
+  check(
+    selectAllWrite.alive && selectAllWrite.bold === 1,
+    `整表选中之后还能正常写格式（引擎没崩，加粗=${selectAllWrite.bold}）`,
+  );
+
   // ⑧ 新增工作表：表数要真的 +1（保存时按表写回）
   const added = await runCase({
     from: "A1",
@@ -319,7 +410,18 @@ async function main() {
           error = String(thrown).slice(0, 160);
         }
         const alive = window.__excel.api().current != null;
-        results.push({ ...entry, handled, message, error, alive });
+        let shape = null;
+        if (alive) {
+          const engine = window.__excel.api().current;
+          const sheet = engine.getSheet?.() ?? engine.getAllSheets()?.[0];
+          shape = {
+            name: sheet?.name,
+            rows: sheet?.data?.length,
+            cols: sheet?.data?.[0]?.length,
+            selection: engine.getSelectionCoordinates?.(),
+          };
+        }
+        results.push({ ...entry, handled, message, error, alive, shape });
         if (error || !alive) break;
       }
       return {
@@ -336,6 +438,18 @@ async function main() {
         : `有命令没实现：${unknown.map((item) => item.command).join("、")}`,
     );
     const broken = matrix.results.filter((item) => !item.alive || item.error);
+    if (broken.length > 0) {
+      // 崩在"下一条命令"上很常见（React 的卸载是异步的）：把最后几条的形状打出来对时间线
+      console.log(
+        "     诊断（最后 6 条）：" +
+          matrix.results
+            .slice(-6)
+            .map(
+              (item) => `${item.command}${item.alive ? "" : "(dead)"}${JSON.stringify(item.shape)}`,
+            )
+            .join(" → "),
+      );
+    }
     check(
       broken.length === 0,
       broken.length === 0
@@ -346,15 +460,13 @@ async function main() {
     );
 
     /**
-     * ③ 没有假按钮：这些命令要么会破坏表格状态、要么改不动（实测记录见 specs/office-editors-triad.md）。
-     * 这条断言是提醒：将来有人把按钮加回来时，先看那份复现记录。
+     * ③ 没有假按钮：网格线开关是**故意不做**的（引擎的 updateSheet 只认数据矩阵、不认表级字段，
+     * 做了也是"点了没反应"）。行列结构操作与整表选中这一轮已经做完（见上面的断言）。
      */
-    const forbidden = matrix.results.filter((item) =>
-      /excel(Insert|Delete)(Row|Column)|excelSelectAll|excelToggleGridLines/.test(item.command),
-    );
+    const forbidden = matrix.results.filter((item) => /excelToggleGridLines/.test(item.command));
     check(
       forbidden.length === 0,
-      "功能区没有「点了会崩 / 点了没反应」的命令（行列结构操作、整表选中、网格线开关）",
+      "功能区没有「点了没反应」的命令（网格线开关）",
     );
 
   };

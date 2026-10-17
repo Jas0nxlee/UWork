@@ -10,13 +10,41 @@
  */
 import type { Range, Sheet, SingleRange } from "@fortune-sheet/core";
 import type { WorkbookInstance } from "@fortune-sheet/react";
+import { applyStructureEdit, buildMatrix, type StructureEdit } from "./excelStructure.js";
+import { cellEntries } from "./xlsxWorkbook.js";
 import { columnLetter } from "./xlsxMapping.js";
 
 export interface ExcelCommandContext {
   api: () => WorkbookInstance | null;
   setStatus: (message: string) => void;
-  /** 表级别改动（网格线/冻结）要回写整份 sheets，用这个拿当前表。 */
+  /** 拿当前所有表（保存路径要用）。 */
   getSheets: () => Sheet[];
+  /**
+   * 报告一次**行列结构操作**：保存时要在文件上做同样的整行/整列搬移（连批注、行高一起搬），
+   * 单靠"差分写回"只会挪值。回调由编辑位提供。
+   */
+  recordStructureEdit?: (edit: StructureEdit, sheetName: string) => void;
+}
+
+/**
+ * 引擎新加的工作表（`addSheet`）**没有 `data` 矩阵**（只有 name/id/row/column/config），
+ * 而引擎的每一次写都是 `sheet.data[row][column] = …` —— 对着一张没有矩阵的表下手就崩（实测白屏）。
+ * 所以动任何命令之前先把它补齐：矩阵由 celldata 或空表攒出来，再整表回灌。
+ */
+function ensureSheetData(api: WorkbookInstance, sheet: Sheet | undefined): Sheet | undefined {
+  if (!sheet) return sheet;
+  if (Array.isArray(sheet.data) && sheet.data.length > 0) return sheet;
+  const rows = sheet.row && sheet.row > 0 ? sheet.row : 84;
+  const columns = sheet.column && sheet.column > 0 ? sheet.column : 26;
+  const next: Sheet = {
+    ...sheet,
+    row: rows,
+    column: columns,
+    data: buildMatrix(cellEntries(sheet), rows, columns),
+    celldata: undefined,
+  };
+  api.updateSheet([next]);
+  return next;
 }
 
 /** "清除格式"要清的所有格式位（值一律 null，引擎按缺省处理）。 */
@@ -51,8 +79,10 @@ function parseCoordinate(text: string): SingleRange | null {
  *    （实测"整表"选中 0..999 行之后清除格式 → `Cannot set properties of undefined` → 整个编辑区白屏）。
  */
 function selectionOf(api: WorkbookInstance, sheet: Sheet | undefined): Range {
-  const rows = sheet?.row ?? sheet?.data?.length ?? 100;
-  const columns = sheet?.column ?? sheet?.data?.[0]?.length ?? 26;
+  // 边界**以数据矩阵为准**（引擎就是往 `sheet.data[row][col]` 里写，矩阵没有的行/列就是越界）：
+  // `sheet.row/column` 是"表格规模"，两者不一致时（例如刚被整表替换过）以矩阵为准才安全。
+  const rows = sheet?.data?.length ?? sheet?.row ?? 100;
+  const columns = sheet?.data?.[0]?.length ?? sheet?.column ?? 26;
 
   const clamp = (single: SingleRange): SingleRange => {
     const [top = 0, bottom = 0] = single.row;
@@ -122,8 +152,14 @@ export function runExcelCommand(
     context.setStatus("表格还没加载好，稍等一下再试");
     return true;
   }
+  // 当前表**问引擎要**（api.getSheet()），不要拿 status 猜：
+  // 新增工作表之后 status 与"引擎当前在哪张表"会不一致，猜错就会用另一张表的规模去裁剪，
+  // 于是写格式越界 → 引擎崩（实测：跑完整个命令矩阵后 excelAutoSum 处白屏）。
   const sheets = context.getSheets();
-  const activeSheet = sheets.find((sheet) => sheet.status === 1) ?? sheets[0];
+  const activeSheet = ensureSheetData(
+    api,
+    api.getSheet?.() ?? sheets.find((sheet) => sheet.status === 1) ?? sheets[0],
+  );
   const range = selectionOf(api, activeSheet);
   const first = range[0];
   const cell = { row: first?.row?.[0] ?? 0, column: first?.column?.[0] ?? 0 };
@@ -217,6 +253,74 @@ export function runExcelCommand(
       }
       context.setStatus("已清除选区格式");
       return true;
+    case "excelInsertRowAbove":
+    case "excelInsertRowBelow":
+    case "excelInsertColumnLeft":
+    case "excelInsertColumnRight":
+    case "excelDeleteRow":
+    case "excelDeleteColumn": {
+      // 这一组**不走引擎的结构化 API**（那条路会把表状态弄坏，见 excelStructure.ts 顶部）：
+      // 自己算好新表，再用 updateSheet 整表替换。
+      if (!activeSheet) return true;
+      const isRow = command.includes("Row");
+      const remove = command.startsWith("excelDelete");
+      const edit: StructureEdit = remove
+        ? {
+            kind: isRow ? "row" : "column",
+            mode: "delete",
+            index: isRow ? (range[0]?.row?.[0] ?? 0) : (range[0]?.column?.[0] ?? 0),
+            count: isRow
+              ? Math.max(1, (range[0]?.row?.[1] ?? 0) - (range[0]?.row?.[0] ?? 0) + 1)
+              : Math.max(1, (range[0]?.column?.[1] ?? 0) - (range[0]?.column?.[0] ?? 0) + 1),
+          }
+        : {
+            kind: isRow ? "row" : "column",
+            mode: "insert",
+            index: isRow
+              ? (range[0]?.row?.[0] ?? 0) + (command.endsWith("Below") ? 1 : 0)
+              : (range[0]?.column?.[0] ?? 0) + (command.endsWith("Right") ? 1 : 0),
+            count: 1,
+          };
+      if (remove) {
+        const size = isRow ? (activeSheet.row ?? 0) : (activeSheet.column ?? 0);
+        // 表就这么大：删到一行/一列都不剩的话引擎直接没法工作，先说清楚
+        if (size - edit.count < 1) {
+          context.setStatus(
+            `${isRow ? "行" : "列"}数不够删（当前 ${size} 条，要删 ${edit.count} 条）——表格至少要留一条`,
+          );
+          return true;
+        }
+      }
+      const result = applyStructureEdit(activeSheet, cellEntries(activeSheet), edit);
+      context.recordStructureEdit?.(edit, activeSheet.name);
+      api.updateSheet([result.sheet]);
+      api.calculateFormula();
+      api.setSelection([
+        {
+          row: isRow
+            ? [edit.index, remove ? Math.max(edit.index, edit.index) : edit.index]
+            : [0, 0],
+          column: isRow
+            ? [0, 0]
+            : [edit.index, remove ? Math.max(edit.index, edit.index) : edit.index],
+        },
+      ]);
+      const label = isRow ? `第 ${edit.index + 1} 行` : `${columnLetter(edit.index)} 列`;
+      context.setStatus(
+        remove
+          ? `已删除 ${label}${edit.count > 1 ? ` 起 ${edit.count} 条` : ""}（其余内容上移/左移，公式引用已跟着改）`
+          : `已在 ${label}${command.endsWith("Below") ? "下方" : command.endsWith("Right") ? "右侧" : "上方/左侧"}插入`,
+      );
+      return true;
+    }
+    case "excelSelectAll": {
+      // 只选**表格实际范围**：选到 0..999 这种越界范围，后面任何一次写格式都会把引擎写崩
+      const rows = activeSheet?.row ?? 100;
+      const columns = activeSheet?.column ?? 26;
+      api.setSelection([{ row: [0, rows - 1], column: [0, columns - 1] }]);
+      context.setStatus(`已选中整张表（${rows} 行 × ${columns} 列）`);
+      return true;
+    }
     case "excelAddSheet":
       api.addSheet();
       context.setStatus("已新增工作表（双击表名可以改名）");

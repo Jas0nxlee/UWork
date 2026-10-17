@@ -16,7 +16,8 @@ import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 import { analyzeXlsx, summarizeXlsxFindings, type XlsxFindings } from "./xlsxPreflight.js";
 import { validateXlsxCandidate } from "./xlsxValidate.js";
-import { readXlsxToSheets, writeSheetsToXlsx } from "./xlsxWorkbook.js";
+import { readXlsxToSheets, writeSheetsToXlsx, type StructureOp } from "./xlsxWorkbook.js";
+import type { StructureEdit } from "./excelStructure.js";
 
 /** 应用内编辑的体积上限：xlsx 是压缩包，24 MB 的文件解出来通常是它的十几倍。 */
 export const MAX_EDITABLE_XLSX_BYTES = 24 * 1024 * 1024;
@@ -58,6 +59,8 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
   /** 导入快照：分不出"用户改的"和"适配器没映射的"时不能写回，所以这份必须留着。 */
   const baselineRef = useRef<Sheet[] | null>(null);
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
+  /** 用户做过的行列结构操作（插入/删除）：保存时要落到文件上（连批注与行高一起搬）。 */
+  const structureEditsRef = useRef<StructureOp[]>([]);
 
   /**
    * 脏标记回调**必须放进 ref**：`onDirtyChange` 通常是父组件里的内联箭头函数（每次渲染都是新的），
@@ -71,11 +74,21 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
     onDirtyChangeRef.current?.(value);
   }, []);
 
+  /** 结构操作既要写进文件（见 StructureOp），也要标脏。 */
+  const recordStructureEdit = useCallback(
+    (edit: StructureEdit, sheetName: string) => {
+      structureEditsRef.current.push({ sheetName, edit });
+      setDirty(true);
+    },
+    [setDirty],
+  );
+
   const loadDocument = useCallback(async () => {
     setReady(false);
     setStatus("正在打开表格…");
     setSheets(null);
     setGuard(null);
+    structureEditsRef.current = [];
     setDirty(false);
     try {
       const [preview, fileStat] = await Promise.all([
@@ -152,7 +165,12 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
     setBusy(true);
     try {
       setStatus("写回中（只在原文件上改动了的部分）…");
-      const written = await writeSheetsToXlsx({ source, baseline, current });
+      const written = await writeSheetsToXlsx({
+        source,
+        baseline,
+        current,
+        structureEdits: structureEditsRef.current,
+      });
       if (written.changedCells === 0) {
         setStatus("没有检测到改动，未写盘");
         setDirty(false);
@@ -179,6 +197,7 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
       // 保存后前移基线与源字节：否则第二次保存会把上一次的改动再写一遍
       sourceRef.current = written.bytes.slice(0);
       baselineRef.current = current;
+      structureEditsRef.current = [];
       setDirty(false);
       const backupName = result.backup ? result.backup.split("/").pop() : "";
       setStatus(
@@ -212,5 +231,6 @@ export function useExcelDocument(input: UseExcelDocumentInput) {
     activeSheet,
     loadDocument,
     save,
+    recordStructureEdit,
   };
 }

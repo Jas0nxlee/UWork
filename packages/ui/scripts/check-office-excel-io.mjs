@@ -35,7 +35,7 @@ async function main() {
       bundleExcelEntry(dir, {
         repoRoot,
         editorDir,
-        modules: ["xlsxWorkbook.ts", "xlsxValidate.ts", "xlsxPreflight.ts"],
+        modules: ["xlsxWorkbook.ts", "xlsxValidate.ts", "xlsxPreflight.ts", "excelStructure.ts"],
         sampleSheets: [],
       }),
     viewport: { width: 900, height: 700 },
@@ -103,7 +103,8 @@ async function main() {
   check(roundTrip.a1?.v === "名称" && roundTrip.a1?.bl === 1, "文字 + 加粗读出来");
   check(roundTrip.a1?.bg === "#fff2cc", `底色读出来（${roundTrip.a1?.bg}）`);
   check(roundTrip.b3?.ct?.fa === "0.00", `数字格式读出来（${roundTrip.b3?.ct?.fa}）`);
-  check(roundTrip.b4?.f === "SUM(B2:B3)", `公式读出来（${roundTrip.b4?.f}）`);
+  // 读出来的公式**带前导 "="**：这是引擎的口径（不带 "=" 引擎重算会得到 #NAME?）
+  check(roundTrip.b4?.f === "=SUM(B2:B3)", `公式读出来（${roundTrip.b4?.f}）`);
   check(roundTrip.a3?.v === "苹果官网", `超链接文字读出来（${roundTrip.a3?.v}）`);
   check(
     roundTrip.hyperlink?.["2_0"]?.linkAddress === "https://example.com/apple",
@@ -275,15 +276,109 @@ async function main() {
     sample.names.join(",") === "销售明细,内部备注" && sample.hidden === 1,
     `真样本读得出（${sample.names.join("、")}，隐藏表保留）`,
   );
-  check(
-    sample.d2?.f === "B2*C2",
-    `真样本的公式读得出（${sample.d2?.f}）`,
-  );
+  check(sample.d2?.f === "=B2*C2", `真样本的公式读得出（${sample.d2?.f}）`);
   check(
     sample.edited === 999 && sample.note === "这个价格是含税的" && sample.validations === 1,
     `真样本改一格后批注/数据验证仍在（B3=${sample.edited}）`,
   );
   check(sample.validation.ok, `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`);
+
+  // ⑥ 结构化编辑（插入行）写回真样本：值下移、公式引用跟着改
+  const structural = await page.evaluate(async () => {
+    const bytes = await (await fetch("/office-sample.xlsx")).arrayBuffer();
+    const read = await window.__xlsx.read(bytes);
+    const sheet = read.sheets[0];
+    const edit = { kind: "row", mode: "insert", index: 1, count: 1 };
+    const result = window.app.applyStructureEdit(sheet, window.app.cellEntries(sheet), edit);
+    const written = await window.__xlsx.write({
+      source: bytes,
+      baseline: read.sheets,
+      current: [result.sheet, ...read.sheets.slice(1)],
+      structureEdits: [{ sheetName: sheet.name, edit }],
+    });
+    const validation = await window.__xlsx.validate(written.bytes, bytes);
+    // 这里直接问 exceljs（不用 inspect 那个固定读几格的助手）：要读的是"移位之后"的格子
+    const workbook = new window.ExcelJS.Workbook();
+    await workbook.xlsx.load(written.bytes);
+    const sheetAfter = workbook.getWorksheet("销售明细");
+    return {
+      a2: sheetAfter.getCell("A2").value,
+      a3: sheetAfter.getCell("A3").value,
+      d4formula: sheetAfter.getCell("D4").value?.formula ?? null,
+      // 批注读回来是对象（texts/margins…），比字符串前先 stringify（之前就差这一步）
+      note: sheetAfter.getCell("A3").note ? String(sheetAfter.getCell("A3").note) : null,
+      validationAddresses: Object.keys(sheetAfter.dataValidations?.model ?? {}),
+      validation: { ok: validation.ok, issues: validation.issues.map((issue) => issue.message) },
+    };
+  });
+  check(
+    structural.a2 == null && structural.a3 === "笔记本" && structural.note === "这个价格是含税的",
+    `插入行后内容整体下移、第 2 行为空（A2=${JSON.stringify(structural.a2)}，A3=${JSON.stringify(structural.a3)}，批注=${JSON.stringify(structural.note)}）`,
+  );
+  check(
+    structural.d4formula === "B4*C4",
+    `插入行后公式引用跟着改（D4=${structural.d4formula}）`,
+  );
+  check(
+    structural.validationAddresses.length === 1 && structural.validationAddresses[0] === "C3",
+    `插入行后数据验证跟着下移（${structural.validationAddresses.join("、")}）`,
+  );
+  check(structural.validation.ok, `插入行后的产物通过校验（${structural.validation.issues.join("；") || "无问题"}）`);
+
+  // ⑦ **引擎形状**的表（只有 data 矩阵、没有 celldata）也要能差分写回。
+  // 这条是补一个曾经差点上线的坑：编辑位从 getAllSheets() 拿到的是 data 矩阵（引擎把 celldata 删了），
+  // 只认 celldata 的话保存会认为"所有格子都没了"——要么写坏文件、要么永远存不了。
+  const engineShape = await page.evaluate(async () => {
+    const { bytes } = await window.__xlsx.fixture();
+    const read = await window.__xlsx.read(bytes);
+    const asEngineSheet = (sheet) => {
+      const rows = sheet.row ?? 40;
+      const columns = sheet.column ?? 20;
+      const data = Array.from({ length: rows }, () => Array.from({ length: columns }, () => null));
+      for (const entry of sheet.celldata ?? []) data[entry.r][entry.c] = entry.v;
+      const { celldata, ...rest } = sheet;
+      void celldata;
+      return { ...rest, data };
+    };
+    const engineSheets = read.sheets.map(asEngineSheet);
+    const edited = engineSheets.map((sheet, index) =>
+      index === 0
+        ? {
+            ...sheet,
+            data: sheet.data.map((row, r) =>
+              row.map((cell, c) => (r === 1 && c === 0 ? { ...cell, v: "引擎形状", m: "引擎形状" } : cell)),
+            ),
+          }
+        : sheet,
+    );
+    const written = await window.__xlsx.write({
+      source: bytes,
+      baseline: read.sheets,
+      current: edited,
+    });
+    const validation = await window.__xlsx.validate(written.bytes, bytes);
+    const inspected = await window.__xlsx.inspect(written.bytes, "数据");
+    return {
+      changedCells: written.changedCells,
+      a2: inspected.a2,
+      note: inspected.a2note,
+      otherSheet: inspected.notesA2,
+      valid: validation.ok,
+      issues: validation.issues.map((issue) => issue.message),
+    };
+  });
+  check(
+    engineShape.changedCells === 1,
+    `引擎形状（只有 data 矩阵）也能差分写回（changedCells=${engineShape.changedCells}）`,
+  );
+  check(
+    engineShape.a2 === "引擎形状" && engineShape.otherSheet === 42,
+    `引擎形状的改动落盘、别的表没被清空（A2=${JSON.stringify(engineShape.a2)}，说明!A2=${engineShape.otherSheet}）`,
+  );
+  check(
+    engineShape.note === "这里是批注" && engineShape.valid,
+    `引擎形状写回也保住批注并通过校验（${engineShape.issues.join("；") || "无问题"}）`,
+  );
 
   await harness.close();
   if (failures.length > 0) {

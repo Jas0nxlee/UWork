@@ -33,6 +33,7 @@ const ENTRY_COMPONENT = `
 const apiRef = { current: null };
 const host = document.getElementById("host");
 let root = null;
+let flowRoot = null;
 
 function Harness({ data, allowEdit, showToolbar }) {
   // 非受控：数据只在挂载时给一次，之后的改动由引擎自己维护（产品里也一样：
@@ -60,6 +61,7 @@ window.__excel = {
   async mount(options = {}) {
     window.__changeCount = 0;
     window.__opCount = 0;
+    window.__structureEdits = [];
     root?.unmount();
     // 必须换一个干净的容器：引擎把画布画在容器里，React 卸载**不会**清掉它自己的 DOM，
     // 留着旧画布的话，后面用鼠标点的其实是上一个实例的残骸（断言会变成"点了没反应"的假通过）
@@ -81,6 +83,7 @@ window.__excel = {
   },
   api: () => apiRef,
   counts: () => ({ changes: window.__changeCount, ops: window.__opCount }),
+  structureEdits: () => window.__structureEdits ?? [],
   /** 单元格当前值（引擎侧真相，不经过 DOM）。 */
   cell: (row, column, type) =>
     apiRef.current?.getCellValue(row, column, type ? { type } : undefined),
@@ -98,6 +101,13 @@ window.__excel = {
         api: () => apiRef.current,
         setStatus: (message) => messages.push(message),
         getSheets: () => apiRef.current?.getAllSheets() ?? [],
+        recordStructureEdit: (edit, sheetName) => {
+          window.__structureEdits = window.__structureEdits ?? [];
+          window.__structureEdits.push({ sheetName, edit });
+          // 同时也报给**编辑位自己的钩子**（保存时要在文件上做同样的搬移）——
+          // 检查里这样才走的是产品那条接线，而不是另开一条
+          window.__flowRecordStructureEdit?.(edit, sheetName);
+        },
       },
       command,
       args ?? [],
@@ -235,13 +245,14 @@ window.__flow = {
         return { revision: { size: 11, mtimeMs: 12 }, backup: "/tmp/表.xlsx.bak", bytes: 123 };
       },
     };
-    root?.unmount();
-    host.replaceChildren();
+    // 用自己的容器（挂在 body 上、不参与布局）：它要和 #host 里的引擎**同时存在**，
+    // 这样"引擎里的真实数据 → 保存"这条路才验得到（抢同一个 host 会把引擎卸载掉）
+    flowRoot?.unmount();
     const container = document.createElement("div");
-    container.style.height = "100%";
-    host.append(container);
-    root = createRoot(container);
-    root.render(createElement(FlowHost, { service }));
+    container.style.display = "none";
+    document.body.append(container);
+    flowRoot = createRoot(container);
+    flowRoot.render(createElement(FlowHost, { service }));
     // 载入是异步的（要解压 + exceljs 解析 + 护栏）：等到"就绪"或者明确失败/拒绝为止，
     // 固定 sleep 会让断言读到"正在打开…"这种中间态
     const deadline = Date.now() + (options.waitMs ?? 20000);
@@ -294,14 +305,35 @@ function FlowHost({ service }) {
   const state = window.app.useExcelDocument({
     fileService: service,
     path: "/tmp/表.xlsx",
-    getSheets: () => window.__flowSheets ?? undefined,
+    // 优先拿**引擎里的真实数据**（getAllSheets 给的是 data 矩阵、没有 celldata，
+    // 与导入快照形状不同——保存路径必须同时认这两种，这里就是盯着它的）
+    getSheets: () => window.__excel?.api?.()?.current?.getAllSheets() ?? window.__flowSheets ?? undefined,
     onDirtyChange: (dirty) => {
       window.__flowDirty = dirty;
     },
   });
   window.__flowState = state;
+  window.__flowRecordStructureEdit = state.recordStructureEdit;
   return null;
 }
+
+/** 一份 xlsx 里还有哪些公式（诊断用：结构编辑会把公式整行搬走）。 */
+window.__formulaReport = async (bytes) => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes);
+  const out = [];
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const value = cell.value;
+        if (value && typeof value === "object" && "formula" in value) {
+          out.push(worksheet.name + "!" + cell.address + "=" + value.formula);
+        }
+      });
+    });
+  }
+  return out;
+};
 
 window.__ready = true;
 `;

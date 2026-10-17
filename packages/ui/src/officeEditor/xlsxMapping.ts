@@ -128,10 +128,13 @@ export function readCell(cell: ExcelCell): ReadCellResult | undefined {
     hyperlink?: string;
   };
   if (object.formula || object.sharedFormula) {
-    const formula = object.formula ?? object.sharedFormula ?? "";
+    // **保留前导 "="**：引擎自己的公式（自动求和）就是带 "=" 存的，去掉 "=" 再让引擎算会得到 #NAME?
+    // （实测：SUM(A1:A2) 不带 "=" → 重算后显示 #NAME?）。写回 exceljs 时再去掉，见 writeCell。
+    const raw = object.formula ?? object.sharedFormula ?? "";
+    const formula = raw.startsWith("=") ? raw : `=${raw}`;
     const result = resultOf(object);
     const text = result === undefined ? undefined : String(result);
-    return { cell: withFormat({ f: formula.replace(/^=/, ""), v: result, m: text }) };
+    return { cell: withFormat({ f: formula, v: result, m: text }) };
   }
   if (object.richText) {
     const text = richTextToPlain(object.richText);

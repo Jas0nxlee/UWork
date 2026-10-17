@@ -67,6 +67,7 @@ export function ExcelEditorPane({
     sheets,
     loadDocument,
     save,
+    recordStructureEdit,
   } = useExcelDocument({ fileService, path, remote, getSheets, onDirtyChange });
 
   /**
@@ -115,13 +116,18 @@ export function ExcelEditorPane({
   const runRibbon = useCallback(
     (command: string, args?: unknown[]) => {
       runExcelCommand(
-        { api: () => apiRef.current, setStatus, getSheets },
+        {
+          api: () => apiRef.current,
+          setStatus,
+          getSheets,
+          recordStructureEdit,
+        },
         command,
         args ?? [],
       );
       syncSelectionStyle();
     },
-    [getSheets, setStatus, syncSelectionStyle],
+    [getSheets, recordStructureEdit, setStatus, syncSelectionStyle],
   );
 
   const readOnly = guard?.readOnly === true || writeBlocked !== null;

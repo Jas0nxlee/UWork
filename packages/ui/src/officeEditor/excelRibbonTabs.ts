@@ -83,14 +83,29 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
         ],
       },
       {
-        // 这里**没有**"插入行/插入列/删除行/删除列"，也没有"整表选中/网格线开关"：
-        //   - 结构化行列操作会破坏表格状态（deleteRowOrColumn 之后 sheet.data 变成 0 行，
-        //     下一次列操作读 d[0].length 直接崩、整个编辑区白屏）；
-        //   - 整表选中依赖 setSelection，而这套引擎实例里设不进去（读回来还是原来的选区）；
-        //   - 网格线是表级设置，引擎的 updateSheet 只回灌数据矩阵、**不认别的字段**（改了没反应）。
-        // 宁可先不提供，也不给"点一次可能把表弄没"或"点了没反应"的按钮。
-        // 复现与取舍写在 specs/office-editors-triad.md「Excel 已知边界」。
-        label: "选区",
+        // 行列结构操作走的是**我们自己算 + 整表回灌**（excelStructure.ts）：引擎自己的
+        // insertRowOrColumn/deleteRowOrColumn 会把表状态弄坏（实测 data 变 0 行后崩、白屏）。
+        // 网格线开关仍然没有：引擎的 updateSheet 只认数据矩阵、不认表级字段，做了也是"点了没反应"。
+        // 复现与取舍写在 specs/office-editors-triad.md。
+        label: "行列",
+        items: [
+          button("插入行", "在上方插入一行", "excelInsertRowAbove", {
+            icon: "TableInsertRow24Regular",
+          }),
+          button("在下方插入行", "在下方插入一行", "excelInsertRowBelow"),
+          button("插入列", "在左侧插入一列", "excelInsertColumnLeft", {
+            icon: "TableInsertColumn24Regular",
+          }),
+          button("在右侧插入列", "在右侧插入一列", "excelInsertColumnRight"),
+          button("删除行", "删除所选行（内容上移）", "excelDeleteRow", {
+            icon: "TableDeleteRow24Regular",
+          }),
+          button("删除列", "删除所选列（内容左移）", "excelDeleteColumn"),
+          button("整表", "选中整张表", "excelSelectAll", { icon: "TableSimple24Regular" }),
+        ],
+      },
+      {
+        label: "清除",
         items: [
           button("清内容", "清除选区内容（保留格式）", "excelClearContent", {
             icon: "Delete24Regular",
@@ -106,6 +121,19 @@ export const EXCEL_RIBBON_TABS: RibbonTab[] = [
     id: "insert",
     label: "插入",
     groups: [
+      {
+        label: "行与列",
+        items: [
+          button("行（上）", "在上方插入一行", "excelInsertRowAbove", {
+            icon: "TableInsertRow24Regular",
+          }),
+          button("行（下）", "在下方插入一行", "excelInsertRowBelow"),
+          button("列（左）", "在左侧插入一列", "excelInsertColumnLeft", {
+            icon: "TableInsertColumn24Regular",
+          }),
+          button("列（右）", "在右侧插入一列", "excelInsertColumnRight"),
+        ],
+      },
       {
         label: "工作表",
         items: [button("新建工作表", "新增一张工作表", "excelAddSheet", { icon: "TableSimple24Regular" })],
