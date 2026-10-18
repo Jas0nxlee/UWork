@@ -7,7 +7,11 @@ const env = { ...process.env, NODE_OPTIONS: "--import tsx" };
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(
   require("electron"),
-  [fileURLToPath(new URL("../test/enterpriseLoginView.smoke.mjs", import.meta.url))],
+  [
+    // GitHub 的非特权 Linux runner 没有 root-owned SUID helper；与安装包验收使用同一测试启动参数。
+    ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+    fileURLToPath(new URL("../test/enterpriseLoginView.smoke.mjs", import.meta.url)),
+  ],
   { env, stdio: "inherit" },
 );
 child.on("error", (error) => {
