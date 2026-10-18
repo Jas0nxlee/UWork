@@ -28,6 +28,7 @@ import { avatarTone, buildTimeline, initialsOf, type ImTimelineRow } from "./imP
 import type { ImOutboxReply } from "./imOutbox.js";
 import { useImSearch } from "./useImSearch.js";
 import { useImTyping } from "./useImTyping.js";
+import { useImWithdraw } from "./useImWithdraw.js";
 import { useImConversation } from "./useIm.js";
 
 const draftKey = (conversationId: string): string => `uwork:im-draft:${conversationId}`;
@@ -75,8 +76,8 @@ export const ImConversationPanel = memo(function ImConversationPanel({
   const { intl } = useZCodeIntl();
   const conversation = useImConversation(service, conversationId);
   const [draft, setDraft] = useState("");
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { confirmingId, actionError, setActionError, onWithdraw, onWithdrawNow, resetWithdraw } =
+    useImWithdraw(service, conversationId);
   const [searchOpen, setSearchOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ImMessage | null>(null);
   const [forwarding, setForwarding] = useState<ImMessage | null>(null);
@@ -266,22 +267,6 @@ export const ImConversationPanel = memo(function ImConversationPanel({
     }
   };
 
-  const withdraw = async (message: ImMessage): Promise<void> => {
-    if (!service) return;
-    if (confirmingId !== message.id) {
-      setConfirmingId(message.id);
-      return;
-    }
-    setConfirmingId(null);
-    setActionError(null);
-    try {
-      await service.withdrawMessage({ conversationId, messageId: message.id });
-    } catch (error) {
-      logger.warn("[im] 撤回失败", error);
-      setActionError(intl.formatMessage({ id: "im.withdrawFailed" }));
-    }
-  };
-
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col">
       <header className={IM_HEADER}>
@@ -390,10 +375,11 @@ export const ImConversationPanel = memo(function ImConversationPanel({
                   query=""
                   activeMessageId={jumpTarget}
                   confirmingId={confirmingId}
-                  onWithdraw={(message) => void withdraw(message)}
+                  onWithdraw={onWithdraw}
+                  onWithdrawNow={onWithdrawNow}
                   onReply={(message) => {
                     setReplyTo(message);
-                    setConfirmingId(null);
+                    resetWithdraw();
                   }}
                   onForward={(message) => setForwarding(message)}
                   onJumpToMessage={jumpToMessage}

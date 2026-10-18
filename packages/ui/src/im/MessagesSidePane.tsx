@@ -245,6 +245,14 @@ export const MessagesSidePane = memo(function MessagesSidePane({
             onSelect={(conversationId) => setSelected(conversationId)}
             onNewConversation={() => setPicking(true)}
             onRefresh={() => void im.refresh()}
+            onMarkRead={(conversation) => {
+              if (!im.service) return;
+              // 标记到最新一条：服务端会把 seq 夹到 lastSeq，多传也不会越界。
+              void im.service
+                .markRead({ conversationId: conversation.id, seq: conversation.lastSeq })
+                .then(() => im.refresh())
+                .catch((error: unknown) => logger.warn("[im] 标记已读失败", error));
+            }}
           />
         </div>
 

@@ -285,10 +285,13 @@ async function main() {
   );
   const selectAllWrite = await page.evaluate(async () => {
     await window.__excel.run("executeBold");
-    return {
-      bold: window.__excel.api().current.getCellValue(0, 0, { type: "bl" }),
-      alive: window.__excel.api().current != null,
-    };
+    // 引擎提交是异步的：轮询到稳定再判（单次读会偶发读到上一拍）
+    let bold = window.__excel.api().current?.getCellValue(0, 0, { type: "bl" }) ?? null;
+    for (let attempt = 0; attempt < 8 && bold !== 1; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      bold = window.__excel.api().current?.getCellValue(0, 0, { type: "bl" }) ?? null;
+    }
+    return { bold, alive: window.__excel.api().current != null };
   });
   check(
     selectAllWrite.alive && selectAllWrite.bold === 1,

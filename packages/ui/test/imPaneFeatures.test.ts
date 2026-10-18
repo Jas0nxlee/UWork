@@ -2,6 +2,7 @@
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
+import * as testing from "@testing-library/react";
 import type { ImConversationSummary, ImDirectoryUser, ImMessage } from "@zcode/shared";
 import { ZCodeIntlProvider } from "@/i18n/IntlProvider.js";
 import { ImConversationList } from "@/im/ImConversationList.js";
@@ -516,5 +517,67 @@ describe("会话列表预览", () => {
     const row = container.querySelector('[data-testid="im-conversation-row"]');
     expect(row?.textContent).toContain("[图片] 截图.png");
     expect(row?.textContent).toContain("你");
+  });
+});
+
+describe("右键菜单", () => {
+  const menuProps = {
+    outbox: [] as never[],
+    selfLabel: "辛晓华（你）",
+    senderNameOf: () => "吕岳阳",
+    query: "",
+    activeMessageId: null,
+    confirmingId: null,
+    onWithdraw: () => undefined,
+    onWithdrawNow: () => undefined,
+    onReply: () => undefined,
+    onForward: () => undefined,
+    onJumpToMessage: () => undefined,
+    onRetryOutbox: () => undefined,
+    onDiscardOutbox: () => undefined,
+    service: null,
+    selfUserId: "u-me",
+    onToggleReaction: () => undefined,
+  };
+  const rowsOf = (messages: ImMessage[]): ImTimelineRow[] =>
+    buildTimeline({
+      messages,
+      selfUserId: "u-me",
+      now: NOW,
+      dayLabels: { today: "今天", yesterday: "昨天", weekdays: WEEKDAYS },
+    });
+
+  it("消息行右键给出回复/转发/复制；自己的消息多一个直接撤回", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onReply = vi.fn();
+    const onWithdrawNow = vi.fn();
+    const theirs = message({ id: "m-1", senderId: "u-lv", body: "别人的消息" });
+    const mine = message({
+      id: "m-2",
+      seq: 2,
+      senderId: "u-me",
+      body: "我的消息",
+      createdAt: NOW + 60_000,
+    });
+
+    const first = renderWithIntl(
+      createElement(ImTimeline, { ...menuProps, rows: rowsOf([theirs]), onReply }),
+    );
+    fireEvent.contextMenu(first.container.querySelector('[data-im-message-id="m-1"]')!);
+    const items = await testing.screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["回复", "转发", "复制"]);
+    fireEvent.click(items[0]!);
+    expect(onReply).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    const second = renderWithIntl(
+      createElement(ImTimeline, { ...menuProps, rows: rowsOf([mine]), onWithdrawNow }),
+    );
+    fireEvent.contextMenu(second.container.querySelector('[data-im-message-id="m-2"]')!);
+    const mineItems = await testing.screen.findAllByRole("menuitem");
+    // 自己的消息：多一条"撤回"，而且右键菜单里的撤回是直接生效（菜单点完就关，做不了两步确认）
+    expect(mineItems.map((item) => item.textContent)).toEqual(["回复", "转发", "复制", "撤回"]);
+    fireEvent.click(mineItems[3]!);
+    expect(onWithdrawNow).toHaveBeenCalledTimes(1);
   });
 });

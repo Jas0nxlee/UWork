@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { EXCEL_PAGE, bundleExcelEntry } from "./lib/officeExcelPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { createReport } from "./lib/checkReport.mjs";
+import { buildKeyCases } from "./lib/officeExcelButtonCases.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -36,17 +37,6 @@ const PROMPT_VALUES = {
   executeLatex: "E=mc^2",
   executeAddWatermark: "测试水印",
 };
-/** 下拉默认取哪一项（按 label）；没列到的取第一项。 */
-const SELECT_CHOICE = {
-  字号: "14",
-  行距: "1.5 倍行距",
-  数字格式: "百分比",
-  字体: "黑体",
-  字色: "rgb(217, 38, 38)",
-  底纹: "rgb(255, 236, 179)",
-  底纹: "rgb(255, 236, 179)",
-};
-
 async function main() {
   const report = createReport();
   const { check, stage } = report;
@@ -136,7 +126,9 @@ async function main() {
             hasPrompt: Boolean(item.prompt),
           };
           if (item.kind === "select") {
-            for (const option of item.options ?? []) list.push({ ...base, choice: option.label });
+            (item.options ?? []).forEach((option, optionIndex) =>
+              list.push({ ...base, choice: option.label, optionIndex }),
+            );
           } else {
             list.push({ ...base, choice: null });
           }
@@ -150,18 +142,28 @@ async function main() {
   const failuresBefore = () => pageErrors.length;
 
   /**
-   * 下拉项是**按文本**渲染的（没有 title 属性），所以按精确文本点。
-   * 编辑位会因为选区/脏标记重渲染，下拉偶尔在点下去的瞬间被重建（element detached）——
-   * 重开下拉再点一次就行，所以这里带重试。
+  /**
+   * 点下拉里的第 index 个选项。
+   *
+   * 为什么**按下标**点而不是按文本：下拉项不止有文字项——颜色/底纹那两类渲染成**色块**
+   * （没有文本，label 只在数据里），按文本会找不到。下标与数据里的顺序一致，最稳；
+   * label 只用来写报告。编辑位会因选区/脏标记重渲染，下拉偶尔在点下去的瞬间被重建，所以带重试。
    */
-  const clickDropdownOption = async (label) => {
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const option = page
+  const clickDropdownOption = async (label, index) => {
+    // 文本项按文本点（最准）；色块项没有文本，退回按下标点
+    const escaped = String(label ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const byText = page
       .locator("[data-ribbon-dropdown] button")
-      .filter({ hasText: new RegExp(`^${escaped}$`) });
+      .filter({ hasText: new RegExp(`^${escaped}$`) })
+      .first();
+    const byIndex = page.locator("[data-ribbon-dropdown] button").nth(index);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await option.first().click({ timeout: 6000 });
+        if (await byText.isVisible().catch(() => false)) {
+          await byText.click({ timeout: 4000 });
+          return;
+        }
+        await byIndex.click({ timeout: 4000 });
         return;
       } catch (error) {
         if (attempt === 2) throw error;
@@ -233,8 +235,7 @@ async function main() {
       how = await clickRibbonItem(item);
       await page.waitForSelector("[data-ribbon-dropdown]", { timeout: 5000 });
       // 每个选项单独跑一条（这样"字体/字号/数字格式"里的每一项都被点过）
-      const choice = item.choice ?? SELECT_CHOICE[item.title] ?? "自动";
-      await clickDropdownOption(choice);
+      await clickDropdownOption(item.choice, item.optionIndex ?? 0);
     } else if (item.hasPrompt) {
       void item.choice;
       how = await clickRibbonItem(item);
@@ -321,164 +322,7 @@ async function main() {
     throw new Error(`找不到控件：${title}`);
   };
 
-  const cases = [
-    {
-      name: "加粗：点两次是开→关",
-      run: async () => {
-        await mountPane();
-        await page.evaluate(() =>
-          window.__officeExcelApi.current.setSelection([{ row: [1, 1], column: [1, 1] }]),
-        );
-        await page.click('[data-office-ribbon-tab="home"]');
-        await clickByTitle("加粗 (⌘B)");
-        await page.waitForTimeout(300);
-        const on = await page.evaluate(() =>
-          window.__officeExcelApi.current.getCellValue(1, 1, { type: "bl" }),
-        );
-        await clickByTitle("加粗 (⌘B)");
-        await page.waitForTimeout(300);
-        const off = await page.evaluate(() =>
-          window.__officeExcelApi.current.getCellValue(1, 1, { type: "bl" }),
-        );
-        return { ok: on === 1 && String(off) === "0", detail: `${on} → ${off}` };
-      },
-    },
-    {
-      name: "数字格式：下拉选百分比落到格子",
-      run: async () => {
-        await mountPane();
-        await page.evaluate(() =>
-          window.__officeExcelApi.current.setSelection([{ row: [1, 1], column: [1, 1] }]),
-        );
-        await page.click('[data-office-ribbon-tab="home"]');
-        await clickByTitle("数字格式");
-        await page.waitForSelector("[data-ribbon-dropdown]", { timeout: 5000 });
-        await clickDropdownOption("百分比");
-        await page.waitForTimeout(300);
-        const format = await page.evaluate(() =>
-          window.__officeExcelApi.current.getCellValue(1, 1, { type: "ct" }),
-        );
-        return { ok: format?.fa === "0.00%", detail: JSON.stringify(format) };
-      },
-    },
-    {
-      name: "合并居中 → 取消合并",
-      run: async () => {
-        await mountPane();
-        const countMerges = () =>
-          page.evaluate(
-            () =>
-              Object.keys(window.__officeExcelApi.current.getAllSheets()[0].config?.merge ?? {})
-                .length,
-          );
-        const before = await countMerges();
-        await page.evaluate(() =>
-          window.__officeExcelApi.current.setSelection([{ row: [1, 2], column: [1, 2] }]),
-        );
-        await page.click('[data-office-ribbon-tab="home"]');
-        await clickByTitle("合并并居中");
-        await page.waitForTimeout(300);
-        const merged = await countMerges();
-        await clickByTitle("取消合并");
-        await page.waitForTimeout(300);
-        const cleared = await countMerges();
-        return {
-          ok: merged === before + 1 && cleared === before,
-          detail: `合并 ${before} → ${merged} → ${cleared} 处（夹具原本 ${before} 处）`,
-        };
-      },
-    },
-    {
-      name: "插入行 / 删除行：内容整体搬家",
-      run: async () => {
-        await mountPane();
-        await page.evaluate(() =>
-          window.__officeExcelApi.current.setSelection([{ row: [1, 1], column: [0, 0] }]),
-        );
-        await page.click('[data-office-ribbon-tab="home"]');
-        await clickByTitle("在上方插入一行");
-        await page.waitForTimeout(300);
-        const afterInsert = await page.evaluate(() =>
-          [0, 1, 2].map((row) =>
-            window.__officeExcelApi.current.getCellValue(row, 0, { type: "v" }),
-          ),
-        );
-        await clickByTitle("删除所选行（内容上移）");
-        await page.waitForTimeout(300);
-        const afterDelete = await page.evaluate(() =>
-          [0, 1, 2].map((row) =>
-            window.__officeExcelApi.current.getCellValue(row, 0, { type: "v" }),
-          ),
-        );
-        return {
-          ok:
-            JSON.stringify(afterInsert) === JSON.stringify(["名称", null, "苹果"]) &&
-            JSON.stringify(afterDelete) === JSON.stringify(["名称", "苹果", "苹果官网"]),
-          detail: `插入后 ${JSON.stringify(afterInsert)}；删除后 ${JSON.stringify(afterDelete)}`,
-        };
-      },
-    },
-    {
-      name: "整表选中 → 状态栏显示整块范围",
-      run: async () => {
-        await mountPane();
-        await page.click('[data-office-ribbon-tab="home"]');
-        await clickByTitle("选中整张表");
-        await page.waitForTimeout(300);
-        const status = await page.evaluate(
-          () => document.querySelector("[data-office-toolbar]")?.textContent ?? "",
-        );
-        return { ok: /A1:[A-Z]+60/.test(status), detail: status.slice(24, 48) };
-      },
-    },
-    {
-      name: "工具栏：保存触发写回、重新加载重新读文件",
-      run: async () => {
-        await mountPane();
-        await page.evaluate(() => {
-          // 造一处改动，保证保存有东西可写
-          window.__officeExcelApi.current.setCellValue(2, 5, "改动");
-        });
-        await page.waitForTimeout(300);
-        await page.click('button:has-text("保存到文件")');
-        await page.waitForTimeout(800);
-        const calls = await page.evaluate(() => window.__excelPane.calls().length);
-        const callsAfterFirst = calls;
-        await page.click('button:has-text("重新加载")');
-        await page.waitForTimeout(1500);
-        const reloaded = await page.evaluate(
-          () =>
-            document.querySelector("[data-office-toolbar]")?.textContent?.includes("已载入") ??
-            false,
-        );
-        return {
-          ok: callsAfterFirst >= 1 && reloaded,
-          detail: `写回 ${callsAfterFirst} 次；重载提示 ${reloaded}`,
-        };
-      },
-    },
-    {
-      name: "工作表切换：点底部标签能切到第二张表",
-      // 已知问题：引擎自己的工作表标签在我们这套宿主里点了不切换（裸引擎同样不切，
-      // 与"只给 celldata / 先转成 data 矩阵"无关）。见 specs §2.2c。
-      knownIssue: true,
-      run: async () => {
-        await mountPane();
-        // 引擎自己的工作表标签：class 是 luckysheet-sheets-item，按精确文本点
-        await page
-          .locator("li.luckysheet-sheets-item, .luckysheet-sheets-item")
-          .filter({ hasText: /^说明$/ })
-          .first()
-          .click({ timeout: 8000 });
-        await page.waitForTimeout(500);
-        const active = await page.evaluate(() => {
-          const sheets = window.__officeExcelApi.current.getAllSheets();
-          return sheets.find((sheet) => sheet.status === 1)?.name ?? null;
-        });
-        return { ok: active === "说明", detail: `当前表：${active}` };
-      },
-    },
-  ];
+  const cases = buildKeyCases({ page, mountPane, clickByTitle, clickDropdownOption });
 
   for (const testCase of cases) {
     let outcome = { ok: false, detail: "" };

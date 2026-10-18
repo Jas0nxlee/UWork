@@ -2,6 +2,12 @@ import { memo, useEffect, useState } from "react";
 import type { IImService } from "@zcode/services";
 import { isInlineImageMime, parseImAttachmentBody } from "@zcode/shared";
 import { DownloadIcon, FileIcon, LoaderCircleIcon } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu.js";
 import { cn } from "@/components/lib/utils.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -153,28 +159,37 @@ export const ImAttachmentView = memo(function ImAttachmentView({
   }
 
   return (
-    <button
-      type="button"
-      data-testid="im-attachment-file"
-      className={cn(
-        "mt-1 flex max-w-sm items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-border-hover",
-      )}
-      onClick={() => void download()}
-    >
-      <FileIcon className="size-5 shrink-0 text-foreground-subtle" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-ui-sm text-foreground">{attachment.name}</span>
-        <span className="block text-ui-2xs text-foreground-subtle">
-          {failed
-            ? t("im.attachmentFailed")
-            : savedPath
-              ? `${t("im.attachmentSaved")} ${savedPath}`
-              : formatBytes(attachment.size)}
-        </span>
-      </span>
-      <DownloadIcon
-        className={cn("size-4 shrink-0 text-foreground-subtle", downloading && "animate-pulse")}
-      />
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid="im-attachment-file"
+          className={cn(
+            "mt-1 flex max-w-sm items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-border-hover",
+          )}
+          onClick={() => void download()}
+        >
+          <FileIcon className="size-5 shrink-0 text-foreground-subtle" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-ui-sm text-foreground">{attachment.name}</span>
+            <span className="block text-ui-2xs text-foreground-subtle">
+              {failed
+                ? t("im.attachmentFailed")
+                : savedPath
+                  ? `${t("im.attachmentSaved")} ${savedPath}`
+                  : formatBytes(attachment.size)}
+            </span>
+          </span>
+          <DownloadIcon
+            className={cn("size-4 shrink-0 text-foreground-subtle", downloading && "animate-pulse")}
+          />
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => void download()}>
+          {t("im.attachmentSaveAs")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });

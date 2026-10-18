@@ -14,6 +14,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu.js";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -66,6 +73,7 @@ export const ImConversationList = memo(function ImConversationList({
   onSelect,
   onNewConversation,
   onRefresh,
+  onMarkRead,
 }: {
   conversations: ImConversationSummary[];
   directory: ImDirectoryUser[];
@@ -74,6 +82,8 @@ export const ImConversationList = memo(function ImConversationList({
   onSelect: (conversationId: string) => void;
   onNewConversation: () => void;
   onRefresh: () => void;
+  /** 右键菜单里"标记已读"：把这会话标记到最新一条（服务端会夹到 lastSeq）。 */
+  onMarkRead: (conversation: ImConversationSummary) => void;
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string, values?: Record<string, string | number>): string =>
@@ -214,54 +224,80 @@ export const ImConversationList = memo(function ImConversationList({
               const unread = conversation.unreadCount;
               return (
                 <li key={conversation.id} className="group/row relative">
-                  <button
-                    type="button"
-                    data-testid="im-conversation-row"
-                    className={cn(IM_LIST_ROW, selected ? IM_LIST_ROW_ACTIVE : IM_LIST_ROW_IDLE)}
-                    onClick={() => onSelect(conversation.id)}
-                  >
-                    {selected ? <span className={IM_LIST_ROW_MARKER} /> : null}
-                    <span
-                      className={cn(
-                        "flex size-10 shrink-0 items-center justify-center text-ui-xs font-medium",
-                        conversation.kind === "dm" ? "rounded-full" : "rounded-xl",
-                        avatarTone(conversation.id),
-                      )}
-                    >
-                      {initialsOf(title)}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="flex items-baseline gap-2">
-                        {preference.pinned ? (
-                          <PinIcon className="size-3 shrink-0 self-center text-muted-foreground" />
-                        ) : null}
-                        <span className={cn(IM_LIST_NAME, "min-w-0 flex-1")}>{title}</span>
-                        <span className={IM_LIST_TIME}>
-                          {formatListTime(conversation.updatedAt, now, timeLabels)}
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        type="button"
+                        data-testid="im-conversation-row"
+                        className={cn(
+                          IM_LIST_ROW,
+                          selected ? IM_LIST_ROW_ACTIVE : IM_LIST_ROW_IDLE,
+                        )}
+                        onClick={() => onSelect(conversation.id)}
+                      >
+                        {selected ? <span className={IM_LIST_ROW_MARKER} /> : null}
+                        <span
+                          className={cn(
+                            "flex size-10 shrink-0 items-center justify-center text-ui-xs font-medium",
+                            conversation.kind === "dm" ? "rounded-full" : "rounded-xl",
+                            avatarTone(conversation.id),
+                          )}
+                        >
+                          {initialsOf(title)}
                         </span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className={cn(IM_LIST_PREVIEW, "min-w-0 flex-1 text-ui-xs")}>
-                          {preview.prefix
-                            ? `${preview.prefix === "you:" ? t("im.you") : preview.prefix} ${preview.text}`
-                            : preview.text}
-                        </span>
-                        {/* 静音的会话不报数，只留一个小圆点：要的是"别打扰"，不是"看不到"。 */}
-                        {unread > 0 ? (
-                          preference.muted ? (
-                            <span
-                              data-testid="im-conversation-muted-dot"
-                              className={cn(IM_UNREAD_DOT, "bg-foreground-subtle/70")}
-                            />
-                          ) : (
-                            <span data-testid="im-conversation-unread" className={IM_UNREAD_PILL}>
-                              {unread > 99 ? "99+" : unread}
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-baseline gap-2">
+                            {preference.pinned ? (
+                              <PinIcon className="size-3 shrink-0 self-center text-muted-foreground" />
+                            ) : null}
+                            <span className={cn(IM_LIST_NAME, "min-w-0 flex-1")}>{title}</span>
+                            <span className={IM_LIST_TIME}>
+                              {formatListTime(conversation.updatedAt, now, timeLabels)}
                             </span>
-                          )
-                        ) : null}
-                      </span>
-                    </span>
-                  </button>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className={cn(IM_LIST_PREVIEW, "min-w-0 flex-1 text-ui-xs")}>
+                              {preview.prefix
+                                ? `${preview.prefix === "you:" ? t("im.you") : preview.prefix} ${preview.text}`
+                                : preview.text}
+                            </span>
+                            {/* 静音的会话不报数，只留一个小圆点：要的是"别打扰"，不是"看不到"。 */}
+                            {unread > 0 ? (
+                              preference.muted ? (
+                                <span
+                                  data-testid="im-conversation-muted-dot"
+                                  className={cn(IM_UNREAD_DOT, "bg-foreground-subtle/70")}
+                                />
+                              ) : (
+                                <span
+                                  data-testid="im-conversation-unread"
+                                  className={IM_UNREAD_PILL}
+                                >
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              )
+                            ) : null}
+                          </span>
+                        </span>
+                      </button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onSelect={() => toggle(conversation.id, "pinned")}>
+                        {preference.pinned ? t("im.unpin") : t("im.pin")}
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={() => toggle(conversation.id, "muted")}>
+                        {preference.muted ? t("im.unmute") : t("im.mute")}
+                      </ContextMenuItem>
+                      {unread > 0 ? (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem onSelect={() => onMarkRead(conversation)}>
+                            {t("im.markRead")}
+                          </ContextMenuItem>
+                        </>
+                      ) : null}
+                    </ContextMenuContent>
+                  </ContextMenu>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
