@@ -138,9 +138,15 @@ jobs:
         run: pnpm exec tsx scripts/desktop-enterprise-identity.ts verify ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh desktop can open WeCom scanning
         if: matrix.platform != 'linux'
+        timeout-minutes: 10
+        env:
+          DEBUG: pw:api
         run: pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh Linux desktop can open WeCom scanning
         if: matrix.platform == 'linux'
+        timeout-minutes: 10
+        env:
+          DEBUG: pw:api
         run: xvfb-run -a pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify macOS resource signature
         if: matrix.platform == 'mac'
