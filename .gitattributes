@@ -2,6 +2,10 @@
 *.mjs text eol=lf
 *.sh  text eol=lf
 
+# Gen UI 固定资源由 SHA256 清单校验；Windows 换行转换会破坏供应链快照。
+apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/** -text
+packages/desktop/src/renderer/src/plugin-sandbox/genUiTweakRuntime.js -text
+
 # E2E PDF fixture 含规范 xref 尾空格，必须按二进制处理，避免 diff --check 误报。
 packages/desktop/test/e2e/fixtures/fs/**/*.pdf binary
 
