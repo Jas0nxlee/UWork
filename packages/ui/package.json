@@ -20,7 +20,7 @@
     "check:office-ribbon": "node scripts/check-office-ribbon-layout.mjs",
     "check:office-excel": "node scripts/check-office-excel.mjs && node scripts/check-office-excel-io.mjs && node scripts/check-office-excel-ui.mjs && node scripts/check-office-excel-buttons.mjs && node scripts/check-office-excel-flow.mjs",
     "check:office": "pnpm check:office-editor && pnpm check:office-ribbon && pnpm check:office-excel && pnpm check:office-pptx",
-    "check:office-pptx": "node scripts/check-office-pptx.mjs"
+    "check:office-pptx": "node scripts/check-office-pptx.mjs && node scripts/check-office-pptx-buttons.mjs"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.2.4",
