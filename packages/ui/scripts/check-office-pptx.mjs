@@ -13,6 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { runPptxEditCases } from "./lib/officePptxEditCases.mjs";
+import { runPptxUiCases } from "./lib/officePptxUiCases.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -33,7 +35,13 @@ async function main() {
       bundlePptxEntry(dir, {
         repoRoot,
         editorDir,
-        modules: ["pptText.ts", "pptxValidate.ts", "usePptxDocument.ts"],
+        modules: [
+          "pptText.ts",
+          "pptShapes.ts",
+          "pptSlides.ts",
+          "pptxValidate.ts",
+          "usePptxDocument.ts",
+        ],
       }),
     viewport: { width: 1200, height: 800 },
   });
@@ -227,7 +235,12 @@ async function main() {
   });
   check(ui.areas === 2 && ui.slideButtons === 2, `界面渲染出 2 页 / 2 个文本框（${ui.areas}）`);
   check(ui.first === "标题一\n副标题", `文本框里是原文（${JSON.stringify(ui.first)}）`);
-  check(ui.status.includes("已载入"), `状态栏交代清楚（${ui.status}）`);
+  check(
+    ui.status.includes("已载入") && ui.status.includes("张幻灯片"),
+    `状态栏交代清楚（${ui.status}）`,
+  );
+
+  await runPptxEditCases({ page, check });
 
   // ⑦ 真样本文件：4 页、能改字、产物能渲染
   const sample = await page.evaluate(async () => {
@@ -265,6 +278,8 @@ async function main() {
     `真样本产物通过校验（${sample.validation.issues.join("；") || "无问题"}）`,
   );
   check(sample.rendered.slides === 4, `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`);
+
+  await runPptxUiCases({ page, check });
 
   await harness.close();
   if (failures.length > 0) {

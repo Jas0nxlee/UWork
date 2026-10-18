@@ -94,4 +94,28 @@ describe("检索结果列表", () => {
     const failed = renderResults({ error: "搜索失败，请重试" });
     expect(failed.container.textContent).toContain("搜索失败");
   });
+  it("作用域开关只在表头出现一次（贴到命中行里会让每条结果都长一排按钮）", () => {
+    const { container } = renderResults({
+      scope: "all",
+      results: [message({ id: "m-1" }), message({ id: "m-2" }), message({ id: "m-3" })],
+      conversations: { c1: { title: "项目组", kind: "group" } },
+    });
+    expect(container.querySelectorAll('[data-testid="im-search-scope-all"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="im-search-scope-conversation"]')).toHaveLength(
+      1,
+    );
+    // 全局检索时每条命中要标出来自哪个会话
+    expect(container.querySelector('[data-testid="im-search-hit"]')?.textContent).toContain(
+      "项目组",
+    );
+  });
+
+  it("输入框提示跟着作用域走（全局检索时不再写「在会话中搜索」）", () => {
+    const scoped = renderResults({ scope: "all" });
+    expect(scoped.container.querySelector("input")?.placeholder).toBe("搜索全部会话");
+    scoped.unmount();
+
+    const inConversation = renderResults({ scope: "conversation" });
+    expect(inConversation.container.querySelector("input")?.placeholder).toBe("在会话中搜索");
+  });
 });

@@ -85,7 +85,7 @@ export interface ImConversationController {
   sending: boolean;
   loadingOlder: boolean;
   hasMore: boolean;
-  send(body: string, replyTo?: ImOutboxReply | null): Promise<boolean>;
+  send(body: string, replyTo?: ImOutboxReply | null, mentionIds?: string[]): Promise<boolean>;
   /** 发附件消息：body 是 `{attachmentId,name,mime,size}` 的 JSON（见 shared 的解析函数）。 */
   sendAttachment(body: string): Promise<boolean>;
   /** 重发失败的乐观消息：复用同一条的 clientMsgId，服务端按 id 去重。 */
@@ -168,6 +168,15 @@ export function useImConversation(
         );
         return;
       }
+      if (realtime.kind === "message_updated") {
+        // 编辑/置顶都走这条：整条替换，时间线顺序不变（seq 没变）。
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === realtime.message.id ? realtime.message : message,
+          ),
+        );
+        return;
+      }
       if (realtime.kind === "message_reactions") {
         // 回应是"对已有消息的局部更新"：直接替换那一条，不动时间线顺序。
         // 自己的点击也走这条（服务端不过滤发起端），所以本地操作和别人的操作是同一条更新路径。
@@ -203,6 +212,7 @@ export function useImConversation(
       body: string,
       replyToId?: string,
       kind?: "attachment",
+      mentionIds?: string[],
     ): Promise<boolean> => {
       if (!service || !conversationId) return false;
       setSending(true);
@@ -214,6 +224,7 @@ export function useImConversation(
           clientMsgId,
           ...(replyToId ? { replyToId } : {}),
           ...(kind ? { kind } : {}),
+          ...(mentionIds && mentionIds.length > 0 ? { mentionIds } : {}),
         });
         setMessages((current) => mergeMessages(current, [message]));
         setOutbox((current) => reconcileOutbox(current, message));
@@ -230,7 +241,11 @@ export function useImConversation(
   );
 
   const send = useCallback(
-    async (body: string, replyTo?: ImOutboxReply | null): Promise<boolean> => {
+    async (
+      body: string,
+      replyTo?: ImOutboxReply | null,
+      mentionIds?: string[],
+    ): Promise<boolean> => {
       if (!service || !conversationId) return false;
       const trimmed = body.trim();
       if (!trimmed) return false;
@@ -245,7 +260,7 @@ export function useImConversation(
           replyTo: replyTo ?? null,
         }),
       ]);
-      return deliver(clientMsgId, trimmed, replyTo?.messageId);
+      return deliver(clientMsgId, trimmed, replyTo?.messageId, undefined, mentionIds);
     },
     [service, conversationId, deliver],
   );

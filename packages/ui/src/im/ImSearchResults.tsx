@@ -19,6 +19,9 @@ import { IM_EMPTY, IM_EMPTY_ICON, IM_EMPTY_TEXT, IM_SEARCH_INPUT } from "./imChr
 export const ImSearchResults = memo(function ImSearchResults({
   query,
   onQueryChange,
+  scope,
+  onScopeChange,
+  conversations,
   results,
   searching,
   hasMore,
@@ -32,6 +35,10 @@ export const ImSearchResults = memo(function ImSearchResults({
 }: {
   query: string;
   onQueryChange: (value: string) => void;
+  scope: "conversation" | "all";
+  onScopeChange: (scope: "conversation" | "all") => void;
+  /** 全局检索时：命中所属会话的信息。 */
+  conversations: Record<string, { title: string | null; kind: "dm" | "group" | "channel" }>;
   results: ImMessage[];
   searching: boolean;
   hasMore: boolean;
@@ -53,7 +60,7 @@ export const ImSearchResults = memo(function ImSearchResults({
         <Input
           autoFocus
           className={cn(IM_SEARCH_INPUT, "flex-1")}
-          placeholder={t("im.searchInConversation")}
+          placeholder={scope === "all" ? t("im.searchInAll") : t("im.searchInConversation")}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
@@ -63,6 +70,27 @@ export const ImSearchResults = memo(function ImSearchResults({
             }
           }}
         />
+        {/* 作用域：本会话 / 全部会话。两个按钮而不是下拉——只有两个选项，多一次点击没有收益 */}
+        <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-surface p-0.5">
+          {(["conversation", "all"] as const).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              data-testid={`im-search-scope-${candidate}`}
+              className={cn(
+                "rounded-md px-2 py-0.5 text-ui-2xs transition-colors",
+                scope === candidate
+                  ? "bg-background text-foreground"
+                  : "text-foreground-subtle hover:text-foreground",
+              )}
+              onClick={() => onScopeChange(candidate)}
+            >
+              {candidate === "conversation"
+                ? t("im.searchScopeConversation")
+                : t("im.searchScopeAll")}
+            </button>
+          ))}
+        </div>
         <span className="shrink-0 text-ui-2xs text-foreground-subtle tabular-nums">
           {searching
             ? t("im.searching")
@@ -86,7 +114,7 @@ export const ImSearchResults = memo(function ImSearchResults({
         ) : !query ? (
           <div className={cn(IM_EMPTY, "py-10")}>
             <SearchIcon className={IM_EMPTY_ICON} />
-            <p className={IM_EMPTY_TEXT}>{t("im.searchScopeAll")}</p>
+            <p className={IM_EMPTY_TEXT}>{t("im.searchScopeAllHint")}</p>
           </div>
         ) : results.length === 0 && !searching ? (
           <div className={cn(IM_EMPTY, "py-10")}>
@@ -121,6 +149,13 @@ export const ImSearchResults = memo(function ImSearchResults({
                         <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">
                           {name}
                         </span>
+                        {/* 全局检索时标出这条来自哪个会话——结果可能横跨十几个会话，
+                            没有来源标记用户不知道自己在哪说话；会话名从命中所属会话带进来 */}
+                        {scope === "all" ? (
+                          <span className="shrink-0 rounded bg-surface px-1 text-ui-2xs text-foreground-subtle">
+                            {conversations[message.conversationId]?.title ?? t("im.untitled")}
+                          </span>
+                        ) : null}
                         <span className="shrink-0 text-ui-2xs text-foreground-subtle tabular-nums">
                           {formatClockTime(message.createdAt)}
                         </span>

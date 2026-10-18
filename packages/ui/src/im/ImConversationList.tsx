@@ -222,6 +222,7 @@ export const ImConversationList = memo(function ImConversationList({
               const selected = conversation.id === selectedId;
               const preference = preferenceOf(preferences, conversation.id);
               const unread = conversation.unreadCount;
+              const mentions = conversation.mentionCount ?? 0;
               return (
                 <li key={conversation.id} className="group/row relative">
                   <ContextMenu>
@@ -261,8 +262,16 @@ export const ImConversationList = memo(function ImConversationList({
                                 ? `${preview.prefix === "you:" ? t("im.you") : preview.prefix} ${preview.text}`
                                 : preview.text}
                             </span>
-                            {/* 静音的会话不报数，只留一个小圆点：要的是"别打扰"，不是"看不到"。 */}
-                            {unread > 0 ? (
+                            {/* 有人 @我 时角标换成"@"（企微/飞书同一约定）——数字分不出"有人在喊我"；
+                                静音的会话不报数，只留一个小圆点：要的是"别打扰"，不是"看不到"。 */}
+                            {mentions > 0 ? (
+                              <span
+                                data-testid="im-conversation-mention"
+                                className="min-w-4 shrink-0 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-destructive-foreground"
+                              >
+                                @
+                              </span>
+                            ) : unread > 0 ? (
                               preference.muted ? (
                                 <span
                                   data-testid="im-conversation-muted-dot"

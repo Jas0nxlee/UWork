@@ -1,32 +1,28 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { ImConversationSummary, ImDirectoryUser, ImMember } from "@zcode/shared";
-import { ContactIcon, MessagesSquareIcon } from "lucide-react";
+import type { ImConversationSummary, ImDirectoryUser, ImMember, ImMessage } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
 import type { MessagesSidePaneTab } from "@/lib/workspaceSidePane.js";
+import { IM_EMPTY, IM_EMPTY_ICON, IM_EMPTY_TEXT, IM_PANEL } from "./imChrome.js";
+import { useImBookmarks } from "./useImBookmarks.js";
 import {
-  IM_EMPTY,
-  IM_EMPTY_ICON,
-  IM_EMPTY_TEXT,
-  IM_PANEL,
-  IM_RAIL,
-  IM_RAIL_INDICATOR,
-  IM_RAIL_ITEM,
-  IM_RAIL_ITEM_ACTIVE,
-} from "./imChrome.js";
+  clearImOpenRequest,
+  setActiveImConversation,
+  setImConversationTitles,
+  subscribeImNotificationState,
+} from "./imNotificationRouter.js";
+import { ImBookmarksList } from "./ImBookmarksList.js";
 import { ImConversationList } from "./ImConversationList.js";
 import { ImConversationPanel } from "./ImConversationPanel.js";
 import { ImDirectoryList } from "./ImDirectoryList.js";
 import { ImDirectoryPicker, type ImPickerMode } from "./ImDirectoryPicker.js";
 import { ImGroupSettings } from "./ImGroupSettings.js";
 import { ImMemberPanel } from "./ImMemberPanel.js";
-import {
-  avatarTone,
-  conversationSubtitle,
-  conversationTitle,
-  initialsOf,
-} from "./imPresentation.js";
+import { MessagesSquareIcon } from "lucide-react";
+import { ImRail } from "./ImRail.js";
+import { ImPinnedPanel } from "./ImPinnedPanel.js";
+import { conversationSubtitle, conversationTitle } from "./imPresentation.js";
 import { sumUnread, useImPreferences } from "./imPreferences.js";
 import { useIm } from "./useIm.js";
 
@@ -55,7 +51,49 @@ export const MessagesSidePane = memo(function MessagesSidePane({
   /** 右栏的两种内容：成员面板（默认）与群设置（管理操作）。 */
   const [rightPanelMode, setRightPanelMode] = useState<"members" | "settings">("members");
   /** 左侧 rail 的当前入口（消息 / 通讯录）。 */
-  const [railView, setRailView] = useState<"messages" | "directory">("messages");
+  const [railView, setRailView] = useState<"messages" | "directory" | "bookmarks">("messages");
+  /**
+   * 通知与角标的路由：告诉它"我现在在看哪个会话"（在看的会话不弹通知），
+   * 并消费"点通知要打开某会话"的请求。开关放在真正的挂载点（面板）上，语义最准。
+   */
+  useEffect(() => {
+    setActiveImConversation(selected);
+    return () => setActiveImConversation(null);
+  }, [selected]);
+  useEffect(
+    () =>
+      subscribeImNotificationState((state) => {
+        if (!state.openRequest) return;
+        setSelected(state.openRequest);
+        setRailView("messages");
+        clearImOpenRequest();
+      }),
+    [],
+  );
+
+  /** 收藏：侧边栏持有（rail 的收藏视图与右键菜单要共用一个实例，否则两边不同步）。 */
+  const bookmarks = useImBookmarks(im.service);
+  /**
+   * 打开收藏视图就重拉一次。
+   *
+   * 不能只在挂载时拉：那次请求一旦失败（网关刚上线、路由还没通、网络抖动），`loaded` 会永远是
+   * false，而右键的收藏动作又按 `loaded` 决定要不要刷新——列表就永远空着，看起来像"收藏没生效"。
+   * 打开视图重拉一次的成本是一次请求，换掉这个自己回不来的状态。
+   */
+  useEffect(() => {
+    if (railView !== "bookmarks") return;
+    void bookmarks.refresh();
+  }, [railView, bookmarks.refresh]);
+  /** 置顶消息由面板拉取（它才知道当前会话），右栏只是渲染。 */
+  const [pinned, setPinned] = useState<ImMessage[]>([]);
+  const [showPinned, setShowPinned] = useState(false);
+  /** 跳转请求（右栏置顶 / 全局检索命中）：seq 是会话内坐标，换会话后靠它拉上下文。 */
+  const [jumpRequest, setJumpRequest] = useState<{
+    conversationId: string;
+    id: string;
+    seq: number;
+    at: number;
+  } | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
   const paneWidth = useElementWidth(paneRef);
   const singleColumn = paneWidth > 0 && paneWidth < 460;
@@ -141,6 +179,20 @@ export const MessagesSidePane = memo(function MessagesSidePane({
     return () => subscription.dispose();
   }, [im.service, selected]);
 
+  // 通知标题要显示"谁发来的"：单聊用对面姓名，群用群名——只有这里知道怎么解析
+  useEffect(() => {
+    const titles: Record<string, string> = {};
+    for (const conversation of conversations) {
+      titles[conversation.id] = conversationTitle(
+        conversation,
+        selfUserId,
+        nameOf,
+        t("im.untitled"),
+      );
+    }
+    setImConversationTitles(titles);
+  }, [conversations, selfUserId, nameOf, t]);
+
   const subtitleOf = (summary: ImConversationSummary): string =>
     summary.kind === "dm"
       ? conversationSubtitle(summary, selfUserId, (id) => nameById.get(id))
@@ -170,36 +222,15 @@ export const MessagesSidePane = memo(function MessagesSidePane({
       ) : null}
 
       <div ref={paneRef} className="relative flex min-h-0 flex-1">
-        {/* 第一栏（rail）：应用级入口。最窄一列，每一项都必须有真实去处，不然就是装饰。 */}
-        <nav aria-label={t("im.railLabel")} className={IM_RAIL}>
-          <RailItem
-            label={t("im.title")}
-            active={railView === "messages"}
-            onClick={() => setRailView("messages")}
-            badge={unreadTotal}
-          >
-            <MessagesSquareIcon className="size-4.5" />
-          </RailItem>
-          <RailItem
-            label={t("im.directory")}
-            active={railView === "directory"}
-            onClick={() => setRailView("directory")}
-          >
-            <ContactIcon className="size-4.5" />
-          </RailItem>
-          {/* 底部放本人：和 Slack/Discord 一样，rail 的最下面是"我现在以谁的身份在说话"。 */}
-          <div className="mt-auto flex flex-col items-center gap-2">
-            <span
-              title={im.view?.selfUserId ? nameOf(im.view.selfUserId) : undefined}
-              className={cn(
-                "flex size-8 items-center justify-center rounded-full text-ui-2xs font-medium",
-                avatarTone(im.view?.selfUserId ?? "self"),
-              )}
-            >
-              {initialsOf(nameOf(im.view?.selfUserId ?? "") ?? t("im.you"))}
-            </span>
-          </div>
-        </nav>
+        <ImRail
+          view={railView}
+          unreadTotal={unreadTotal}
+          selfName={(selfUserId ? nameOf(selfUserId) : undefined) ?? t("im.you")}
+          onSelect={(next) => {
+            setRailView(next);
+            if (next === "messages") setPicking(false);
+          }}
+        />
 
         <div
           className={cn(
@@ -256,7 +287,7 @@ export const MessagesSidePane = memo(function MessagesSidePane({
           />
         </div>
 
-        <div className={cn("min-w-0 flex-1", railView === "directory" && "hidden")}>
+        <div className={cn("min-w-0 flex-1", railView !== "messages" && "hidden")}>
           {active ? (
             <ImConversationPanel
               service={im.service}
@@ -268,9 +299,20 @@ export const MessagesSidePane = memo(function MessagesSidePane({
               initialLastReadSeq={active.lastReadSeq}
               onBack={singleColumn ? () => setSelected(null) : undefined}
               rightPanelOpen={rightPanelOpen}
+              jumpRequest={jumpRequest}
+              onPinnedChange={setPinned}
+              onOpenConversation={(targetId, messageId, seq) => {
+                setSelected(targetId);
+                setJumpRequest({ conversationId: targetId, id: messageId, seq, at: Date.now() });
+              }}
               onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
               conversations={conversations}
               directory={directory}
+              members={members}
+              bookmarkedIds={bookmarks.ids}
+              onToggleBookmark={(messageId, bookmarked) =>
+                void bookmarks.toggle(messageId, bookmarked)
+              }
               onForwardMessage={(targetId, body) => {
                 if (!im.service) return;
                 // 转发就是"把同一条正文发到另一个会话"：服务端会再校验一次成员资格。
@@ -287,6 +329,36 @@ export const MessagesSidePane = memo(function MessagesSidePane({
             </div>
           )}
         </div>
+
+        {railView === "bookmarks" && !singleColumn ? (
+          <ImBookmarksList
+            items={bookmarks.items}
+            // 单聊的 title 在服务端是空的（标题是"对方是谁"，由客户端按成员算出来）。
+            // 这里必须走和会话列表同一个 titleOf，否则收藏列表会把单聊显示成"未命名会话"，
+            // 而左边同一行明明写着对方的名字——两处口径不一致比不给名字更让人困惑。
+            conversationTitleOf={(item) => {
+              const summary = conversations.find(
+                (conversation) => conversation.id === item.message.conversationId,
+              );
+              return (
+                (summary ? titleOf(summary) : null) ?? item.conversationTitle ?? t("im.untitled")
+              );
+            }}
+            senderNameOf={nameOf}
+            selfUserId={selfUserId}
+            onOpen={(item) => {
+              // 收藏可能在别的会话：先切过去，再按 seq 跳（面板按 conversationId 过滤跳转请求）
+              setSelected(item.message.conversationId);
+              setRailView("messages");
+              setJumpRequest({
+                conversationId: item.message.conversationId,
+                id: item.message.id,
+                seq: item.message.seq,
+                at: Date.now(),
+              });
+            }}
+          />
+        ) : null}
 
         {/* 通讯录：占列表位置，复用同一套列表视觉；点一个人直接开单聊。
             不在这里放"建群"——那是新建动作，属于区头的 + 号。 */}
@@ -315,7 +387,22 @@ export const MessagesSidePane = memo(function MessagesSidePane({
               compactPanel ? "absolute inset-y-0 right-0 z-20 shadow-xl" : "relative shrink-0",
             )}
           >
-            {rightPanelMode === "settings" && active.kind !== "dm" ? (
+            {showPinned ? (
+              <ImPinnedPanel
+                pinned={pinned}
+                senderNameOf={nameOf}
+                selfUserId={selfUserId}
+                onOpen={(message) =>
+                  setJumpRequest({
+                    // 置顶列表属于当前选中的会话
+                    conversationId: selected ?? "",
+                    id: message.id,
+                    seq: message.seq,
+                    at: Date.now(),
+                  })
+                }
+              />
+            ) : rightPanelMode === "settings" && active.kind !== "dm" ? (
               <ImGroupSettings
                 service={im.service}
                 conversation={active}
@@ -332,6 +419,8 @@ export const MessagesSidePane = memo(function MessagesSidePane({
                 onOpenSettings={
                   active.kind === "dm" ? undefined : () => setRightPanelMode("settings")
                 }
+                onShowPinned={() => setShowPinned(true)}
+                pinnedCount={pinned.length}
                 onClose={() => setRightPanelOpen(false)}
               />
             )}
@@ -365,46 +454,5 @@ function ImNotice({ text }: { text: string }) {
       <MessagesSquareIcon className={IM_EMPTY_ICON} />
       <p className={IM_EMPTY_TEXT}>{text}</p>
     </div>
-  );
-}
-
-/**
- * rail 上的一个入口：36px 图标按钮，选中 = 填充 + 左侧指示条（不用蓝色，蓝色留给未读）。
- * `badge` 是这些会话的未读总数——rail 是"我现在有多少事"的第一眼位置。
- */
-function RailItem({
-  label,
-  active,
-  badge,
-  onClick,
-  children,
-}: {
-  label: string;
-  active?: boolean;
-  badge?: number;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid="im-rail-item"
-      aria-label={label}
-      aria-pressed={active === true}
-      title={label}
-      className={cn(IM_RAIL_ITEM, active && IM_RAIL_ITEM_ACTIVE)}
-      onClick={onClick}
-    >
-      {children}
-      {active ? <span className={IM_RAIL_INDICATOR} /> : null}
-      {badge && badge > 0 ? (
-        <span
-          data-testid="im-rail-badge"
-          className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 text-primary-foreground"
-        >
-          {badge > 99 ? "99+" : badge}
-        </span>
-      ) : null}
-    </button>
   );
 }

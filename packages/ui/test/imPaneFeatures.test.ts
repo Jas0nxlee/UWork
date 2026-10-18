@@ -44,6 +44,8 @@ const message = (over: Partial<ImMessage> = {}): ImMessage => ({
   deletedAt: null,
   replyTo: null,
   reactions: [],
+  mentions: [],
+  pinnedAt: null,
   ...over,
 });
 
@@ -134,6 +136,7 @@ describe("消息列：搜索命中与本地乐观消息", () => {
 
   const timelineProps = {
     selfLabel: "辛晓华（你）",
+    selfName: "辛晓华",
     senderNameOf: () => "辛晓华",
     query: "",
     activeMessageId: null,
@@ -141,6 +144,9 @@ describe("消息列：搜索命中与本地乐观消息", () => {
     onWithdraw: () => undefined,
     onReply: () => undefined,
     onForward: () => undefined,
+    onEdit: () => undefined,
+    onTogglePin: () => undefined,
+    onToggleBookmark: () => undefined,
     onJumpToMessage: () => undefined,
     onRetryOutbox: () => undefined,
     onDiscardOutbox: () => undefined,
@@ -237,6 +243,9 @@ describe("消息行：引用块 / 工具条 / 系统消息", () => {
     onWithdraw: () => undefined,
     onReply: () => undefined,
     onForward: () => undefined,
+    onEdit: () => undefined,
+    onTogglePin: () => undefined,
+    onToggleBookmark: () => undefined,
     onJumpToMessage: () => undefined,
     onRetryOutbox: () => undefined,
     onDiscardOutbox: () => undefined,
@@ -304,8 +313,9 @@ describe("消息行：引用块 / 工具条 / 系统消息", () => {
     expect(toolbars).toHaveLength(2);
     // 表情是图标按钮（用 aria-label 认），其余是文字按钮；撤回只出现在自己的消息上
     expect(toolbars[0]?.querySelector('button[aria-label="添加表情"]')).not.toBeNull();
+    // 自己的纯文本消息多"编辑"与"撤回"；别人的只有回复/转发/复制
     expect(toolbars[0]?.textContent).toBe("回复转发复制");
-    expect(toolbars[1]?.textContent).toBe("回复转发复制撤回");
+    expect(toolbars[1]?.textContent).toBe("编辑回复转发复制撤回");
   });
 
   it("系统消息渲染成全宽提示行，且不参与连续消息合并", () => {
@@ -366,6 +376,7 @@ describe("表情回应与附件", () => {
   const props = {
     outbox: [] as never[],
     selfLabel: "辛晓华（你）",
+    selfName: "辛晓华",
     senderNameOf: () => "吕岳阳",
     query: "",
     activeMessageId: null,
@@ -373,6 +384,9 @@ describe("表情回应与附件", () => {
     onWithdraw: () => undefined,
     onReply: () => undefined,
     onForward: () => undefined,
+    onEdit: () => undefined,
+    onTogglePin: () => undefined,
+    onToggleBookmark: () => undefined,
     onJumpToMessage: () => undefined,
     onRetryOutbox: () => undefined,
     onDiscardOutbox: () => undefined,
@@ -524,6 +538,7 @@ describe("右键菜单", () => {
   const menuProps = {
     outbox: [] as never[],
     selfLabel: "辛晓华（你）",
+    selfName: "辛晓华",
     senderNameOf: () => "吕岳阳",
     query: "",
     activeMessageId: null,
@@ -532,6 +547,9 @@ describe("右键菜单", () => {
     onWithdrawNow: () => undefined,
     onReply: () => undefined,
     onForward: () => undefined,
+    onEdit: () => undefined,
+    onTogglePin: () => undefined,
+    onToggleBookmark: () => undefined,
     onJumpToMessage: () => undefined,
     onRetryOutbox: () => undefined,
     onDiscardOutbox: () => undefined,
@@ -565,7 +583,7 @@ describe("右键菜单", () => {
     );
     fireEvent.contextMenu(first.container.querySelector('[data-im-message-id="m-1"]')!);
     const items = await testing.screen.findAllByRole("menuitem");
-    expect(items.map((item) => item.textContent)).toEqual(["回复", "转发", "复制"]);
+    expect(items.map((item) => item.textContent)).toEqual(["回复", "转发", "复制", "置顶", "收藏"]);
     fireEvent.click(items[0]!);
     expect(onReply).toHaveBeenCalledTimes(1);
     first.unmount();
@@ -575,9 +593,17 @@ describe("右键菜单", () => {
     );
     fireEvent.contextMenu(second.container.querySelector('[data-im-message-id="m-2"]')!);
     const mineItems = await testing.screen.findAllByRole("menuitem");
-    // 自己的消息：多一条"撤回"，而且右键菜单里的撤回是直接生效（菜单点完就关，做不了两步确认）
-    expect(mineItems.map((item) => item.textContent)).toEqual(["回复", "转发", "复制", "撤回"]);
-    fireEvent.click(mineItems[3]!);
+    // 自己的纯文本消息：多"编辑"和"撤回"；右键里的撤回是直接生效（菜单点完就关，做不了两步确认）
+    expect(mineItems.map((item) => item.textContent)).toEqual([
+      "回复",
+      "转发",
+      "复制",
+      "置顶",
+      "收藏",
+      "编辑",
+      "撤回",
+    ]);
+    fireEvent.click(mineItems.find((item) => item.textContent === "撤回")!);
     expect(onWithdrawNow).toHaveBeenCalledTimes(1);
   });
 });

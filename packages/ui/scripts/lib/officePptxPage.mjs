@@ -2,7 +2,7 @@
  * PPTX 编辑位的检查脚手架（页面 HTML + esbuild 入口）。
  *
  * 与 Office/Excel 那两套同思路：入口 import **仓库里的真模块**（pptText / pptxValidate /
- * usePptxDocument / PptxTextEditorPane），断言写在 check-office-pptx.mjs 里。
+ * usePptxDocument / PptxEditorPane），断言写在 check-office-pptx.mjs 里。
  * 这里的 fixture 是**现场用 JSZip 造**的一份最小合法 pptx（两张幻灯片 + 一个表格 + 一张图片 +
  * 一条备注 + 母版/版式/主题），这样"只改文字、其余部件逐字节保留"才有东西可验。
  */
@@ -22,7 +22,7 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import JSZip from "jszip";
 import { parseZip, buildPresentation, materializeAllSlideNodes } from "@aiden0z/pptx-renderer/browser";
-import { PptxTextEditorPane } from "./app.js";
+import { PptxEditorPane } from "./app.js";
 import * as app from "./app.js";
 
 window.JSZip = JSZip;
@@ -133,14 +133,31 @@ function bodyOf(xml, index) {
 
 window.__pptx = {
   fixture,
+  // —— 形状层（pptShapes.ts）——
+  readShapes: (xml) => window.app.readSlideShapes(xml),
+  setShapeBounds: (xml, name, bounds) => window.app.setShapeBounds(xml, name, bounds),
+  setShapeTextFormat: (xml, name, format) => window.app.setShapeTextFormat(xml, name, format),
+  setShapeParagraphFormat: (xml, name, format) => window.app.setShapeParagraphFormat(xml, name, format),
+  setShapeText: (xml, name, lines) => window.app.setShapeText(xml, name, lines),
+  moveShapeZ: (xml, name, direction) => window.app.moveShapeZ(xml, name, direction),
+  deleteShape: (xml, name) => window.app.deleteShape(xml, name),
+  duplicateShape: (xml, name) => window.app.duplicateShape(xml, name),
+  insertTextBox: (xml, options) => window.app.insertTextBox(xml, options),
+  // —— 幻灯片层（pptSlides.ts）——
+  readSlideOrder: (bytes) => window.app.readSlideOrder(bytes),
+  addSlide: (input) => window.app.addSlide(input),
+  duplicateSlide: (input) => window.app.duplicateSlide(input),
+  deleteSlide: (input) => window.app.deleteSlide(input),
+  moveSlide: (input) => window.app.moveSlide(input),
   readDeck: (bytes) => window.app.readDeckSlides(bytes),
   patch: (xml, index, lines) => window.app.patchTxBody(xml, index, lines),
   write: (input) => window.app.writeDeckSlides(input),
   validate: (candidate, source, options) => window.app.validatePptxCandidate(candidate, source, options ?? {}),
-  rawZip: (bytes) => JSZip.loadAsync(bytes),
+  rawZip: (bytes) => JSZip.loadAsync(bytes.slice(0)),
   /** 一份 pptx 里有多少条文本类部件的字节（用来证明"没动的部件没变"）。 */
   async parts(bytes) {
-    const zip = await JSZip.loadAsync(bytes);
+    // JSZip 反复 load 同一份 buffer 会把它消费掉；统一用副本，调用方不用操心
+    const zip = await JSZip.loadAsync(bytes.slice(0));
     const out = {};
     for (const [name, entry] of Object.entries(zip.files)) {
       if (entry.dir) continue;
@@ -169,7 +186,7 @@ window.__pptx = {
   },
   /** 用**产品在用的那个渲染器**验证产物确实是一份能打开的 pptx。 */
   async render(bytes) {
-    const files = await parseZip(bytes);
+    const files = await parseZip(bytes.slice(0));
     const presentation = buildPresentation(files);
     materializeAllSlideNodes(presentation);
     const slides = presentation.slides ?? [];
@@ -197,7 +214,7 @@ window.__pptx = {
     host.append(container);
     const root = createRoot(container);
     root.render(
-      createElement(PptxTextEditorPane, {
+      createElement(PptxEditorPane, {
         fileService: window.__pptxService,
         path: "/tmp/deck.pptx",
       }),
@@ -228,8 +245,8 @@ export async function bundlePptxEntry(dir, options) {
       ...options.modules.map(
         (name) => `export * from ${JSON.stringify(join(options.editorDir, name))};`,
       ),
-      `export { PptxTextEditorPane } from ${JSON.stringify(
-        join(options.editorDir, "PptxTextEditorPane.tsx"),
+      `export { PptxEditorPane } from ${JSON.stringify(
+        join(options.editorDir, "PptxEditorPane.tsx"),
       )};`,
     ].join("\n"),
     "utf8",

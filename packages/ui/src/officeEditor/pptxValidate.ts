@@ -36,7 +36,7 @@ interface ZipParts {
 
 async function readParts(bytes: ArrayBuffer): Promise<ZipParts | null> {
   try {
-    const zip = await JSZip.loadAsync(bytes);
+    const zip = await JSZip.loadAsync(bytes.slice(0));
     const contents = new Map<string, Uint8Array>();
     const names: string[] = [];
     for (const [name, entry] of Object.entries(zip.files)) {

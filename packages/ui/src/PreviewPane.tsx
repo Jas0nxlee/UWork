@@ -62,9 +62,9 @@ const ExcelEditorPane = lazy(() =>
 );
 
 /** PPTX 只做**文字层**编辑（保真补丁），同样按需加载。 */
-const PptxTextEditorPane = lazy(() =>
-  import("@/officeEditor/PptxTextEditorPane.js").then((module) => ({
-    default: module.PptxTextEditorPane,
+const PptxEditorPane = lazy(() =>
+  import("@/officeEditor/PptxEditorPane.js").then((module) => ({
+    default: module.PptxEditorPane,
   })),
 );
 import { usePlatform } from "@/hooks/usePlatform.js";
@@ -1827,7 +1827,7 @@ export function PreviewPane({
                   onExit={() => setOfficeEditing(false)}
                 />
               ) : (
-                <PptxTextEditorPane
+                <PptxEditorPane
                   fileService={fileService}
                   path={source.path}
                   remote={isRemoteSource}

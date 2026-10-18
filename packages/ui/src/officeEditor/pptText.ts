@@ -119,7 +119,7 @@ function slideOrder(partName: string): number {
 
 /** 从 zip 里读出所有幻灯片部件（按源文件里的部件名排序，与放映顺序可能不同）。 */
 export async function readDeckSlides(bytes: ArrayBuffer): Promise<PptxDeck> {
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await JSZip.loadAsync(bytes.slice(0));
   const names = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => slideOrder(a) - slideOrder(b));

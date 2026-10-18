@@ -9,13 +9,40 @@ import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
-import { patchTxBody, readDeckSlides, writeDeckSlides, type PptxSlide } from "./pptText.js";
+import {
+  patchTxBody,
+  readDeckSlides,
+  readSlideText,
+  writeDeckSlides,
+  type PptxSlide,
+} from "./pptText.js";
+import {
+  deleteShape as applyDeleteShape,
+  duplicateShape as applyDuplicateShape,
+  insertTextBox as applyInsertTextBox,
+  moveShapeZ as applyMoveShapeZ,
+  readSlideShapes,
+  setShapeBounds as applyShapeBounds,
+  setShapeParagraphFormat as applyShapeParagraph,
+  setShapeTextFormat as applyShapeFormat,
+  type PptxShape,
+  type ShapeBounds,
+  type ShapeRunFormat,
+} from "./pptShapes.js";
+import { addSlide, deleteSlide, duplicateSlide, moveSlide, readSlideOrder } from "./pptSlides.js";
 import { validatePptxCandidate } from "./pptxValidate.js";
 
 /** 应用内编辑的体积上限（pptx 是压缩包，60 MB 的 deck 解出来通常十几倍）。 */
 export const MAX_EDITABLE_PPTX_BYTES = 60 * 1024 * 1024;
 
 export type PptxEditKey = string;
+
+/** 读 zip 里某个部件（幻灯片级操作之后用它把新的页读回来）。 */
+async function readSlidePart(bytes: ArrayBuffer, partName: string): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes.slice(0));
+  return (await zip.file(partName)?.async("string")) ?? "";
+}
 
 export function editKey(partName: string, blockIndex: number): PptxEditKey {
   return `${partName}#${blockIndex}`;
@@ -36,11 +63,18 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [writeBlocked, setWriteBlocked] = useState<string | null>(null);
+  /**
+   * 每改一次 XML 就 +1：形状/幻灯片改动**不经过 React state**（XML 在 ref 里），
+   * 界面上的"形状列表/幻灯片文本"要靠这个版本号重算，否则列表是旧的（实测：新建文本框点了没出现）。
+   */
+  const [revision, setRevision] = useState(0);
 
   const sourceRef = useRef<ArrayBuffer | null>(null);
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
   /** 打开时的幻灯片 XML（保存时的差异基线）。 */
   const baselineXmlRef = useRef<Map<string, string>>(new Map());
+  /** 当前每张幻灯片的 XML（形状/幻灯片改动都落在这里，保存时与基线比对）。 */
+  const currentXmlRef = useRef<Map<string, string>>(new Map());
   /** 用户改过的文本块：key → 当前行数组。 */
   const editsRef = useRef<Map<PptxEditKey, string[]>>(new Map());
 
@@ -85,7 +119,16 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       sourceRef.current = raw;
       const deck = await readDeckSlides(raw);
       baselineXmlRef.current = deck.sourceXml;
-      setSlides(deck.slides);
+      currentXmlRef.current = new Map(deck.sourceXml);
+      // 放映顺序以 presentation.xml 的 sldIdLst 为准（文件名顺序可能与放映顺序不一致）
+      const order = await readSlideOrder(raw);
+      const ordered = order.entries
+        .map((entry, index) => {
+          const slide = deck.slides.find((item) => item.partName === entry.partName);
+          return slide ? { ...slide, number: index + 1 } : null;
+        })
+        .filter((slide): slide is PptxSlide => slide !== null);
+      setSlides(ordered.length > 0 ? ordered : deck.slides);
       setReady(true);
       const blocks = deck.slides.reduce((total, slide) => total + slide.blocks.length, 0);
       setStatus(
@@ -99,6 +142,162 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
   useEffect(() => {
     void loadDocument();
   }, [loadDocument]);
+
+  /** 当前幻灯片里的形状（渲染检查器用；改动都走下面这些方法）。 */
+  const shapesOf = useCallback((partName: string): PptxShape[] => {
+    const xml = currentXmlRef.current.get(partName);
+    return xml ? readSlideShapes(xml) : [];
+  }, []);
+
+  /** 对某张幻灯片的 XML 做一次补丁（形状/格式/层级都在这里落地）。 */
+  const patchSlideXml = useCallback(
+    (partName: string, patch: (xml: string) => string, label: string) => {
+      const before = currentXmlRef.current.get(partName);
+      if (before === undefined) return;
+      const after = patch(before);
+      if (after === before) return;
+      currentXmlRef.current.set(partName, after);
+      setRevision((value) => value + 1);
+      setDirty(true);
+      setStatus(`${label}（保存时只写回这一页）`);
+    },
+    [setDirty, setStatus],
+  );
+
+  /** 幻灯片级操作：直接对整份文件做补丁，然后把新的部件内容读回来。 */
+  const applyDeckPatch = useCallback(
+    async (patch: (source: ArrayBuffer) => Promise<ArrayBuffer>, label: string) => {
+      const source = sourceRef.current;
+      if (!source || busy) return;
+      setBusy(true);
+      try {
+        const next = await patch(source.slice(0));
+        const order = await readSlideOrder(next);
+        const parts = new Map<string, string>();
+        for (const entry of order.entries) {
+          parts.set(entry.partName, await readSlidePart(next, entry.partName));
+        }
+        const slides: PptxSlide[] = [];
+        for (const [index, entry] of order.entries.entries()) {
+          const xml = parts.get(entry.partName) ?? "";
+          slides.push({ partName: entry.partName, number: index + 1, blocks: readSlideText(xml) });
+        }
+        // 幻灯片增删之后，"基线"要跟着走：新增的页以它当前内容为基线（等于新页就是新写的），
+        // 否则保存时会把它当成"用户改过"从而多写一遍。
+        const nextBaseline = new Map(baselineXmlRef.current);
+        for (const [name, xml] of parts) {
+          if (!nextBaseline.has(name)) nextBaseline.set(name, xml);
+        }
+        baselineXmlRef.current = nextBaseline;
+        currentXmlRef.current = parts;
+        sourceRef.current = next;
+        setSlides(slides);
+        setRevision((value) => value + 1);
+        setDirty(true);
+        setStatus(`${label}（${slides.length} 页）· 点「保存到文件」写回`);
+      } catch (error) {
+        setStatus(`${label}失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, readSlideText, setBusy, setDirty, setStatus],
+  );
+
+  /** 改形状几何。 */
+  const setShapeBounds = useCallback(
+    (partName: string, shapeName: string, bounds: Partial<ShapeBounds>) =>
+      patchSlideXml(
+        partName,
+        (xml) => applyShapeBounds(xml, shapeName, bounds),
+        `调整「${shapeName}」的位置/大小`,
+      ),
+    [patchSlideXml],
+  );
+  /** 改形状文字格式。 */
+  const setShapeFormat = useCallback(
+    (partName: string, shapeName: string, format: ShapeRunFormat) =>
+      patchSlideXml(
+        partName,
+        (xml) => applyShapeFormat(xml, shapeName, format),
+        `修改「${shapeName}」的文字格式`,
+      ),
+    [patchSlideXml],
+  );
+  /** 改段落对齐/项目符号。 */
+  const setShapeParagraph = useCallback(
+    (
+      partName: string,
+      shapeName: string,
+      format: { align?: "left" | "center" | "right" | "justify"; bullet?: boolean },
+    ) =>
+      patchSlideXml(
+        partName,
+        (xml) => applyShapeParagraph(xml, shapeName, format),
+        `修改「${shapeName}」的段落格式`,
+      ),
+    [patchSlideXml],
+  );
+  /** 形状层级 / 复制 / 删除 / 新建文本框。 */
+  const moveShape = useCallback(
+    (partName: string, shapeName: string, direction: "up" | "down") =>
+      patchSlideXml(
+        partName,
+        (xml) => applyMoveShapeZ(xml, shapeName, direction),
+        `调整「${shapeName}」的层级`,
+      ),
+    [patchSlideXml],
+  );
+  const duplicateShape = useCallback(
+    (partName: string, shapeName: string) =>
+      patchSlideXml(
+        partName,
+        (xml) => applyDuplicateShape(xml, shapeName).xml,
+        `复制「${shapeName}」`,
+      ),
+    [patchSlideXml],
+  );
+  const removeShape = useCallback(
+    (partName: string, shapeName: string) =>
+      patchSlideXml(partName, (xml) => applyDeleteShape(xml, shapeName), `删除「${shapeName}」`),
+    [patchSlideXml],
+  );
+  const addTextBox = useCallback(
+    (partName: string) =>
+      patchSlideXml(
+        partName,
+        (xml) =>
+          applyInsertTextBox(xml, {
+            // 默认放在页面中部偏下，尺寸接近"一句话标题"
+            x: 914400,
+            y: 3 * 914400,
+            width: 6 * 914400,
+            height: 914400,
+            text: "双击编辑文字",
+          }).xml,
+        "新建文本框",
+      ),
+    [patchSlideXml],
+  );
+  const addSlideAction = useCallback(
+    () => applyDeckPatch((source) => addSlide({ source }), "新建幻灯片"),
+    [applyDeckPatch],
+  );
+  const duplicateSlideAction = useCallback(
+    (partName: string) =>
+      applyDeckPatch((source) => duplicateSlide({ source, partName }), "复制幻灯片"),
+    [applyDeckPatch],
+  );
+  const deleteSlideAction = useCallback(
+    (partName: string) =>
+      applyDeckPatch((source) => deleteSlide({ source, partName }), "删除幻灯片"),
+    [applyDeckPatch],
+  );
+  const moveSlideAction = useCallback(
+    (partName: string, to: number) =>
+      applyDeckPatch((source) => moveSlide({ source, partName, to }), "调整幻灯片顺序"),
+    [applyDeckPatch],
+  );
 
   /** 界面上改一行：记进 edits，并标脏。 */
   const setBlockLines = useCallback(
@@ -144,8 +343,8 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     setBusy(true);
     try {
       setStatus(`写回中（${editsRef.current.size} 处文字改动）…`);
-      // 逐块把改动打到 XML 上：同一张幻灯片改多处时，后一处基于前一处的结果继续改
-      const current = new Map(baselineXmlRef.current);
+      // 起点是"当前状态"（形状/幻灯片改动已经落在里面），文字改动再叠上去
+      const current = new Map(currentXmlRef.current);
       for (const [key, lines] of editsRef.current) {
         const [partName, indexText] = key.split("#");
         if (!partName || indexText === undefined) continue;
@@ -179,6 +378,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       revisionRef.current = result.revision;
       // 保存后基线前移：否则第二次保存会把上一次的改动再写一遍
       baselineXmlRef.current = current;
+      currentXmlRef.current = new Map(current);
       sourceRef.current = written.bytes.slice(0);
       editsRef.current = new Map();
       setDirty(false);
@@ -208,7 +408,20 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     writeBlocked,
     loadDocument,
     save,
+    revision,
     setBlockLines,
     editedCount: editsRef.current.size,
+    shapesOf,
+    setShapeBounds,
+    setShapeFormat,
+    setShapeParagraph,
+    moveShape,
+    duplicateShape,
+    removeShape,
+    addTextBox,
+    addSlideAction,
+    duplicateSlideAction,
+    deleteSlideAction,
+    moveSlideAction,
   };
 }

@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import type { ImMember } from "@zcode/shared";
 import type { ImDirectoryUser } from "@zcode/shared";
-import { SettingsIcon, XIcon } from "lucide-react";
+import { PinIcon, SettingsIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -26,6 +26,8 @@ export const ImMemberPanel = memo(function ImMemberPanel({
   onOpenSettings,
   onClose,
   settingsDisabled,
+  onShowPinned,
+  pinnedCount,
 }: {
   members: ImMember[];
   directory: ImDirectoryUser[];
@@ -33,6 +35,9 @@ export const ImMemberPanel = memo(function ImMemberPanel({
   onOpenSettings?: () => void;
   onClose?: () => void;
   settingsDisabled?: boolean;
+  /** 切到置顶列表（有置顶消息时才显示入口）。 */
+  onShowPinned?: () => void;
+  pinnedCount?: number;
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string, values?: Record<string, string | number>): string =>
@@ -110,6 +115,16 @@ export const ImMemberPanel = memo(function ImMemberPanel({
       <header className={IM_HEADER}>
         <span className={IM_HEADER_TITLE}>{t("im.members")}</span>
         <div className="ml-auto flex items-center gap-0.5">
+          {onShowPinned && (pinnedCount ?? 0) > 0 ? (
+            <Button
+              className="h-7 shrink-0 rounded-lg px-2 text-ui-2xs text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
+              variant="ghost"
+              onClick={onShowPinned}
+            >
+              <PinIcon className="mr-1 size-3" />
+              {t("im.pinnedMessages")} {pinnedCount}
+            </Button>
+          ) : null}
           {onOpenSettings ? (
             <Button
               className="size-7 shrink-0 rounded-lg p-0 hover:bg-surface-hover hover:text-foreground"
