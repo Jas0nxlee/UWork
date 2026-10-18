@@ -1757,7 +1757,7 @@ export function PreviewPane({
                 officeEditing
                   ? "返回只读预览"
                   : officeEditorKind === "pptx"
-                    ? "编辑文字（版式与图片原样保留）"
+                    ? "应用内编辑（动画、母版、图片原样保留；拖拽排版不在范围内）"
                     : "应用内编辑"
               }
               aria-label={officeEditing ? "返回只读预览" : "应用内编辑"}
