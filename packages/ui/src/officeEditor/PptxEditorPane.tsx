@@ -50,7 +50,6 @@ export function PptxEditorPane({
     loadDocument,
     save,
     revision,
-    previewBytes,
     setBlockLines,
     shapesOf,
     setShapeBounds,
@@ -64,6 +63,11 @@ export function PptxEditorPane({
     duplicateSlideAction,
     deleteSlideAction,
     moveSlideAction,
+    insertPictureAction,
+    previewBuilds,
+    previewError,
+    rawPreviewBytes,
+    modelXml,
   } = usePptxDocument({ fileService, path, remote, onDirtyChange });
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeShape, setActiveShape] = useState<string | null>(null);
@@ -86,7 +90,7 @@ export function PptxEditorPane({
   /** 缩略图面板也能收起：窄的时候把它让给画布。 */
   const [thumbsOpen, setThumbsOpen] = useState(true);
   /** 一份文件只解析一次的预览文档：画布与左栏缩略图共用。 */
-  const preview = usePptxPreview(previewBytes);
+  const preview = usePptxPreview(rawPreviewBytes);
   /** 就地改字：正在编辑哪个形状、草稿文本（双击形状进入，⌘↵/点别处提交，Esc 放弃）。 */
   const [editing, setEditing] = useState<{ shape: string; text: string } | null>(null);
   /** 文本框的 DOM 引用：画布双击"就地改字"要能把焦点移到对应的文本框上。 */
@@ -158,6 +162,15 @@ export function PptxEditorPane({
     [setStatus, shapes, slide],
   );
 
+  /** 页面尺寸（EMU）：插图片时按它等比摆放。 */
+  const previewFrame = useStableCallback(
+    () => ({
+      width: Math.round((preview.pageWidth || 960) * 9525),
+      height: Math.round((preview.pageHeight || 720) * 9525),
+    }),
+    [preview],
+  );
+
   /** 功能区命令 → 编辑位已有的操作（命令清单在 pptxRibbonTabs.ts，两边一起改）。 */
   const runRibbon = useStableCallback(
     (command: string, args?: unknown[]) => {
@@ -179,6 +192,9 @@ export function PptxEditorPane({
         setParagraph: (format) =>
           partName && shape && setShapeParagraph(partName, shape.name, format),
         setZoom,
+        insertPicture: (dataUri) =>
+          partName &&
+          void insertPictureAction(partName, dataUri, previewFrame().width, previewFrame().height),
         note: setStatus,
       });
     },
@@ -186,6 +202,8 @@ export function PptxEditorPane({
       activeSlide,
       addSlideAction,
       addTextBox,
+      insertPictureAction,
+      preview,
       deleteSlideAction,
       duplicateShape,
       duplicateSlideAction,
@@ -250,8 +268,12 @@ export function PptxEditorPane({
           const partName = slides?.[activeSlide]?.partName;
           return partName ? shapesOf(partName) : [];
         },
+        previewBuilds,
+        previewError,
+        previewBytes: () => (rawPreviewBytes ? rawPreviewBytes.slice(0) : null),
+        modelXml,
       }),
-    [activeSlide, shapesOf, slides],
+    [activeSlide, previewBuilds, previewError, shapesOf, slides],
   );
 
   const totalBlocks = useMemo(
@@ -337,6 +359,7 @@ export function PptxEditorPane({
                 onSelect={setActiveShape}
                 onCommitBounds={(name, bounds) => setShapeBounds(slide.partName, name, bounds)}
                 onRequestText={beginTextEdit}
+                renderKey={revision}
                 editing={editing}
                 onEditingText={(text) =>
                   setEditing((current) => (current ? { ...current, text } : current))

@@ -2,15 +2,15 @@
  * PPTX 编辑位的**生命周期**（对应 Word 的 useOfficeDocument / Excel 的 useExcelDocument）。
  *
  * 与那两个同口径：远端先探写能力；保存是显式的、带版本比对与 sibling 备份；产物校验不过不写盘。
- * 差别在**保真策略**：这里不做"差分写回工作簿"，而是**只在源 zip 上替换被改过的那几张幻灯片 XML**，
- * 其余部件逐字节保留（图片/母版/版式/动画/备注都不动）——校验里有一条专门盯这件事。
+ * 差别在**保真策略**：不做"整份重写"，只在源 zip 上替换被改过的那几张幻灯片 XML，其余部件逐字节保留。
  */
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
-import { probeWriteSupport } from "./fileWriteSupport.js";
 import { buildPreviewBytes, composeCurrentSlides } from "./pptDeckCompose.js";
-import { readDeckSlides, readSlideText, writeDeckSlides, type PptxSlide } from "./pptText.js";
+import { openPptxDocumentForEdit } from "./pptOpen.js";
+import { savePptxDocument } from "./pptSave.js";
+import { insertPicture } from "./pptPicture.js";
+import { readDeckSlides, readSlideText, type PptxSlide } from "./pptText.js";
 import {
   deleteShape as applyDeleteShape,
   duplicateShape as applyDuplicateShape,
@@ -25,7 +25,6 @@ import {
   type ShapeRunFormat,
 } from "./pptShapes.js";
 import { addSlide, deleteSlide, duplicateSlide, moveSlide, readSlideOrder } from "./pptSlides.js";
-import { validatePptxCandidate } from "./pptxValidate.js";
 
 /** 应用内编辑的体积上限（pptx 是压缩包，60 MB 的 deck 解出来通常十几倍）。 */
 export const MAX_EDITABLE_PPTX_BYTES = 60 * 1024 * 1024;
@@ -58,10 +57,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [writeBlocked, setWriteBlocked] = useState<string | null>(null);
-  /**
-   * 每改一次 XML 就 +1：形状/幻灯片改动**不经过 React state**（XML 在 ref 里），
-   * 界面上的"形状列表/幻灯片文本"要靠这个版本号重算，否则列表是旧的（实测：新建文本框点了没出现）。
-   */
+  /** 每改一次 XML 就 +1：改动不经过 React state，界面靠它重算（画布也拿它当重画 key）。 */
   const [revision, setRevision] = useState(0);
   /** 画布要渲染的字节 = 当前状态（渲染器接整份文件，而改动只在 XML 映射里，所以每改一次重算一份）。 */
   const [previewBytes, setPreviewBytes] = useState<ArrayBuffer | null>(null);
@@ -89,32 +85,22 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     setDirty(false);
     editsRef.current = new Map();
     try {
-      const [preview, fileStat] = await Promise.all([
-        fileService.readBinaryPreview({ path }),
-        fileService.stat({ path }),
-      ]);
-      revisionRef.current =
-        typeof fileStat.mtimeMs === "number"
-          ? { size: preview.totalBytes, mtimeMs: fileStat.mtimeMs }
-          : null;
-      if (remote) {
-        const probe = await probeWriteSupport(fileService, path);
-        if (!probe.supported) {
-          setWriteBlocked(probe.reason ?? "服务端不支持写回");
-          setStatus(`远端工作区不支持应用内编辑：${probe.reason ?? "服务端不支持写回"}`);
-          return;
-        }
-        setWriteBlocked(null);
-      }
-      if (preview.totalBytes > MAX_EDITABLE_PPTX_BYTES) {
-        setStatus(
-          `演示文稿过大（${Math.round(preview.totalBytes / 1048576)} MB），不在应用内编辑：请用只读预览。`,
-        );
+      const opened = await openPptxDocumentForEdit({
+        maxBytes: MAX_EDITABLE_PPTX_BYTES,
+        fileService,
+        path,
+        remote,
+      });
+      if (!opened.ok) {
+        if (opened.blocked) setWriteBlocked(opened.blocked);
+        setStatus(opened.reason);
         return;
       }
-      const raw = base64ToArrayBuffer(preview.dataBase64);
+      revisionRef.current = opened.revision;
+      const raw = opened.raw;
       sourceRef.current = raw;
       setPreviewBytes(raw.slice(0));
+      previewBuildsRef.current += 1;
       const deck = await readDeckSlides(raw);
       baselineXmlRef.current = deck.sourceXml;
       currentXmlRef.current = new Map(deck.sourceXml);
@@ -153,6 +139,10 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     [],
   );
 
+  /** 预览重算的次数与最后一次的错误（排查"改了画布没动"用，挂在调试口子上）。 */
+  const previewBuildsRef = useRef(0);
+  const previewErrorRef = useRef<string | null>(null);
+
   /** 重算画布要渲染的字节（只替换改过的页，其余部件逐字节保留）。 */
   const refreshPreview = useCallback(async () => {
     const source = sourceRef.current;
@@ -162,7 +152,15 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       baseline: baselineXmlRef.current,
       current: composeCurrent(),
     });
-    if (bytes) setPreviewBytes(bytes);
+    if (bytes) {
+      previewBuildsRef.current += 1;
+      previewErrorRef.current = null;
+      setPreviewBytes(bytes);
+      return;
+    }
+    previewErrorRef.current = "buildPreviewBytes 返回空";
+    // 失败不要静默：否则画布会一直显示旧内容，看起来像"改了没反应"（真机踩过）
+    setStatus("预览重算失败：画布上可能还是改动前的样子，请「重新加载」再试");
   }, [composeCurrent]);
 
   /** 对某张幻灯片的 XML 做一次补丁（形状/格式/层级都在这里落地）。 */
@@ -188,6 +186,8 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       if (!source || busy) return;
       setBusy(true);
       try {
+        // 补丁**之前**各页的 XML：下面要用它判断"这次补丁改了哪几页"
+        const previous = await readSlideOrder(source);
         const next = await patch(source.slice(0));
         const order = await readSlideOrder(next);
         const parts = new Map<string, string>();
@@ -201,9 +201,14 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
         }
         // 幻灯片增删之后，"基线"要跟着走：新增的页以它当前内容为基线（等于新页就是新写的），
         // 否则保存时会把它当成"用户改过"从而多写一遍。
+        // 基线要跟着补丁前移：**新增的页**以当前内容为基线；**被补丁改过的页**也要前移，
+        // 否则 (source, baseline) 两边不一致——source 已经是改后的、baseline 还是改前的，
+        // 之后一次"改回原样"的编辑会被差分当成"没变"而跳过写回，zip 里就留住了补丁版本
+        // （真机踩过：插了图片再删掉，画布上那张图还在）。
         const nextBaseline = new Map(baselineXmlRef.current);
         for (const [name, xml] of parts) {
-          if (!nextBaseline.has(name)) nextBaseline.set(name, xml);
+          const before = previous.parts.get(name);
+          if (before === undefined || before !== xml) nextBaseline.set(name, xml);
         }
         baselineXmlRef.current = nextBaseline;
         currentXmlRef.current = parts;
@@ -297,6 +302,19 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       ),
     [patchSlideXml],
   );
+  /** 插图片：媒体部件、这一页的 .rels、p:pic 都是"包级手术" → 走 deck 补丁（逐字节保真不变）。 */
+  const insertPictureAction = useCallback(
+    (partName: string, dataUri: string, pageWidth: number, pageHeight: number) =>
+      applyDeckPatch(
+        (source) =>
+          insertPicture({ source, partName, dataUri, pageWidth, pageHeight }).then(
+            (result) => result.bytes,
+          ),
+        "插入图片",
+      ),
+    [applyDeckPatch],
+  );
+
   const addSlideAction = useCallback(
     () => applyDeckPatch((source) => addSlide({ source }), "新建幻灯片"),
     [applyDeckPatch],
@@ -362,54 +380,40 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     setBusy(true);
     try {
       setStatus(`写回中（${editsRef.current.size} 处文字改动）…`);
-      // 起点是"当前状态"（形状/幻灯片改动已经落在里面），文字改动再叠上去
       const current = composeCurrent();
-      const written = await writeDeckSlides({
+      const result = await savePptxDocument({
+        fileService,
+        path,
         source,
         baseline: baselineXmlRef.current,
         current,
+        revision: revisionRef.current,
       });
-      const validation = await validatePptxCandidate(written.bytes, source, {
-        editedSlides: written.changedSlides,
-      });
-      if (!validation.ok) {
+      if (!result.ok) {
         setStatus(
-          `已拒绝写入：产物没通过校验 —— ${validation.issues
-            .map((issue) => issue.message)
-            .join("；")}（文稿仍在编辑器里，未保存）`,
+          result.kind === "conflict"
+            ? "保存被拒：文件已被其它程序（可能是 Agent）修改。请「重新加载」或另存副本后再改。"
+            : result.kind === "validation"
+              ? `已拒绝写入：产物没通过校验 —— ${result.issues.join("；")}（文稿仍在编辑器里，未保存）`
+              : `保存失败：${result.message}`,
         );
         return;
       }
-      const bytes = new Uint8Array(written.bytes);
-      const result = await fileService.writeBinaryFile({
-        path,
-        dataBase64: bytesToBase64(bytes),
-        ...(revisionRef.current ? { expectedRevision: revisionRef.current } : {}),
-        backup: "sibling",
-      });
+      // 保存成功后基线前移：否则第二次保存会把上一次的改动再写一遍
       revisionRef.current = result.revision;
-      // 保存后基线前移：否则第二次保存会把上一次的改动再写一遍
       baselineXmlRef.current = current;
       currentXmlRef.current = new Map(current);
-      sourceRef.current = written.bytes.slice(0);
+      sourceRef.current = result.bytes.slice(0);
       editsRef.current = new Map();
       setDirty(false);
       void refreshPreview();
-      const backupName = result.backup ? result.backup.split("/").pop() : "";
       setStatus(
-        `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""} · 只改了 ${written.changedSlides.length} 张幻灯片的文字`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(
-        message.includes("revision mismatch")
-          ? "保存被拒：文件已被其它程序（可能是 Agent）修改。请「重新加载」或另存副本后再改。"
-          : `保存失败：${message}`,
+        `已保存到 ${path} · ${Math.round(result.megabytes / 1024)} KiB${result.backupName ? ` · 备份 ${result.backupName}` : ""} · 改了 ${result.changedSlides.length} 张幻灯片`,
       );
     } finally {
       setBusy(false);
     }
-  }, [busy, composeCurrent, fileService, path, refreshPreview, setDirty]);
+  }, [busy, composeCurrent, fileService, path, refreshPreview, setDirty, setStatus]);
 
   return {
     status,
@@ -434,6 +438,13 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     removeShape,
     addTextBox,
     addSlideAction,
+    insertPictureAction,
+    /** 调试：预览重算次数 / 最后一次错误 / 当前喂给渲染器的字节（排查"改了画布没动"）。 */
+    previewBuilds: () => previewBuildsRef.current,
+    previewError: () => previewErrorRef.current,
+    rawPreviewBytes: previewBytes,
+    /** 调试：模型里这一页的 XML（排查"模型改了、字节没改"）。 */
+    modelXml: (partName: string) => currentXmlRef.current.get(partName) ?? null,
     duplicateSlideAction,
     deleteSlideAction,
     moveSlideAction,

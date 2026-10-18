@@ -32,6 +32,8 @@ export interface PptxRibbonApi {
     bullet?: boolean;
   }) => void;
   setZoom: (updater: (value: number) => number) => void;
+  /** 插入本机图片（data URI，来自取值对话框的文件选择）。 */
+  insertPicture: (dataUri: string) => void;
   /** 给状态栏留一句话（命令被拒时说明原因）。 */
   note: (message: string) => void;
 }
@@ -123,6 +125,17 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
         api.setParagraph({ bullet: paragraph?.bullet === true ? false : true });
       });
       return;
+
+    // —— 插入 ——
+    case "pptxInsertPicture": {
+      const dataUri = typeof args[0] === "string" ? args[0] : "";
+      if (!dataUri.startsWith("data:image/")) {
+        api.note("这张图片没读进来（只接受本机图片文件）");
+        return;
+      }
+      api.insertPicture(dataUri);
+      return;
+    }
 
     // —— 形状 ——
     case "pptxAddTextBox":

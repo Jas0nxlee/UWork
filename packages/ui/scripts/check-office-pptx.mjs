@@ -15,6 +15,7 @@ import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
 import { runPptxPanelCases } from "./lib/officePptxPanelCases.mjs";
+import { runPptxPicturePipelineCases } from "./lib/officePptxPicturePipelineCases.mjs";
 import { runPptxRibbonCases } from "./lib/officePptxRibbonCases.mjs";
 import { runPptxStyledCanvasCases } from "./lib/officePptxStyledCanvasCases.mjs";
 import { runPptxEditCases } from "./lib/officePptxEditCases.mjs";
@@ -34,6 +35,9 @@ async function main() {
     // 真样本（给人手点的那份）也要过一遍：用户第一次打开的很可能就是它
     copies: {
       [join(repoRoot, "packages/ui/test/fixtures/office-sample.pptx")]: "office-sample.pptx",
+      // 插图片用例要的样本图（240×120，与 Word 检查同一张）
+      [join(repoRoot, "packages/ui/test/fixtures/office-editor-image.png")]:
+        "office-editor-image.png",
     },
     prepareDir: (dir) =>
       bundlePptxEntry(dir, {
@@ -43,6 +47,7 @@ async function main() {
           "pptText.ts",
           "pptShapes.ts",
           "pptSlides.ts",
+          "pptPicture.ts",
           "pptxValidate.ts",
           "usePptxDocument.ts",
         ],
@@ -291,11 +296,70 @@ async function main() {
   );
   check(sample.rendered.slides === 4, `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`);
 
+  // ⑧ 插图片：媒体部件 + 这一页 .rels + p:pic 都进包，尺寸等比放进页面，渲染器仍能打开
+  const picture = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const dataUri = await window.__pptx.sampleImageDataUri();
+    const result = await window.__pptx.insertPicture({
+      source: bytes,
+      partName: part,
+      dataUri,
+      pageWidth: 9144000,
+      pageHeight: 6858000,
+    });
+    const zip = await window.__pptx.rawZip(result.bytes);
+    const relsName = `ppt/slides/_rels/${part.split("/").pop()}.rels`;
+    const rels = (await zip.file(relsName)?.async("string")) ?? "";
+    const slideXml = (await zip.file(part)?.async("string")) ?? "";
+    const pictureXml = slideXml.slice(slideXml.indexOf("<p:pic"));
+    const ext = /<a:ext cx="(\d+)" cy="(\d+)"/.exec(pictureXml);
+    const shapes = window.__pptx.readShapes(slideXml);
+    const rendered = await window.__pptx.render(result.bytes);
+    return {
+      media: result.mediaName,
+      mediaBytes: (await zip.file(result.mediaName)?.async("uint8array"))?.byteLength ?? 0,
+      rel: result.relationshipId,
+      relsHasImage: rels.includes("image") && rels.includes(result.relationshipId),
+      picCount: (slideXml.match(/<p:pic>/g) ?? []).length,
+      ext: ext ? { cx: Number(ext[1]), cy: Number(ext[2]) } : null,
+      shapeKinds: shapes.map((shape) => `${shape.name}:${shape.kind}`),
+      rendered,
+      sourceSlides: deck.slides.length,
+    };
+  });
+  check(
+    picture.media.startsWith("ppt/media/image") && picture.mediaBytes > 100,
+    `图片进包（${picture.media}，${picture.mediaBytes} 字节）`,
+  );
+  check(
+    picture.relsHasImage && picture.picCount === 1,
+    `这一页的关系与 p:pic 都对（${picture.rel}，p:pic ×${picture.picCount}）`,
+  );
+  // 规则：等比放进页面，最多占页面宽的 60%（240×120 → 宽 60%、高按比例＝宽的一半）
+  const expectedCx = Math.round(9144000 * 0.6);
+  const expectedCy = Math.round(expectedCx / 2);
+  check(
+    picture.ext !== null && picture.ext.cx === expectedCx && picture.ext.cy === expectedCy,
+    `按 240×120 等比放进页面（${picture.ext?.cx}×${picture.ext?.cy} EMU，期望 ${expectedCx}×${expectedCy}）`,
+  );
+  check(
+    picture.shapeKinds.some((item) => item.endsWith(":pic")),
+    `形状层认得这张图（${picture.shapeKinds.join("、")}）`,
+  );
+  check(picture.rendered.slides === picture.sourceSlides, "插了图片之后渲染器仍能打开这份 deck");
+
   await runPptxUiCases({ page, check });
   await runPptxCanvasCases({ page, check });
   await runPptxStyledCanvasCases({ repoRoot, editorDir, check });
   await runPptxRibbonCases({ page, check });
   await runPptxPanelCases({ page, check });
+  await runPptxPicturePipelineCases({
+    page,
+    check,
+    imagePath: join(repoRoot, "packages/ui/test/fixtures/office-editor-image.png"),
+  });
 
   await harness.close();
   if (failures.length > 0) {

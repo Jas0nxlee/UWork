@@ -154,4 +154,59 @@ export async function runPptxEditCases({ page, check }) {
     slideOps.renderedSlides === 3,
     `幻灯片操作后的产物渲染器能打开（${slideOps.renderedSlides} 页）`,
   );
+
+  // ⑨ 插图片 → 删除：XML、形状列表、**渲染出来的元素**三处都要没了
+  //   （用户反馈：删除后图片还在画面上、但已经选不中——典型的"列表变了、预览没重建"）
+  const pictureRoundTrip = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const dataUri = await window.__pptx.sampleImageDataUri();
+    const inserted = await window.__pptx.insertPicture({
+      source: bytes,
+      partName: part,
+      dataUri,
+      pageWidth: 9144000,
+      pageHeight: 6858000,
+    });
+    const slideXml =
+      (await (await window.__pptx.rawZip(inserted.bytes)).file(part)?.async("string")) ?? "";
+    const shape = window.__pptx.readShapes(slideXml).find((item) => item.kind === "pic");
+    if (!shape) return { inserted: false };
+    const deletedXml = window.__pptx.deleteShape(slideXml, shape.name);
+    // 删掉之后：这一页 XML 里不该再有 p:pic
+    const stillHasPic = /<p:pic[ >]/.test(deletedXml);
+    // 用"编辑过一个部件"的方式写出新包（与编辑器保存同一路径），再看渲染器认不认
+    // 关键：**基线与 source 必须一致**（source 已经是"带图"的那一版，基线也得是带图的）。
+    // 反例（早先这里就是）：基线用原始（无图）、source 用带图 → 删除后 XML 正好回到基线内容，
+    // 差分认为"没变"而跳过写回，zip 里就留住了那张图（真机症状：删了图片画布上还在）。
+    const withPictureXml =
+      (await (await window.__pptx.rawZip(inserted.bytes)).file(part)?.async("string")) ?? "";
+    const written = await window.__pptx.write({
+      source: inserted.bytes,
+      baseline: new Map([[part, withPictureXml]]),
+      current: new Map([[part, deletedXml]]),
+    });
+    const renderAfter = await window.__pptx.render(written.bytes);
+    // 关键：**写出来的字节**里这一页还有没有 p:pic（早先只查了 XML 字符串，漏了包）
+    const writtenZip = await window.__pptx.rawZip(written.bytes);
+    const writtenSlide = (await writtenZip.file(part)?.async("string")) ?? "";
+    return {
+      inserted: true,
+      name: shape.name,
+      stillHasPic,
+      shapesAfter: window.__pptx.readShapes(deletedXml).map((item) => `${item.name}:${item.kind}`),
+      renderedAfter: renderAfter,
+      picInWrittenBytes: /<p:pic[ >]/.test(writtenSlide),
+      writtenSlideLength: writtenSlide.length,
+    };
+  });
+  check(
+    pictureRoundTrip.inserted && pictureRoundTrip.picInWrittenBytes === false,
+    `写出来的字节里也没有 p:pic（这一页 ${pictureRoundTrip.writtenSlideLength} 字节）`,
+  );
+  check(
+    pictureRoundTrip.inserted && !pictureRoundTrip.stillHasPic,
+    `删除形状后这一页 XML 里没有 p:pic 了（${pictureRoundTrip.shapesAfter?.join("、") ?? "?"}）`,
+  );
 }

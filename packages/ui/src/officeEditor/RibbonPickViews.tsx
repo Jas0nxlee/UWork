@@ -10,7 +10,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DropdownPanel, useRibbonDropdown } from "./RibbonDropdown.js";
 import { iconOf } from "./ribbonItemSupport.js";
-import type { RibbonCommand, RibbonFind, RibbonTable, RunCommand } from "./officeRibbonModel.js";
+import type {
+  RibbonCommand,
+  RibbonFind,
+  RibbonItem,
+  RibbonTable,
+  RunCommand,
+} from "./officeRibbonModel.js";
 
 /**
  * 需要"填一个值"的命令（图片地址/超链接/公式/水印文字）。
@@ -20,8 +26,44 @@ import type { RibbonCommand, RibbonFind, RibbonTable, RunCommand } from "./offic
  * 传送到 body 居中显示，与功能区是否收起、是不是从分组菜单里点的都无关。
  * `data-ribbon-dropdown` 只是让已打开的功能区面板别把这次点击当成"点外面"（面板会忽略这些元素）。
  */
+/**
+ * 取值命令的**触发器**：只负责把"要取值的命令"交给功能区（`openPrompt`）。
+ * 对话框本身挂在功能区根部渲染（`RibbonPromptDialog`）——它要是留在按钮里，
+ * 被收进「»」面板的按钮一卸载，对话框就跟着没了（真机：折叠状态下点图片没反应）。
+ */
 export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: RunCommand }) {
-  const [open, setOpen] = useState(false);
+  void run;
+  const dropdown = useRibbonDropdown();
+  const Icon = iconOf(item.icon);
+  return (
+    <button
+      type="button"
+      title={item.title}
+      aria-label={item.title}
+      aria-expanded={dropdown.promptItem?.title === item.title}
+      data-office-ribbon-prompt={item.command}
+      className={`flex h-8 items-center gap-1 rounded px-1.5 text-xs ${
+        dropdown.promptItem?.title === item.title
+          ? "bg-sky-500/15 text-sky-300"
+          : "text-foreground hover:bg-surface"
+      }`}
+      onClick={() => dropdown.openPrompt(item)}
+    >
+      {Icon ? <Icon className="size-5" /> : <span className="px-1">{item.label}</span>}
+      {Icon ? <span className="text-foreground-subtle">▾</span> : null}
+    </button>
+  );
+}
+
+export function RibbonPromptDialog({ item, run }: { item: RibbonItem | null; run: RunCommand }) {
+  return item && item.kind === "command" && item.prompt ? (
+    <RibbonPromptDialogBody item={item} run={run} />
+  ) : null;
+}
+
+/** 对话框本体：只在 item 存在时挂载，所以每次打开都是干净的输入框。 */
+function RibbonPromptDialogBody({ item, run }: { item: RibbonCommand; run: RunCommand }) {
+  const dropdown = useRibbonDropdown();
   const [value, setValue] = useState("");
   const [hint, setHint] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -29,11 +71,13 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
   const Icon = iconOf(item.icon);
   const prompt = item.prompt;
 
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+  const open = dropdown.promptItem?.title === item.title;
 
-  if (!prompt) return null;
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  if (!prompt || !open) return null;
 
   const submitWith = (answer: string) => {
     const trimmed = answer.trim();
@@ -43,7 +87,7 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
     run(item.command, args);
     setValue("");
     setHint(null);
-    setOpen(false);
+    dropdown.closePrompt();
   };
 
   const submit = () => submitWith(value);
@@ -86,7 +130,7 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
         className={`flex h-8 items-center gap-1 rounded px-1.5 text-xs ${
           open ? "bg-sky-500/15 text-sky-300" : "text-foreground hover:bg-surface"
         }`}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => dropdown.closePrompt()}
       >
         {Icon ? <Icon className="size-5" /> : <span className="px-1">{item.label}</span>}
         {Icon ? <span className="text-foreground-subtle">▾</span> : null}
@@ -96,9 +140,9 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
             <div
               data-ribbon-dropdown
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-              onClick={() => setOpen(false)}
+              onClick={() => dropdown.closePrompt()}
               onKeyDown={(event) => {
-                if (event.key === "Escape") setOpen(false);
+                if (event.key === "Escape") dropdown.closePrompt();
                 if (event.key === "Enter") submit();
               }}
               role="presentation"
@@ -149,7 +193,7 @@ export function RibbonPromptButton({ item, run }: { item: RibbonCommand; run: Ru
                   <button
                     type="button"
                     className="rounded border border-border px-3 py-1 text-xs hover:bg-surface"
-                    onClick={() => setOpen(false)}
+                    onClick={() => dropdown.closePrompt()}
                   >
                     取消
                   </button>

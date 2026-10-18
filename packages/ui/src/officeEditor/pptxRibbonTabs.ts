@@ -92,6 +92,19 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
     label: "插入",
     groups: [
       {
+        label: "图像",
+        items: [
+          button("图片", "插入本机图片（等比放进页面中央）", "pptxInsertPicture", {
+            icon: "Image24Regular",
+            prompt: {
+              message: "选择要插入的图片",
+              at: 0,
+              pick: { label: "选择图片", accept: "image/*", maxBytes: 8 * 1024 * 1024 },
+            },
+          }),
+        ],
+      },
+      {
         label: "文本",
         items: [
           button("文本框", "在页面中部新建一个文本框", "pptxAddTextBox", {

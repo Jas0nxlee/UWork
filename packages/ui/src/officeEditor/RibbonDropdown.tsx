@@ -18,17 +18,29 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import type { RibbonItem } from "./officeRibbonModel.js";
 
 export interface RibbonDropdownState {
   openId: string | null;
   toggle: (id: string) => void;
   close: () => void;
+  /**
+   * 正在取值（图片/超链接这类要填一句话的命令）。放在上下文里是**必须的**：
+   * 这些按钮常常被收进「»」面板里，而面板一点就关、按钮随之卸载——对话框跟着组件一起消失，
+   * 表现就是"折叠状态下点图片没反应"（真机踩过）。现在对话框挂在功能区根部，面板关不关都不影响。
+   */
+  promptItem: RibbonItem | null;
+  openPrompt: (item: RibbonItem) => void;
+  closePrompt: () => void;
 }
 
 const RibbonDropdownContext = createContext<RibbonDropdownState>({
   openId: null,
   toggle: () => undefined,
   close: () => undefined,
+  promptItem: null,
+  openPrompt: () => undefined,
+  closePrompt: () => undefined,
 });
 
 export function RibbonDropdownProvider({

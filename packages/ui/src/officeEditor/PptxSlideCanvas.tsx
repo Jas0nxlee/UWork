@@ -51,6 +51,12 @@ export interface PptxSlideCanvasProps {
   ) => void;
   /** 双击：希望就地改这个形状的文字（编辑位负责把焦点移到编辑层）。 */
   onRequestText?: (name: string) => void;
+  /**
+   * 改动版本号（编辑位每次改 XML 都会 +1）：只靠"预览字节变了"来触发重画不够可靠——
+   * 真机实测：删掉图片后形状列表已经没了，画布上那张图还在（等几秒也不消失），
+   * 而关闭面板之类的布局变化才把它刷掉。这个 key 保证**每次改动都重画一次**。
+   */
+  renderKey: number;
   /** 缩放百分比（100 = 适应宽度）：由编辑位持有，功能区「视图」也要改它。 */
   zoom: number;
   onZoomChange: (updater: (value: number) => number) => void;
@@ -72,6 +78,7 @@ export function PptxSlideCanvas({
   onSelect,
   onCommitBounds,
   onRequestText,
+  renderKey,
   zoom,
   onZoomChange,
   onOpenFormatPane,
@@ -105,7 +112,7 @@ export function PptxSlideCanvas({
     return () => observer.disconnect();
   }, []);
 
-  // 画当前页（文档换了或换页就重画）
+  // 画当前页（文档换了、换页、或**这一页被改过**就重画）
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -120,7 +127,7 @@ export function PptxSlideCanvas({
       }
       host.replaceChildren();
     };
-  }, [preview, pageIndex, partName]);
+  }, [preview, pageIndex, partName, renderKey]);
 
   // 渲染器实测的每个形状框（XML 里没有显式几何的用它兜底）
   useEffect(() => {

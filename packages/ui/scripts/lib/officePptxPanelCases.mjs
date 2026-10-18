@@ -85,6 +85,34 @@ export async function runPptxPanelCases({ page, check }) {
     `窗格开着时整页仍完整可见（${afterOpen.page[0]}×${afterOpen.page[1]}，scale ${afterOpen.scale.toFixed(3)}）`,
   );
 
+  // ②c 按选中对象显示不同设置：图片不给"文字/段落"，并写明图片的边界
+  const kindAware = await page.evaluate(async () => {
+    const root =
+      document.querySelector("[data-pptx-shape]")?.closest("[data-pptx-task-pane]") ?? document;
+    const readPanel = () => {
+      const pane = document.querySelector("[data-pptx-task-pane]");
+      if (!pane) return null;
+      return {
+        textTools: Boolean(pane.querySelector("[data-shape-size], [data-shape-align=left]")),
+        note:
+          pane.querySelector("[data-pptx-kind-note]")?.getAttribute("data-pptx-kind-note") ?? null,
+        noteText: pane.querySelector("[data-pptx-kind-note]")?.textContent?.slice(0, 40) ?? "",
+      };
+    };
+    // 选中一个文本框（fixture 里叫"标题 1"）
+    document.querySelector("[data-pptx-open-format]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    document.querySelector('[data-pptx-shape="标题 1"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const textShape = readPanel();
+    void root;
+    return { textShape };
+  });
+  check(
+    kindAware.textShape?.textTools === true && kindAware.textShape.note === null,
+    `选中文本框时给文字/段落工具（textTools=${kindAware.textShape?.textTools}）`,
+  );
+
   // ③ 页面**上下左右都居中**（用户口径：不只左右，还要像 PowerPoint 一样上下居中）
   await page.evaluate(() => document.querySelector("[data-pptx-close-format]")?.click());
   await page.waitForTimeout(600);

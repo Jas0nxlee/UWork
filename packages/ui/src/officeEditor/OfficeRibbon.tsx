@@ -16,7 +16,12 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DropdownPanel, RibbonDropdownProvider, useRibbonDropdown } from "./RibbonDropdown.js";
-import { RibbonFindView, RibbonPromptButton, RibbonTablePickView } from "./RibbonPickViews.js";
+import {
+  RibbonFindView,
+  RibbonPromptButton,
+  RibbonPromptDialog,
+  RibbonTablePickView,
+} from "./RibbonPickViews.js";
 import {
   RibbonButton,
   RibbonItemRows,
@@ -243,13 +248,21 @@ export function OfficeRibbon({
   const [plan, setPlan] = useState<{ key: string; states: Map<string, GroupState> } | null>(null);
   // 单一打开源：同屏只允许一个下拉（点第二个时第一个自动关）——真机反馈的互斥要求。
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  /** 正在取值的命令（图片/超链接…）：挂在功能区根部，面板关掉也不会把它带走。 */
+  const [promptItem, setPromptItem] = useState<RibbonItem | null>(null);
   const dropdownState = useMemo(
     () => ({
       openId: openDropdownId,
       toggle: (id: string) => setOpenDropdownId((current) => (current === id ? null : id)),
       close: () => setOpenDropdownId(null),
+      promptItem,
+      openPrompt: (item: RibbonItem) => {
+        setOpenDropdownId(null);
+        setPromptItem(item);
+      },
+      closePrompt: () => setPromptItem(null),
     }),
-    [openDropdownId],
+    [openDropdownId, promptItem],
   );
 
   useEffect(() => {
@@ -352,6 +365,7 @@ export function OfficeRibbon({
           <MoreGroupsMenu groups={hiddenGroups} style={style} run={run} />
         </div>
       </div>
+      <RibbonPromptDialog item={promptItem} run={run} />
     </RibbonDropdownProvider>
   );
 }

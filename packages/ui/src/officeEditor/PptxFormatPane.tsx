@@ -73,15 +73,31 @@ export function PptxFormatPane({
         </button>
       </div>
       {shape && slide ? (
-        <ShapeInspector
-          shape={shape}
-          onBounds={onBounds}
-          onFormat={onFormat}
-          onParagraph={onParagraph}
-          onMoveZ={onMoveZ}
-          onDuplicate={onDuplicate}
-          onDelete={onDelete}
-        />
+        <>
+          {/* 按选中对象显示：文本框/形状给文字与段落，图片给图片信息，表格给"只能改单元格文字"的说明。
+              （用户口径：选中什么就该看到什么设置，别拿形状的文字格式套在图片上） */}
+          {shape.kind !== "sp" ? (
+            <div
+              className="border-b border-border px-3 py-2 text-[11px] text-foreground-subtle"
+              data-pptx-kind-note={shape.kind}
+            >
+              {shape.kind === "pic"
+                ? "这是一张图片：可以改位置、大小、层级，或复制/删除；图片的裁剪、亮度、替换还没做。"
+                : "这是一个表格：目前只能改单元格文字（下面的「文本」里按单元格列出来了），表格的增删行列还没做。"}
+            </div>
+          ) : null}
+          <ShapeInspector
+            shape={shape}
+            onBounds={onBounds}
+            onFormat={onFormat}
+            onParagraph={onParagraph}
+            onMoveZ={onMoveZ}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+            // 图片/表格没有文字格式可言：把文字与段落两组藏起来（表格的文字在下面的「文本」里改）
+            textTools={shape.kind === "sp"}
+          />
+        </>
       ) : (
         <div className="px-3 py-2 text-[11px] text-foreground-subtlest">
           在画布上点一个形状，或从下面的形状列表里选一个，这里就会出现它的位置、大小与文字格式。

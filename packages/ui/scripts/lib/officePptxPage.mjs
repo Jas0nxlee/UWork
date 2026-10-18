@@ -133,6 +133,21 @@ function bodyOf(xml, index) {
 
 window.__pptx = {
   fixture,
+  // —— 图片（pptPicture.ts）——
+  insertPicture: (input) => window.app.insertPicture(input),
+  decodeImageDataUri: (uri) => window.app.decodeImageDataUri(uri),
+  imageSizeOf: (bytes) => window.app.imageSizeOf(bytes),
+  /** 一张确定性的小 PNG（复用仓库里 Word 检查用的 240×120 样本） */
+  async sampleImageDataUri() {
+    const response = await fetch("/office-editor-image.png");
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(offset, offset + 0x8000)));
+    }
+    return 'data:image/png;base64,' + btoa(binary);
+  },
   // —— 形状层（pptShapes.ts）——
   readShapes: (xml) => window.app.readSlideShapes(xml),
   setShapeBounds: (xml, name, bounds) => window.app.setShapeBounds(xml, name, bounds),

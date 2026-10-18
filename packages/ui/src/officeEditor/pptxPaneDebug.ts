@@ -11,6 +11,13 @@ export interface PptxPaneDebugInput {
   /** 当前页的形状（读的是当前 XML，不是 React state）。 */
   shapes: () => PptxShape[];
   activePartName: () => string | null;
+  /** 预览重算次数 / 最后一次错误（排查"改了画布没动"）。 */
+  previewBuilds: () => number;
+  previewError: () => string | null;
+  /** 当前喂给渲染器的字节（拷贝）：自动化里解包看它到底有没有那张图。 */
+  previewBytes: () => ArrayBuffer | null;
+  /** 模型里某一页的 XML（排查"模型改了、字节没改"）。 */
+  modelXml: (partName: string) => string | null;
 }
 
 export function installPptxPaneDebug(input: PptxPaneDebugInput): () => void {
@@ -19,6 +26,10 @@ export function installPptxPaneDebug(input: PptxPaneDebugInput): () => void {
     input.shapes().find((item) => item.name === name) ?? null;
   global.__pptxPane = {
     slideCount: () => input.slideCount(),
+    previewBuilds: () => input.previewBuilds(),
+    previewError: () => input.previewError(),
+    previewBytes: () => input.previewBytes(),
+    modelXml: (partName: string) => input.modelXml(partName),
     shapeNames: () => input.shapes().map((item) => item.name),
     shapeBounds: (name: string) => {
       const found = findShape(name);

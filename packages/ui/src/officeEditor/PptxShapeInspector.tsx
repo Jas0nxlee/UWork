@@ -34,6 +34,8 @@ export interface ShapeInspectorProps {
   onMoveZ: (direction: "up" | "down") => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** 有没有"文字/段落"两组（图片、表格没有；文本在编辑位的「文本」分组里改）。 */
+  textTools?: boolean;
 }
 
 const buttonClass = "rounded border border-border px-2 py-1 text-xs hover:border-accent";
@@ -46,6 +48,7 @@ export function ShapeInspector({
   onMoveZ,
   onDuplicate,
   onDelete,
+  textTools = true,
 }: ShapeInspectorProps) {
   const [draft, setDraft] = useState<Partial<Record<"x" | "y" | "width" | "height", string>>>({});
   const bounds = shape.bounds;
@@ -92,95 +95,111 @@ export function ShapeInspector({
         {field("width", "宽")}
         {field("height", "高")}
       </div>
-      <div className="flex flex-wrap items-center gap-1 pb-2">
-        <span className="pr-1 text-foreground-subtle">文字：</span>
-        <button type="button" className={buttonClass} onClick={() => onFormat({ bold: true })}>
-          加粗
-        </button>
-        <button type="button" className={buttonClass} onClick={() => onFormat({ italic: true })}>
-          斜体
-        </button>
-        <button type="button" className={buttonClass} onClick={() => onFormat({ underline: true })}>
-          下划线
-        </button>
-        <button type="button" className={buttonClass} onClick={() => onFormat({ strike: true })}>
-          删除线
-        </button>
-        <label className="flex items-center gap-1">
-          字号
-          <select
-            data-shape-size
-            className="rounded border border-border bg-background px-1 py-0.5 text-xs"
-            defaultValue=""
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              if (value > 0) onFormat({ size: value });
-            }}
-          >
-            <option value="">选择</option>
-            {SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
+      {textTools ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1 pb-2">
+            <span className="pr-1 text-foreground-subtle">文字：</span>
+            <button type="button" className={buttonClass} onClick={() => onFormat({ bold: true })}>
+              加粗
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() => onFormat({ italic: true })}
+            >
+              斜体
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() => onFormat({ underline: true })}
+            >
+              下划线
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() => onFormat({ strike: true })}
+            >
+              删除线
+            </button>
+            <label className="flex items-center gap-1">
+              字号
+              <select
+                data-shape-size
+                className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+                defaultValue=""
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (value > 0) onFormat({ size: value });
+                }}
+              >
+                <option value="">选择</option>
+                {SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              颜色
+              <select
+                data-shape-color
+                className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+                defaultValue=""
+                onChange={(event) => onFormat({ color: event.target.value })}
+              >
+                {TEXT_COLORS.map((color) => (
+                  <option key={color.label} value={color.value}>
+                    {color.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-1 pb-2">
+            <span className="pr-1 text-foreground-subtle">段落：</span>
+            {(
+              [
+                ["left", "左"],
+                ["center", "居中"],
+                ["right", "右"],
+                ["justify", "两端"],
+              ] as const
+            ).map(([align, label]) => (
+              <button
+                key={align}
+                type="button"
+                data-shape-align={align}
+                className={buttonClass}
+                onClick={() => onParagraph({ align })}
+              >
+                {label}
+              </button>
             ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1">
-          颜色
-          <select
-            data-shape-color
-            className="rounded border border-border bg-background px-1 py-0.5 text-xs"
-            defaultValue=""
-            onChange={(event) => onFormat({ color: event.target.value })}
-          >
-            {TEXT_COLORS.map((color) => (
-              <option key={color.label} value={color.value}>
-                {color.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="flex flex-wrap items-center gap-1 pb-2">
-        <span className="pr-1 text-foreground-subtle">段落：</span>
-        {(
-          [
-            ["left", "左"],
-            ["center", "居中"],
-            ["right", "右"],
-            ["justify", "两端"],
-          ] as const
-        ).map(([align, label]) => (
-          <button
-            key={align}
-            type="button"
-            data-shape-align={align}
-            className={buttonClass}
-            onClick={() => onParagraph({ align })}
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          type="button"
-          data-shape-bullet="on"
-          className={buttonClass}
-          onClick={() => onParagraph({ bullet: true })}
-        >
-          项目符号
-        </button>
-        <button
-          type="button"
-          data-shape-bullet="off"
-          className={buttonClass}
-          onClick={() => onParagraph({ bullet: false })}
-        >
-          去符号
-        </button>
-        {paragraph?.align ? (
-          <span className="text-foreground-subtlest">当前 {paragraph.align}</span>
-        ) : null}
-      </div>
+            <button
+              type="button"
+              data-shape-bullet="on"
+              className={buttonClass}
+              onClick={() => onParagraph({ bullet: true })}
+            >
+              项目符号
+            </button>
+            <button
+              type="button"
+              data-shape-bullet="off"
+              className={buttonClass}
+              onClick={() => onParagraph({ bullet: false })}
+            >
+              去符号
+            </button>
+            {paragraph?.align ? (
+              <span className="text-foreground-subtlest">当前 {paragraph.align}</span>
+            ) : null}
+          </div>
+        </>
+      ) : null}
       <div className="flex flex-wrap items-center gap-1">
         <button
           type="button"
