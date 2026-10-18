@@ -119,6 +119,11 @@ nginx 配置 + 镜像）、desktop 侧的 runtime 配置注入（P3，复用企�
 
 ### P1 自建 relay（核心工作量）
 
+> **状态（2026-10-17）**：已实现并落地为 `packages/relay`（`@zcode/relay`，private、独立部署、不进桌面 Release）。
+> 本节仍描述设计意图；**实现契约、逐条行为与验证记录以 `specs/web-remote-control-relay.md` 为准**
+> （其中两条按客户端代码修正的语义：投递不到对端回 `INTERNAL` 而不是静默丢弃；terminal 在无桌面在线时
+> 收 `auth_ack{waiting}` + `DEVICE_OFFLINE`）。P2/P3 未做，因此链路默认仍指向 ZCode 侧入口。
+
 新增 `packages/relay`（上游已删除该路径，不会被后续同步覆盖，适合放本仓；协议类型直接从
 `@zcode/shared` 导入，避免复制粘贴漂移）。**最小职责只有四件：注册、鉴权配对、心跳应答、透传。**
 
@@ -152,6 +157,10 @@ nginx 配置 + 镜像）、desktop 侧的 runtime 配置注入（P3，复用企�
 
 ### P2 手机页静态托管
 
+> **状态（2026-10-17）**：已完成。托管在 `https://aihub.ucas.com.cn/remote/v4`
+> （网关静态目录 + 构建期注入 `wss://aihub.ucas.com.cn/remote/ws`）。实现细节与网关 location 见
+> `specs/web-remote-control-relay.md` 的「P2/P3 也已落地」。
+
 - 构建：`pnpm run build:web-remote-control:v4`（`base=/remote/v4/`），构建时注入两个变量：
   - **必设** `VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL=wss://<uwork-host>/ws`——不设的话手机页会回落
     到 `wss://zcode.z.ai/ws`（`resolveWebRemoteControlRelayWsUrl` 对任何 endpoint 都返回它，改
@@ -173,6 +182,10 @@ nginx 配置 + 镜像）、desktop 侧的 runtime 配置注入（P3，复用企�
   桌面版本一起回归。
 
 ### P3 客户端指向自建入口
+
+> **状态（2026-10-17）**：已完成（方案 A：随包 runtime 配置 `config/mobile-remote-control.json`，
+> 优先级 env > 随包配置 > ZCode 默认）。`resolveWebRemoteControlRelayWsUrl` 的同源派生清理**未做**——
+> 有显式配置后不再需要，且它会改变所有自定义 endpoint 的既有行为。
 
 当前唯一的注入手段是开发用 env（桌面运行时 `process.env`、web 构建期 `VITE_`），打包后终端用户
 拿不到。产品化建议二选一（推荐 A）：

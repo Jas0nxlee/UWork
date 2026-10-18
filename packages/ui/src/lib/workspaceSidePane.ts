@@ -1116,11 +1116,19 @@ export interface SidePaneVisibilityScope {
   ownerTaskId: string | null;
 }
 
+/** 空字符串等同于"没有工作区"：没打开项目时 workspacePath 就是空串，不能把它当成一个真实 workspace。 */
+function normalizeSidePaneWorkspaceKey(key: string | null | undefined): string | null {
+  const trimmed = key?.trim() ?? "";
+  return trimmed === "" ? null : trimmed;
+}
+
 function sidePaneTabMatchesWorkspace(
   tab: WorkspaceSidePaneTab,
   activeWorkspaceKey: string | null,
 ): boolean {
-  return tab.workspaceKey == null || tab.workspaceKey === activeWorkspaceKey;
+  const tabKey = normalizeSidePaneWorkspaceKey(tab.workspaceKey);
+  // 没打开项目时打开的全局 tab（IM 就是这样）必须保持可见，否则用户点了入口什么都不出现。
+  return tabKey == null || tabKey === normalizeSidePaneWorkspaceKey(activeWorkspaceKey);
 }
 
 /**

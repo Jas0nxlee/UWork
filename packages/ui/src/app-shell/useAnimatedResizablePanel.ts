@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
+import { runOnNextFrame } from "@/lib/nextFrame.js";
 
 const PANEL_FLEX_GROW_TRANSITION_CLASSES = ["transition-[flex-grow]", "duration-200", "ease-out"];
 const PANEL_FLEX_GROW_TRANSITION_FALLBACK_MS = 240;
@@ -66,12 +67,9 @@ export function useAnimatedResizablePanel({
     if (open) {
       // 条件渲染的 Panel 如果一挂载就直接处于展开态，首帧会直接跳到目标尺寸。
       // 这里先让常驻 Panel 保持折叠态，再在下一帧切到展开态，打开和关闭就能复用同一套过渡。
-      const rafId = window.requestAnimationFrame(() => {
-        setIsVisible(true);
-      });
-      return () => {
-        window.cancelAnimationFrame(rafId);
-      };
+      // 用 runOnNextFrame 而不是裸 rAF：窗口被遮挡时 rAF 不触发（回调被丢弃），
+      // 面板会永久停在不可见状态——见 `lib/nextFrame.ts`。
+      return runOnNextFrame(() => setIsVisible(true));
     }
 
     setIsVisible(false);

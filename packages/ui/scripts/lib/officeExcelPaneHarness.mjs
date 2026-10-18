@@ -40,11 +40,13 @@ window.__excelPane = {
       },
     };
     const host = document.getElementById("host");
+    // 顺序要紧：先卸载上一个 root（它会自己摘掉 DOM），再清容器；
+    // 反过来会让 React 在卸载时找不到自己的节点（removeChild 报错）。
+    window.__paneRoot?.unmount();
     host.replaceChildren();
     const container = document.createElement("div");
     container.style.height = "100%";
     host.append(container);
-    window.__paneRoot?.unmount();
     window.__paneRoot = createRoot(container);
     window.__paneRoot.render(
       createElement(ExcelEditorPane, {

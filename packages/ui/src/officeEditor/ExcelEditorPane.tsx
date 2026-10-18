@@ -93,9 +93,13 @@ function EngineHost({
       />,
     );
     return () => {
-      // 先卸载再清空宿主：引擎的 canvas 不会被 React 自己摘掉，留着会让下一次挂载画出两份
-      root.unmount();
-      host.replaceChildren();
+      // **不能在这里同步销毁另一个 root**：React 会报 "Attempted to synchronously unmount a root
+      // while React was already rendering"，而且 DOM 拆不干净（removeChild 报错、残留一份画布）。
+      // 推到本轮渲染结束之后再做，并把宿主清空——引擎的 canvas React 不会自己摘掉。
+      window.setTimeout(() => {
+        root.unmount();
+        host.replaceChildren();
+      }, 0);
     };
     // data 变了要重建（引擎只在挂载时吃一次 data）；其余 props 走 ref，避免无谓重建
   }, [apiRef, data, hostRef]);
@@ -142,7 +146,15 @@ export function ExcelEditorPane({
     const range = api.getSelection()?.[0];
     const row = range?.row?.[0] ?? 0;
     const column = range?.column?.[0] ?? 0;
-    const read = (type: string): unknown => api.getCellValue(row, column, { type } as never);
+    // 切表/新建工作表的**瞬间**，引擎那张表还没有 data 矩阵，读格子会抛 SHEET_NOT_FOUND
+    // （实测：点"新建工作表"就把编辑区弄崩、后面所有按钮跟着失效）。这种中间态跳过这一拍即可。
+    const read = (type: string): unknown => {
+      try {
+        return api.getCellValue(row, column, { type } as never);
+      } catch {
+        return undefined;
+      }
+    };
     const ht = read("ht");
     setSelectionStyle({
       bold: read("bl") === 1,

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { IM_LIST_NAME, IM_LIST_ROW, IM_LIST_ROW_IDLE, IM_SEARCH_INPUT } from "./imChrome.js";
 
 export type ImPickerMode = "dm" | "group";
 
@@ -53,17 +54,17 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
     );
 
   return (
-    <div className="border-b border-border p-2">
-      <div className="mb-1 flex items-center gap-1">
+    <div className="border-b border-border px-3 py-2">
+      <div className="mb-2 flex items-center gap-1">
         {(["dm", "group"] as const).map((candidate) => (
           <button
             key={candidate}
             type="button"
             className={cn(
-              "rounded px-1.5 py-0.5 text-[11px]",
+              "rounded-md px-2 py-1 text-ui-2xs transition-colors",
               mode === candidate
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-accent",
+                ? "bg-surface text-foreground"
+                : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground",
             )}
             onClick={() => onModeChange(candidate)}
           >
@@ -72,7 +73,7 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
         ))}
         <button
           type="button"
-          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
+          className="ml-auto rounded-md px-2 py-1 text-ui-2xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
           onClick={onClose}
         >
           {t("im.cancel")}
@@ -80,14 +81,14 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
       </div>
       <Input
         autoFocus
-        className="h-7 text-xs"
+        className={IM_SEARCH_INPUT}
         placeholder={t("im.searchPeople")}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
       {mode === "group" ? (
         <Input
-          className="mt-1 h-7 text-xs"
+          className={cn(IM_SEARCH_INPUT, "mt-2")}
           placeholder={t("im.groupName")}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -95,7 +96,7 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
       ) : null}
       <ul className="mt-1 max-h-40 overflow-y-auto">
         {filtered.length === 0 ? (
-          <li className="px-1 py-1.5 text-[11px] text-muted-foreground">{t("im.noDirectory")}</li>
+          <li className="px-2 py-3 text-ui-2xs text-foreground-subtle">{t("im.noDirectory")}</li>
         ) : (
           filtered.map((user) => {
             const picked = selected.includes(user.id);
@@ -104,7 +105,7 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-accent",
+                    cn(IM_LIST_ROW, IM_LIST_ROW_IDLE, "h-10"),
                     mode === "group" && picked && "bg-muted",
                   )}
                   onClick={() => (mode === "dm" ? onPickDm(user) : toggle(user.id))}
@@ -117,7 +118,7 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
                       )}
                     />
                   ) : null}
-                  <span className="min-w-0 flex-1 truncate text-xs">{user.name ?? user.id}</span>
+                  <span className={cn(IM_LIST_NAME, "min-w-0 flex-1")}>{user.name ?? user.id}</span>
                   <span className="max-w-[45%] truncate text-[10px] text-muted-foreground">
                     {user.department ?? ""}
                   </span>
@@ -130,7 +131,7 @@ export const ImDirectoryPicker = memo(function ImDirectoryPicker({
       {mode === "group" ? (
         <Button
           size="sm"
-          className="mt-1 h-7 w-full text-xs"
+          className={cn(IM_SEARCH_INPUT, "mt-2")}
           disabled={selected.length === 0}
           onClick={() => onCreateGroup(selected, title.trim())}
         >

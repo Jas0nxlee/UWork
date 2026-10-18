@@ -7,6 +7,7 @@
 "use client";
 
 import { cn } from "../lib/utils.js";
+import { runOnNextFrame } from "../../lib/nextFrame.js";
 import type { RiveParameters } from "@rive-app/react-webgl2";
 import {
   useRive,
@@ -25,9 +26,10 @@ const useStrictModeSafeInit = () => {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => setReady(true));
+    // 走"保证执行"的下一帧：窗口被遮挡时裸 rAF 不触发，角色就永远不初始化。
+    const cancel = runOnNextFrame(() => setReady(true));
     return () => {
-      cancelAnimationFrame(id);
+      cancel();
       setReady(false);
     };
   }, []);

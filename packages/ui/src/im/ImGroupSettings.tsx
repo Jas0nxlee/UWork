@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import type { IImService } from "@zcode/services";
 import type { ImConversationSummary, ImDirectoryUser } from "@zcode/shared";
+import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -94,17 +95,22 @@ export const ImGroupSettings = memo(function ImGroupSettings({
       return;
     }
     if (!selfUserId) return;
-    void run(() => service!.removeMember({ conversationId: conversation.id, memberId: selfUserId })).then(
-      () => onClose(),
-    );
+    void run(() =>
+      service!.removeMember({ conversationId: conversation.id, memberId: selfUserId }),
+    ).then(() => onClose());
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium">{t("im.groupSettings")}</span>
-        <Button className="ml-auto h-6 px-2 text-xs" variant="ghost" onClick={onClose}>
-          {t("im.back")}
+    <div className="flex h-full min-h-0 flex-col bg-sidebar">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+        <span className="text-ui-sm font-medium">{t("im.groupSettings")}</span>
+        <Button
+          className="ml-auto size-7 shrink-0 p-0"
+          variant="ghost"
+          aria-label={t("common.close")}
+          onClick={onClose}
+        >
+          <XIcon className="size-4" />
         </Button>
       </header>
 
@@ -149,9 +155,7 @@ export const ImGroupSettings = memo(function ImGroupSettings({
               onPickDm={() => undefined}
               onCreateGroup={(memberIds) => {
                 setAdding(false);
-                void run(() =>
-                  service!.addMembers({ conversationId: conversation.id, memberIds }),
-                );
+                void run(() => service!.addMembers({ conversationId: conversation.id, memberIds }));
               }}
               onClose={() => setAdding(false)}
             />

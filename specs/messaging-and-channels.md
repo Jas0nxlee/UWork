@@ -22,28 +22,28 @@
 
 ## 一、功能范围
 
-| 能力 | 第一版（P0） | 说明 |
-| --- | --- | --- |
-| 单聊 | ✅ | 两人 DM；重复发起幂等（同一对用户只有一个会话） |
-| 群聊 | ✅ | 建群、拉人、退群、改群名；成员上限不设硬限但默认建议 ≤ 200 |
-| 频道 | ⏳ P1 | `kind='channel'`：组织/团队内的主题流，可只读公告；与群共用同一套模型 |
-| 消息 | ✅ 文本 | `kind`: `text`；消息 append-only，编辑/撤回留 tombstone |
-| 未读 | ✅ | 每成员一行 `last_read_seq`（**不做逐条已读**，写放大差一个数量级） |
-| 历史漫游 | ✅ | 按 `seq` 正序增量 + `before` 反向分页 |
-| 多端同步 | ✅ | 同一用户多连接（桌面 + 手机），按 user 扇出 |
-| 附件 | ⏳ P1 | 图片/文件走对象存储，**不要把 blob 塞进 SQLite** |
-| 通知 | ✅ 应用内 | 桌面用现有通知通道；移动端兜底见 P2 |
-| 搜索 | ⏳ P1 | 会话内搜索 |
+| 能力     | 第一版（P0） | 说明                                                                  |
+| -------- | ------------ | --------------------------------------------------------------------- |
+| 单聊     | ✅           | 两人 DM；重复发起幂等（同一对用户只有一个会话）                       |
+| 群聊     | ✅           | 建群、拉人、退群、改群名；成员上限不设硬限但默认建议 ≤ 200            |
+| 频道     | ⏳ P1        | `kind='channel'`：组织/团队内的主题流，可只读公告；与群共用同一套模型 |
+| 消息     | ✅ 文本      | `kind`: `text`；消息 append-only，编辑/撤回留 tombstone               |
+| 未读     | ✅           | 每成员一行 `last_read_seq`（**不做逐条已读**，写放大差一个数量级）    |
+| 历史漫游 | ✅           | 按 `seq` 正序增量 + `before` 反向分页                                 |
+| 多端同步 | ✅           | 同一用户多连接（桌面 + 手机），按 user 扇出                           |
+| 附件     | ⏳ P1        | 图片/文件走对象存储，**不要把 blob 塞进 SQLite**                      |
+| 通知     | ✅ 应用内    | 桌面用现有通知通道；移动端兜底见 P2                                   |
+| 搜索     | ⏳ P1        | 会话内搜索                                                            |
 
 ## 二、服务端：msgbus
 
 ### 2.1 为什么是新服务
 
-| 候选 | 结论 | 依据 |
-| --- | --- | --- |
-| ucas-proxy 内加 | ❌ | Express + 同步 better-sqlite3 单进程；`loopWatchdog` + autoheal 表明事件循环卡顿已在生产发生过；单实例无横向扩展；`authenticate` 只认 Bearer 头，无 WS 鉴权路径 |
-| relay（web-remote-control） | ❌ | 语义是「device/terminal 1:1 配对 + 不解析 payload」；群组/持久化会破坏它的中立性。它继续负责「手机 ↔ 我的桌面 agent」这类 1:1 隧道 |
-| 新建 msgbus | ✅ | 连接、存储、限流自己扛；只复用 ucas-proxy 的 JWT 与组织模型 |
+| 候选                        | 结论 | 依据                                                                                                                                                            |
+| --------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ucas-proxy 内加             | ❌   | Express + 同步 better-sqlite3 单进程；`loopWatchdog` + autoheal 表明事件循环卡顿已在生产发生过；单实例无横向扩展；`authenticate` 只认 Bearer 头，无 WS 鉴权路径 |
+| relay（web-remote-control） | ❌   | 语义是「device/terminal 1:1 配对 + 不解析 payload」；群组/持久化会破坏它的中立性。它继续负责「手机 ↔ 我的桌面 agent」这类 1:1 隧道                              |
+| 新建 msgbus                 | ✅   | 连接、存储、限流自己扛；只复用 ucas-proxy 的 JWT 与组织模型                                                                                                     |
 
 ### 2.2 数据模型（SQLite WAL 起步）
 
@@ -83,7 +83,7 @@ messages(
 ```
 
 - **seq 分配必须在写事务内**：`BEGIN IMMEDIATE` → `UPDATE conversations SET last_seq = last_seq + 1
-  … RETURNING last_seq` → 插消息 → `COMMIT`。SQLite 单写者、WAL 读不阻塞写；**写路径批量提交**，
+… RETURNING last_seq` → 插消息 → `COMMIT`。SQLite 单写者、WAL 读不阻塞写；**写路径批量提交**，
   不要长事务（ucas-proxy 的教训）。
 - 附件表 P1 再加（`attachments(id, message_id, blob_key, mime, size, sha256)`）。
 
@@ -101,16 +101,16 @@ messages(
 
 **REST（拉取与写操作）**：
 
-| 方法 | 路径 | 用途 |
-| --- | --- | --- |
-| GET | `/api/conversations` | 会话列表（含 `last_read_seq` / `last_seq` / 最后一条消息，未读数由前两者相减得到） |
-| POST | `/api/conversations` | 创建 dm/group（`kind` + `memberIds`；dm 幂等返回既有会话） |
-| GET | `/api/conversations/:id/messages?since=<seq>` | 增量补洞（正序） |
-| GET | `/api/conversations/:id/messages?before=<seq>&limit=` | 历史分页（反向） |
-| POST | `/api/conversations/:id/read` | 上报 `last_read_seq`（取 max，防回退） |
-| PATCH | `/api/conversations/:id` | 改群名等 |
-| POST/DELETE | `/api/conversations/:id/members[/:userId]` | 拉人 / 移除 / 退群 |
-| GET | `/api/directory/users` | **企业网关侧新增**（见 §2.5） |
+| 方法        | 路径                                                  | 用途                                                                               |
+| ----------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| GET         | `/api/conversations`                                  | 会话列表（含 `last_read_seq` / `last_seq` / 最后一条消息，未读数由前两者相减得到） |
+| POST        | `/api/conversations`                                  | 创建 dm/group（`kind` + `memberIds`；dm 幂等返回既有会话）                         |
+| GET         | `/api/conversations/:id/messages?since=<seq>`         | 增量补洞（正序）                                                                   |
+| GET         | `/api/conversations/:id/messages?before=<seq>&limit=` | 历史分页（反向）                                                                   |
+| POST        | `/api/conversations/:id/read`                         | 上报 `last_read_seq`（取 max，防回退）                                             |
+| PATCH       | `/api/conversations/:id`                              | 改群名等                                                                           |
+| POST/DELETE | `/api/conversations/:id/members[/:userId]`            | 拉人 / 移除 / 退群                                                                 |
+| GET         | `/api/directory/users`                                | **企业网关侧新增**（见 §2.5）                                                      |
 
 WS 只做投递与实时事件；**所有状态都能从 REST 重建**——这样离线、重连、冷启动都不依赖长连接是否稳定。
 
@@ -186,14 +186,14 @@ IM 的消息内容也比用量数据更敏感，放进同一个库等于继承�
 
 ## 三、客户端（UWork 内核）
 
-| 层 | 位置 | 职责 |
-| --- | --- | --- |
-| 协议 | `packages/shared/src/im.ts`（新） | 类型单一来源：会话/消息/WS 信封；两套实现（桌面、手机）都从这里取 |
-| 服务 | `packages/services/src/im/`（新） | `IImService` + `ServiceChannels.Im`；方法 `listConversations / openConversation / sendMessage / markRead / createDm / createGroup`，事件 `onMessage` / `onConversationUpdated` |
-| 主进程 | `packages/desktop/src/main/im/`（新） | WS 客户端：连接、首帧 auth、心跳、退避重连、`since` 补洞、离线发送队列。**照抄 `webRemoteControlTransport.ts` 的重连/心跳/帧上限模式**（它已经过真机打磨） |
-| UI | `packages/ui/src/im/`（新） + `workspaceSidePane.ts:530` 的 union 加 `"messages"` | 会话列表 + 消息时间线 + 输入框；渲染分派在 `app-shell/AnimatedSidePanePanel.tsx`；`selection-side-chat` 是同类面板先例 |
-| 通知/角标 | 复用 `PlatformChannels` | 未读角标 `SyncWindowUnreadCount`（`channels.ts:263`）；新消息通知 `ShowTaskNotification`（`:404`） |
-| 手机 | `packages/ui/src/WebRemoteControlMobileShell.tsx` 加第三页（P2） | 手机页只维护一份独立站点（`mobile-web-control-self-hosted.md` §7.6） |
+| 层        | 位置                                                                              | 职责                                                                                                                                                                           |
+| --------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 协议      | `packages/shared/src/im.ts`（新）                                                 | 类型单一来源：会话/消息/WS 信封；两套实现（桌面、手机）都从这里取                                                                                                              |
+| 服务      | `packages/services/src/im/`（新）                                                 | `IImService` + `ServiceChannels.Im`；方法 `listConversations / openConversation / sendMessage / markRead / createDm / createGroup`，事件 `onMessage` / `onConversationUpdated` |
+| 主进程    | `packages/desktop/src/main/im/`（新）                                             | WS 客户端：连接、首帧 auth、心跳、退避重连、`since` 补洞、离线发送队列。**照抄 `webRemoteControlTransport.ts` 的重连/心跳/帧上限模式**（它已经过真机打磨）                     |
+| UI        | `packages/ui/src/im/`（新） + `workspaceSidePane.ts:530` 的 union 加 `"messages"` | 会话列表 + 消息时间线 + 输入框；渲染分派在 `app-shell/AnimatedSidePanePanel.tsx`；`selection-side-chat` 是同类面板先例                                                         |
+| 通知/角标 | 复用 `PlatformChannels`                                                           | 未读角标 `SyncWindowUnreadCount`（`channels.ts:263`）；新消息通知 `ShowTaskNotification`（`:404`）                                                                             |
+| 手机      | `packages/ui/src/WebRemoteControlMobileShell.tsx` 加第三页（P2）                  | 手机页只维护一份独立站点（`mobile-web-control-self-hosted.md` §7.6）                                                                                                           |
 
 服务层放在 `packages/services` 而不是直接写在 UI 里，是为了让手机页与未来的 agent provider 复用同一套
 读写逻辑（bot provider 也走 REST + WS，见 P2）。
@@ -303,14 +303,14 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 
 ## 六、风险与对策
 
-| 风险 | 对策 |
-| --- | --- |
-| 无推送时移动端体验缺口 | 一期用企微应用消息兜底；桌面端本来就是常驻进程，通知够用 |
-| 把 ucas-proxy 的单进程卡顿教训复制过来 | msgbus 独立进程；写路径批量提交；压测后再谈扩容 |
-| fork 上游同步冲突 | 新文件为主（`shared/src/im.ts`、`services/src/im/`、`desktop/src/main/im/`、`ui/src/im/`），接缝只改 side-pane union 与渲染分派两处 |
-| 多组织越权 | 服务端强制 org 约束 + 成员校验；隔离测试与 ucas-proxy 同范式 |
-| 数据出境 | 自建 msgbus 使消息不出境；同时复核 `mobile-web-control-self-hosted.md` 的出境清单 |
-| 目录端点被滥用枚举 | 只返回本 org、最小字段、按姓名搜索需登录态与频率限制 |
+| 风险                                   | 对策                                                                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 无推送时移动端体验缺口                 | 一期用企微应用消息兜底；桌面端本来就是常驻进程，通知够用                                                                            |
+| 把 ucas-proxy 的单进程卡顿教训复制过来 | msgbus 独立进程；写路径批量提交；压测后再谈扩容                                                                                     |
+| fork 上游同步冲突                      | 新文件为主（`shared/src/im.ts`、`services/src/im/`、`desktop/src/main/im/`、`ui/src/im/`），接缝只改 side-pane union 与渲染分派两处 |
+| 多组织越权                             | 服务端强制 org 约束 + 成员校验；隔离测试与 ucas-proxy 同范式                                                                        |
+| 数据出境                               | 自建 msgbus 使消息不出境；同时复核 `mobile-web-control-self-hosted.md` 的出境清单                                                   |
+| 目录端点被滥用枚举                     | 只返回本 org、最小字段、按姓名搜索需登录态与频率限制                                                                                |
 
 ## 七、本次未验证 / 实现时需确认
 
@@ -328,24 +328,24 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 先分清三种「参考」的含义：**整包当服务端**、**只引实时层/推送层**、**只抄协议与数据模型**。
 三者的代价差一个数量级，混着选是这类项目最常见的翻车方式。
 
-| 项目 | 语言 | 许可 | 活跃度 | 对 UWork 的定位 |
-| --- | --- | --- | --- | --- |
-| [`centrifugal/centrifugo`](https://github.com/centrifugal/centrifugo) | Go | Apache-2.0 | 10.9k★，2026-10-14 | **推荐直接引**：自托管实时层（WS/SSE 订阅、history、presence、JWT 鉴权、Redis 多节点）。自研只留会话/成员/消息持久化 |
-| [`binwiederhier/ntfy`](https://github.com/binwiederhier/ntfy) | Go | Apache-2.0 | 34.9k★，日更 | **推荐直接引**：自托管推送，Android/iOS 有官方 App，绕开国内 FCM 不可用；补 §2 里"移动端推送"的短板 |
-| [`element-hq/synapse`](https://github.com/element-hq/synapse) | Python+Rust | AGPL-3.0 | 4.7k★（旧 `matrix-org/synapse` 已归档） | Matrix 官方 homeserver。**抄同步协议**：`/sync` 的 since token、`m.read` / `m.fully_read`；整包太重 |
-| [`element-hq/element-web`](https://github.com/element-hq/element-web) | TS | AGPL-3.0 | 13.6k★ | 多端同步与未读状态的 UI 参考 |
-| [`zulip/zulip`](https://github.com/zulip/zulip) | Python | Apache-2.0 | 26.1k★ | **抄模型**：stream + topic 两级结构，是"频道 + 话题"最成熟的设计，也正好是 agent 派活的粒度 |
-| [`mattermost/mattermost`](https://github.com/mattermost/mattermost) | TS + Go | MIT + 企业版 | 39.4k★ | **抄 API 形状**：REST 分页 + WS 事件命名（`posted` / `channel_viewed` / `typing`）。整包会把"替代企微"变成"再造一个平台" |
-| [`RocketChat/Rocket.Chat`](https://github.com/RocketChat/Rocket.Chat) | TS | MIT + 企业版 | 46.3k★ | 同上，Node 栈但 Meteor/Mongo 重心与 UWork 不同 |
-| [`tinode/chat`](https://github.com/tinode/chat) | Go | GPL-3.0 | 13.5k★，2026-10-10 | **整包备选**：带 iOS/Android/Web 客户端与 chatbot，协议文档完整；代价是第三套技术栈 + 账号体系适配 |
-| [`openimsdk/open-im-server`](https://github.com/openimsdk/open-im-server) | Go | Apache-2.0 | 16.7k★，日更 | **整包备选**：中文生态、多端 SDK 与推送齐全，最接近"微信式"能力面 |
-| [`wildfirechat/im-server`](https://github.com/wildfirechat/im-server) | Java | 混合 | 8.6k★ | 国内企业常用整包（野火 IM），同类取舍 |
-| [`msgbyte/tailchat`](https://github.com/msgbyte/tailchat) | TS | Apache-2.0 | 3.6k★ | **TS 参考实现**：插件化 Discord-like，代码可读，适合当"TypeScript 怎么写频道/成员/权限"的样本 |
-| [`stoatchat/stoatchat`](https://github.com/stoatchat/stoatchat)（原 Revolt） | Rust | 混合 | 3.4k★，日更 | 开源 Discord 复刻，权限/频道模型可参考；成熟度中等 |
-| [`processone/ejabberd`](https://github.com/processone/ejabberd) | Erlang | GPL-2.0 | 6.7k★ | XMPP 栈（MAM 归档、多端 carbons、推送 XEP），极稳但生态老旧、团队要学 Erlang |
-| [`spacebarchat/server`](https://github.com/spacebarchat/server) | TS | AGPL-3.0 | 2.2k★ | Discord 兼容 API；成熟度不足，不建议 |
-| [`discourse/discourse`](https://github.com/discourse/discourse) | Ruby | GPL-2.0 | 48k★ | 论坛 + Chat，方向不符 |
-| [`yinxin630/fiora`](https://github.com/yinxin630/fiora) | TS | MIT | 7.2k★，**最后提交 2024-02** | 已停止维护，不要选 |
+| 项目                                                                         | 语言        | 许可         | 活跃度                                  | 对 UWork 的定位                                                                                                          |
+| ---------------------------------------------------------------------------- | ----------- | ------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [`centrifugal/centrifugo`](https://github.com/centrifugal/centrifugo)        | Go          | Apache-2.0   | 10.9k★，2026-10-14                      | **推荐直接引**：自托管实时层（WS/SSE 订阅、history、presence、JWT 鉴权、Redis 多节点）。自研只留会话/成员/消息持久化     |
+| [`binwiederhier/ntfy`](https://github.com/binwiederhier/ntfy)                | Go          | Apache-2.0   | 34.9k★，日更                            | **推荐直接引**：自托管推送，Android/iOS 有官方 App，绕开国内 FCM 不可用；补 §2 里"移动端推送"的短板                      |
+| [`element-hq/synapse`](https://github.com/element-hq/synapse)                | Python+Rust | AGPL-3.0     | 4.7k★（旧 `matrix-org/synapse` 已归档） | Matrix 官方 homeserver。**抄同步协议**：`/sync` 的 since token、`m.read` / `m.fully_read`；整包太重                      |
+| [`element-hq/element-web`](https://github.com/element-hq/element-web)        | TS          | AGPL-3.0     | 13.6k★                                  | 多端同步与未读状态的 UI 参考                                                                                             |
+| [`zulip/zulip`](https://github.com/zulip/zulip)                              | Python      | Apache-2.0   | 26.1k★                                  | **抄模型**：stream + topic 两级结构，是"频道 + 话题"最成熟的设计，也正好是 agent 派活的粒度                              |
+| [`mattermost/mattermost`](https://github.com/mattermost/mattermost)          | TS + Go     | MIT + 企业版 | 39.4k★                                  | **抄 API 形状**：REST 分页 + WS 事件命名（`posted` / `channel_viewed` / `typing`）。整包会把"替代企微"变成"再造一个平台" |
+| [`RocketChat/Rocket.Chat`](https://github.com/RocketChat/Rocket.Chat)        | TS          | MIT + 企业版 | 46.3k★                                  | 同上，Node 栈但 Meteor/Mongo 重心与 UWork 不同                                                                           |
+| [`tinode/chat`](https://github.com/tinode/chat)                              | Go          | GPL-3.0      | 13.5k★，2026-10-10                      | **整包备选**：带 iOS/Android/Web 客户端与 chatbot，协议文档完整；代价是第三套技术栈 + 账号体系适配                       |
+| [`openimsdk/open-im-server`](https://github.com/openimsdk/open-im-server)    | Go          | Apache-2.0   | 16.7k★，日更                            | **整包备选**：中文生态、多端 SDK 与推送齐全，最接近"微信式"能力面                                                        |
+| [`wildfirechat/im-server`](https://github.com/wildfirechat/im-server)        | Java        | 混合         | 8.6k★                                   | 国内企业常用整包（野火 IM），同类取舍                                                                                    |
+| [`msgbyte/tailchat`](https://github.com/msgbyte/tailchat)                    | TS          | Apache-2.0   | 3.6k★                                   | **TS 参考实现**：插件化 Discord-like，代码可读，适合当"TypeScript 怎么写频道/成员/权限"的样本                            |
+| [`stoatchat/stoatchat`](https://github.com/stoatchat/stoatchat)（原 Revolt） | Rust        | 混合         | 3.4k★，日更                             | 开源 Discord 复刻，权限/频道模型可参考；成熟度中等                                                                       |
+| [`processone/ejabberd`](https://github.com/processone/ejabberd)              | Erlang      | GPL-2.0      | 6.7k★                                   | XMPP 栈（MAM 归档、多端 carbons、推送 XEP），极稳但生态老旧、团队要学 Erlang                                             |
+| [`spacebarchat/server`](https://github.com/spacebarchat/server)              | TS          | AGPL-3.0     | 2.2k★                                   | Discord 兼容 API；成熟度不足，不建议                                                                                     |
+| [`discourse/discourse`](https://github.com/discourse/discourse)              | Ruby        | GPL-2.0      | 48k★                                    | 论坛 + Chat，方向不符                                                                                                    |
+| [`yinxin630/fiora`](https://github.com/yinxin630/fiora)                      | TS          | MIT          | 7.2k★，**最后提交 2024-02**             | 已停止维护，不要选                                                                                                       |
 
 **推荐组合（与 §2、§3 的方案一致）**：会话/成员/消息的持久化与 UWork 集成自研，
 实时层用 Centrifugo，推送用 ntfy，协议抄 Matrix 的 `/sync`（since token）与 Zulip 的 topic 模型。
@@ -359,15 +359,15 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 
 ### 已完成：服务端门禁 + msgbus 存储核心（代码在 ucas-proxy 仓库，未部署）
 
-| 文件（ucas-proxy 仓库） | 作用 |
-| --- | --- |
-| `services/control-plane/src/im/allowlist.ts` | 三级白名单判定（org + 部门 + 用户）：部门按分隔符切分后**按 token 精确相等**；两白名单皆空 ⇒ fail closed；显式 `'*'` 才整组织开放 |
-| `services/control-plane/src/im/registry.ts` | 判定主体取数（含 org slug）、目录条目（带切好的 `departments`）、给 msgbus 的白名单快照（只含判定标识，不带姓名等 PII） |
-| `services/control-plane/src/routes/directory.ts` | `GET /api/directory/users`：白名单外 403；列表与调用者**对称可见**；支持 `q` 搜索 |
-| `services/control-plane/src/routes/im.ts` | `GET /api/im/entitlement`（客户端渲染开关）与 `GET /api/im/internal/allowlist`（msgbus 拉快照；`IM_INTERNAL_TOKEN` 独立令牌，未配置返回 503 而不是放行） |
-| `services/msgbus/src/config/database.ts` | 新服务的表结构（conversations / conversation_members / messages；seq 唯一索引；时间戳为 epoch 毫秒） |
-| `services/msgbus/src/store/messaging.ts` | 存储核心：DM 幂等、会话内 seq 单调、`client_msg_id` 幂等、`since` 补洞、`before` 分页、未读=`last_seq-last_read_seq`、退群留痕、撤回 tombstone、跨组织按"不存在"处理 |
-| `.env.example` / `docker-compose.yml` | 新增 `IM_ENABLED_ORG_IDS` / `IM_ALLOWED_DEPARTMENTS` / `IM_ALLOWED_USER_IDS` / `IM_INTERNAL_TOKEN`（默认全空 = 不对任何人开放） |
+| 文件（ucas-proxy 仓库）                          | 作用                                                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/control-plane/src/im/allowlist.ts`     | 三级白名单判定（org + 部门 + 用户）：部门按分隔符切分后**按 token 精确相等**；两白名单皆空 ⇒ fail closed；显式 `'*'` 才整组织开放                                    |
+| `services/control-plane/src/im/registry.ts`      | 判定主体取数（含 org slug）、目录条目（带切好的 `departments`）、给 msgbus 的白名单快照（只含判定标识，不带姓名等 PII）                                              |
+| `services/control-plane/src/routes/directory.ts` | `GET /api/directory/users`：白名单外 403；列表与调用者**对称可见**；支持 `q` 搜索                                                                                    |
+| `services/control-plane/src/routes/im.ts`        | `GET /api/im/entitlement`（客户端渲染开关）与 `GET /api/im/internal/allowlist`（msgbus 拉快照；`IM_INTERNAL_TOKEN` 独立令牌，未配置返回 503 而不是放行）             |
+| `services/msgbus/src/config/database.ts`         | 新服务的表结构（conversations / conversation_members / messages；seq 唯一索引；时间戳为 epoch 毫秒）                                                                 |
+| `services/msgbus/src/store/messaging.ts`         | 存储核心：DM 幂等、会话内 seq 单调、`client_msg_id` 幂等、`since` 补洞、`before` 分页、未读=`last_seq-last_read_seq`、退群留痕、撤回 tombstone、跨组织按"不存在"处理 |
+| `.env.example` / `docker-compose.yml`            | 新增 `IM_ENABLED_ORG_IDS` / `IM_ALLOWED_DEPARTMENTS` / `IM_ALLOWED_USER_IDS` / `IM_INTERNAL_TOKEN`（默认全空 = 不对任何人开放）                                      |
 
 **验证记录（本次实际执行）**：
 
@@ -383,15 +383,15 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 
 ### 第二轮（同日）：HTTP + WS 层与部署接线
 
-| 文件（msgbus） | 作用 |
-| --- | --- |
-| `src/auth/allowlist.ts` | 白名单快照缓存：周期从 control-plane 拉取；**三条 fail loud**——首次拉不到就拒绝服务、快照命中 0 人就拒绝服务、刷新持续失败超过 `IM_ALLOWLIST_MAX_STALE_MS` 就拒绝服务（未超时则继续用最后一份好快照，避免网络抖动让 IM 整体不可用） |
-| `src/auth/identity.ts` | JWT（复用 `JWT_SECRET`）+ 白名单门禁；**403 与 503 分工**：403 = 明确不在名单（客户端不渲染入口），503 = IM 暂不可用（客户端提示稍后重试） |
-| `src/routes/conversations.ts` | REST 面 9 条：会话列表/建会话/拉消息(`since`/`before`)/发消息/已读/改名/加人/退群/撤回；**会话全体成员都必须在白名单内**（防把灰度外的人拉进来） |
-| `src/ws.ts` | 首帧 `auth`（令牌不放 URL）、心跳 30s、1 MiB 帧上限、自定义关闭码 4400/4401/4403/4503；只做投递，正确性在 store |
-| `src/hub.ts` | 用户→多连接映射（同一用户多端在线），按会话成员扇出 |
-| `src/app.ts` / `src/index.ts` | 装配与启动；`/health` 只看进程存活（白名单失配不该被 autoheal 反复重启掩盖，状态放在响应体里） |
-| `services/msgbus/Dockerfile` + compose `msgbus` 服务 | 独立容器 + `msgbus-data` 卷；只挂 `edge`（nginx 反代 + 访问 control-plane 拉快照） |
+| 文件（msgbus）                                       | 作用                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/auth/allowlist.ts`                              | 白名单快照缓存：周期从 control-plane 拉取；**三条 fail loud**——首次拉不到就拒绝服务、快照命中 0 人就拒绝服务、刷新持续失败超过 `IM_ALLOWLIST_MAX_STALE_MS` 就拒绝服务（未超时则继续用最后一份好快照，避免网络抖动让 IM 整体不可用） |
+| `src/auth/identity.ts`                               | JWT（复用 `JWT_SECRET`）+ 白名单门禁；**403 与 503 分工**：403 = 明确不在名单（客户端不渲染入口），503 = IM 暂不可用（客户端提示稍后重试）                                                                                          |
+| `src/routes/conversations.ts`                        | REST 面 9 条：会话列表/建会话/拉消息(`since`/`before`)/发消息/已读/改名/加人/退群/撤回；**会话全体成员都必须在白名单内**（防把灰度外的人拉进来）                                                                                    |
+| `src/ws.ts`                                          | 首帧 `auth`（令牌不放 URL）、心跳 30s、1 MiB 帧上限、自定义关闭码 4400/4401/4403/4503；只做投递，正确性在 store                                                                                                                     |
+| `src/hub.ts`                                         | 用户→多连接映射（同一用户多端在线），按会话成员扇出                                                                                                                                                                                 |
+| `src/app.ts` / `src/index.ts`                        | 装配与启动；`/health` 只看进程存活（白名单失配不该被 autoheal 反复重启掩盖，状态放在响应体里）                                                                                                                                      |
+| `services/msgbus/Dockerfile` + compose `msgbus` 服务 | 独立容器 + `msgbus-data` 卷；只挂 `edge`（nginx 反代 + 访问 control-plane 拉快照）                                                                                                                                                  |
 
 **验证记录（本轮实际执行）**：
 
@@ -402,14 +402,14 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 
 ### 第三轮（同日）：UWork 客户端协议与服务层
 
-| 文件（UWork 仓库） | 作用 |
-| --- | --- |
-| `packages/shared/src/im.ts` | 协议单一来源：会话/消息/通讯录/准入类型、WS 客户端帧与服务端帧（**用 zod 校验**，认不出的帧丢弃）、`IM_CLOSE_CODES`、`buildImWsUrl()` |
-| `packages/services/src/im/contract.ts` | `IImService` 契约 + `ServiceChannels.Im` descriptor；`ImView` 的 `entitlement: null` 表示"还查不到"而不是"没权限" |
-| `packages/services/src/im/imHttpClient.ts` | REST 面（9 条），403/503 语义原样上抛（`ImHttpError` 带 code） |
-| `packages/services/src/im/imTransport.ts` | WS 连接管理：首帧 auth、心跳兼存活探针、指数退避重连、关闭码分派（4403 终态 / 4503 慢重连 / 4401 重取令牌） |
-| `packages/services/src/im/imService.ts` | 门面：准入 + 会话列表 + 消息缓存 + 未读 + 实时事件；发送"WS 优先、超时回退 HTTP"，两条路共用同一个 `clientMsgId` |
-| `packages/services/test/im.test.ts` | 14 条用例（连接 6 + 门面 8），用假 socket 与假 HTTP 客户端驱动 |
+| 文件（UWork 仓库）                         | 作用                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared/src/im.ts`                | 协议单一来源：会话/消息/通讯录/准入类型、WS 客户端帧与服务端帧（**用 zod 校验**，认不出的帧丢弃）、`IM_CLOSE_CODES`、`buildImWsUrl()` |
+| `packages/services/src/im/contract.ts`     | `IImService` 契约 + `ServiceChannels.Im` descriptor；`ImView` 的 `entitlement: null` 表示"还查不到"而不是"没权限"                     |
+| `packages/services/src/im/imHttpClient.ts` | REST 面（9 条），403/503 语义原样上抛（`ImHttpError` 带 code）                                                                        |
+| `packages/services/src/im/imTransport.ts`  | WS 连接管理：首帧 auth、心跳兼存活探针、指数退避重连、关闭码分派（4403 终态 / 4503 慢重连 / 4401 重取令牌）                           |
+| `packages/services/src/im/imService.ts`    | 门面：准入 + 会话列表 + 消息缓存 + 未读 + 实时事件；发送"WS 优先、超时回退 HTTP"，两条路共用同一个 `clientMsgId`                      |
+| `packages/services/test/im.test.ts`        | 14 条用例（连接 6 + 门面 8），用假 socket 与假 HTTP 客户端驱动                                                                        |
 
 **注册点共 7 处**（比"新增服务改 4 处"的既有说法多，因为类型入口既要从 `index.ts` 再导出、又要声明子路径别名）：
 `shared/package.json` 的 `exports["./im"]`、`shared/src/index.ts` 的再导出、`shared/src/channels.ts` 的
@@ -440,14 +440,14 @@ IM_ALLOWED_USER_IDS=                        # 可选：内部 uuid 或 wecom_use
 
 **IM 面板与入口**（UWork 仓库）：
 
-| 文件 | 作用 |
-| --- | --- |
-| `packages/ui/src/im/useIm.ts` | 两个 hook：`useIm`（订阅 `onDidChange` + 取初值 + 进面板刷新一次）与 `useImConversation`（打开会话拉最新页、实时事件合并、`catch_up` 静默插入、撤回改 tombstone、向上翻页） |
-| `packages/ui/src/im/MessagesSidePane.tsx` | 面板：头部（连接状态徽标 + 发起单聊 + 刷新）、会话列表（未读角标）、通讯录选人、空/未开通/不可用三种状态分开显示 |
-| `packages/ui/src/im/ImConversationPanel.tsx` | 时间线（气泡按 `selfUserId` 对齐、撤回留占位、时间用系统 locale 格式化）与输入框（Enter 发送 / Shift+Enter 换行） |
-| `packages/ui/src/lib/workspaceSidePane.ts` | 新增 `messages` tab 类型/union/`createMessagesSidePaneTab`/`openMessagesSidePane`；登记为**工作区全局 tab**（IM 不随会话生灭） |
-| `packages/ui/src/app-shell/*`、`WorkspaceSidebar*`、`App.tsx`、`hooks/useAppPanels.ts`、`services/src/accessor.ts` | 接线：渲染分派、tab 图标与标题、`handleOpenMessages` 一路从 `useAppPanels` 传到侧栏页脚的消息按钮；`IServiceAccessor` 暴露可选 `imService` |
-| `i18n/locales/{zh-CN,en-US}.ts` | 新增 25 个 `im.*` 文案（两套语言同步） |
+| 文件                                                                                                               | 作用                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/ui/src/im/useIm.ts`                                                                                      | 两个 hook：`useIm`（订阅 `onDidChange` + 取初值 + 进面板刷新一次）与 `useImConversation`（打开会话拉最新页、实时事件合并、`catch_up` 静默插入、撤回改 tombstone、向上翻页） |
+| `packages/ui/src/im/MessagesSidePane.tsx`                                                                          | 面板：头部（连接状态徽标 + 发起单聊 + 刷新）、会话列表（未读角标）、通讯录选人、空/未开通/不可用三种状态分开显示                                                            |
+| `packages/ui/src/im/ImConversationPanel.tsx`                                                                       | 时间线（气泡按 `selfUserId` 对齐、撤回留占位、时间用系统 locale 格式化）与输入框（Enter 发送 / Shift+Enter 换行）                                                           |
+| `packages/ui/src/lib/workspaceSidePane.ts`                                                                         | 新增 `messages` tab 类型/union/`createMessagesSidePaneTab`/`openMessagesSidePane`；登记为**工作区全局 tab**（IM 不随会话生灭）                                              |
+| `packages/ui/src/app-shell/*`、`WorkspaceSidebar*`、`App.tsx`、`hooks/useAppPanels.ts`、`services/src/accessor.ts` | 接线：渲染分派、tab 图标与标题、`handleOpenMessages` 一路从 `useAppPanels` 传到侧栏页脚的消息按钮；`IServiceAccessor` 暴露可选 `imService`                                  |
+| `i18n/locales/{zh-CN,en-US}.ts`                                                                                    | 新增 25 个 `im.*` 文案（两套语言同步）                                                                                                                                      |
 
 入口位置：侧栏页脚设置按钮左侧的「消息」按钮（`data-testid="sidebar-messages-button"`），点击打开/聚焦同一个面板。
 `ImView` 增加了 `selfUserId`（由 WS 的 `ready` 帧带回），UI 用它对齐自己发的消息气泡。
@@ -560,15 +560,15 @@ REST `DELETE /api/conversations/:id/messages/:messageId` 成功后向会话成�
 
 **容量实测**（在生产 msgbus 容器里跑**真实 store**，最坏情况：把一半流量打在全公司 205 人频道上）：
 
-| 指标 | 实测值 |
-| --- | --- |
-| 写入吞吐 | **约 3,050 条/秒**（20,000 条用 6.5 秒） |
-| 单条写入延迟 | p50 0.22ms / p95 0.30ms / p99 5ms / max ~20ms |
-| 会话列表 | 0.15ms/次 |
-| 拉最近 50 条 / `since` 增量 | 0.22ms/次 |
-| 205 人群取成员 | 0.12ms/次 |
-| 存储 | 约 **345 字节/条** → 205 人 × 50 条/天 ≈ 3.4 MiB/天，一年约 **1.2 GiB** |
-| `synchronous` | 已是 NORMAL（WAL 推荐值），无需再调 |
+| 指标                        | 实测值                                                                  |
+| --------------------------- | ----------------------------------------------------------------------- |
+| 写入吞吐                    | **约 3,050 条/秒**（20,000 条用 6.5 秒）                                |
+| 单条写入延迟                | p50 0.22ms / p95 0.30ms / p99 5ms / max ~20ms                           |
+| 会话列表                    | 0.15ms/次                                                               |
+| 拉最近 50 条 / `since` 增量 | 0.22ms/次                                                               |
+| 205 人群取成员              | 0.12ms/次                                                               |
+| 存储                        | 约 **345 字节/条** → 205 人 × 50 条/天 ≈ 3.4 MiB/天，一年约 **1.2 GiB** |
+| `synchronous`               | 已是 NORMAL（WAL 推荐值），无需再调                                     |
 
 **结论：200 人这个量级离 SQLite 上限还差两个数量级**——205 人日均约 0.12 条/秒，峰值按百倍算也就
 ~12 条/秒，是实测容量的 0.4%。换 Postgres 的触发条件**不是吞吐**，而是：
@@ -635,16 +635,16 @@ compose 里 msgbus 加 `DATABASE_URL`、挂 `internal` 网络、去掉 `msgbus-d
 
 ### 10.1 现状缺口（对照我们的真实 schema）
 
-| 维度 | Discord | 我们 | 判定 |
-| --- | --- | --- | --- |
-| 容器层级 | Guild → Category → Channel → Thread | `conversations` 平铺 | **缺**：没有"空间/团队"层，channel 与 group 是平级兄弟 |
-| 分组 | Category（≤50 个频道，不参与权限继承） | 无 | **缺**：没有侧栏分组 |
-| 频道类型 | text/announcement/forum/media/voice + 线程三种 | `kind='channel'` 语义未定义 | **缺**：类型没有行为差异 |
-| 话题 | 线程：public 必须从消息长出，private 可独立 | 无 | **缺**：讨论无法收束，全员挤一条流 |
-| 权限 | role + 频道级 allow/deny 覆盖（8 步决议，**specificity 胜出**而非"deny 永远赢"） | owner/member + 应用级白名单 | **缺**：没有频道级 ACL，做不到"部门可见" |
-| 消息 | 回复引用、reactions、@、置顶、附件、编辑 | 纯文本 + 撤回（留痕） | 缺绝大多数 |
-| 未读 | Discord **没有**公开的已读 API（客户端自管） | `last_read_seq`（够用） | 我们更完整，但缺"公开/私密已读"的区分 |
-| 搜索/管理/留存 | 有，但企业要的合规/留存 Discord 都没有 | 无 | 缺；但 Discord 也不是参考对象 |
+| 维度           | Discord                                                                          | 我们                        | 判定                                                   |
+| -------------- | -------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ |
+| 容器层级       | Guild → Category → Channel → Thread                                              | `conversations` 平铺        | **缺**：没有"空间/团队"层，channel 与 group 是平级兄弟 |
+| 分组           | Category（≤50 个频道，不参与权限继承）                                           | 无                          | **缺**：没有侧栏分组                                   |
+| 频道类型       | text/announcement/forum/media/voice + 线程三种                                   | `kind='channel'` 语义未定义 | **缺**：类型没有行为差异                               |
+| 话题           | 线程：public 必须从消息长出，private 可独立                                      | 无                          | **缺**：讨论无法收束，全员挤一条流                     |
+| 权限           | role + 频道级 allow/deny 覆盖（8 步决议，**specificity 胜出**而非"deny 永远赢"） | owner/member + 应用级白名单 | **缺**：没有频道级 ACL，做不到"部门可见"               |
+| 消息           | 回复引用、reactions、@、置顶、附件、编辑                                         | 纯文本 + 撤回（留痕）       | 缺绝大多数                                             |
+| 未读           | Discord **没有**公开的已读 API（客户端自管）                                     | `last_read_seq`（够用）     | 我们更完整，但缺"公开/私密已读"的区分                  |
+| 搜索/管理/留存 | 有，但企业要的合规/留存 Discord 都没有                                           | 无                          | 缺；但 Discord 也不是参考对象                          |
 
 结论：**"太简单"是事实**，缺的是"空间 → 频道 → 话题"三层结构 + 频道级权限 + 话题化讨论。
 
@@ -652,14 +652,14 @@ compose 里 msgbus 加 `DATABASE_URL`、挂 `internal` 网络、去掉 `msgbus-d
 
 **整包采用**（我们只写 UI，做它 API 的客户端）：
 
-| 项目 | 提供什么 | **致命阻塞** |
-| --- | --- | --- |
-| **Zulip**（Apache-2.0，26.0k★，昨日推送） | **唯一原生支持外部 JWT**（`JWT_AUTH_KEYS` + `/api/v1/jwt/fetch_api_key`，payload 只认 email）；话题模型最正统（"话题是标签，不是消息"）；频道文件夹、每频道权限、无 open-core 目录 | 运维是 Django+Tornado+PG+Redis+RabbitMQ+memcached 的**整套 appliance**；实时是长轮询；**"超过 10 人的组织"要用它的手机推送要付费**；话题优先的 UX 对 205 个用惯企微的人是强加 |
-| **Mattermost**（MIT 二进制/AGPL 源，39.4k★） | 频道+线程+每用户未读计数最完整；REST v4 有 549 个接口；管理员可给任意用户签发 token | **SSO 已从 Team Edition 移除（OIDC/SAML/LDAP 全付费）**；WebSocket 事件 API 官方文档已下线（反向工程）；合规/留存/HA/企业搜索全付费 |
-| **OpenIM**（Apache-2.0，16.7k★） | 身份最贴合（"业务后端是唯一事实源"，userID 由调用方给，后端签发 IM token）；有官方 Electron SDK | **完全没有频道/话题**（群 + 会话只有客户端分组）→ 直接不满足需求；7 个核心容器（mongo/redis/kafka/etcd/minio/…）；JS SDK 与 Web/管理台是 ARR 闭源 |
-| **Matrix/Synapse**（AGPL-3.0） | 唯一**标准协议**；Spaces/Rooms/Threads 都稳定；Application Service 可"以成员身份说话"（agent 的理想模型）；power levels 是最完整的每房间覆盖 | 你得**写一个 Matrix 客户端**（`/sync` + E2EE + 设备验证）；单租户下联邦/E2EE 是纯负担；无原生外部 JWT（要 appservice 或密码 provider 模块） |
-| **Rocket.Chat**（MIT + ee/，46.3k★） | 模型最贴需求（channels/teams/discussions/threads + 房间级角色）；官方 compose 只要 2 个容器 | 现代 REST 类型里**没有 JWT 登录**；DDP（Meteor）协议要自己实现；guest 与自定义角色是企业版 |
-| **Tinode**（GPL-3.0，13.5k★） | 最轻量最 API-first（纯 Go，WS JSON，无强制 Web UI）；位图访问模式 + 每用户覆盖设计干净 | **没有频道/分组/话题/角色/组织**：`head.thread` 明确只是"给扁平消息打标签"；GPL-3.0 对"交付设备"有传染性 |
+| 项目                                         | 提供什么                                                                                                                                                                           | **致命阻塞**                                                                                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zulip**（Apache-2.0，26.0k★，昨日推送）    | **唯一原生支持外部 JWT**（`JWT_AUTH_KEYS` + `/api/v1/jwt/fetch_api_key`，payload 只认 email）；话题模型最正统（"话题是标签，不是消息"）；频道文件夹、每频道权限、无 open-core 目录 | 运维是 Django+Tornado+PG+Redis+RabbitMQ+memcached 的**整套 appliance**；实时是长轮询；**"超过 10 人的组织"要用它的手机推送要付费**；话题优先的 UX 对 205 个用惯企微的人是强加 |
+| **Mattermost**（MIT 二进制/AGPL 源，39.4k★） | 频道+线程+每用户未读计数最完整；REST v4 有 549 个接口；管理员可给任意用户签发 token                                                                                                | **SSO 已从 Team Edition 移除（OIDC/SAML/LDAP 全付费）**；WebSocket 事件 API 官方文档已下线（反向工程）；合规/留存/HA/企业搜索全付费                                           |
+| **OpenIM**（Apache-2.0，16.7k★）             | 身份最贴合（"业务后端是唯一事实源"，userID 由调用方给，后端签发 IM token）；有官方 Electron SDK                                                                                    | **完全没有频道/话题**（群 + 会话只有客户端分组）→ 直接不满足需求；7 个核心容器（mongo/redis/kafka/etcd/minio/…）；JS SDK 与 Web/管理台是 ARR 闭源                             |
+| **Matrix/Synapse**（AGPL-3.0）               | 唯一**标准协议**；Spaces/Rooms/Threads 都稳定；Application Service 可"以成员身份说话"（agent 的理想模型）；power levels 是最完整的每房间覆盖                                       | 你得**写一个 Matrix 客户端**（`/sync` + E2EE + 设备验证）；单租户下联邦/E2EE 是纯负担；无原生外部 JWT（要 appservice 或密码 provider 模块）                                   |
+| **Rocket.Chat**（MIT + ee/，46.3k★）         | 模型最贴需求（channels/teams/discussions/threads + 房间级角色）；官方 compose 只要 2 个容器                                                                                        | 现代 REST 类型里**没有 JWT 登录**；DDP（Meteor）协议要自己实现；guest 与自定义角色是企业版                                                                                    |
+| **Tinode**（GPL-3.0，13.5k★）                | 最轻量最 API-first（纯 Go，WS JSON，无强制 Web UI）；位图访问模式 + 每用户覆盖设计干净                                                                                             | **没有频道/分组/话题/角色/组织**：`head.thread` 明确只是"给扁平消息打标签"；GPL-3.0 对"交付设备"有传染性                                                                      |
 
 **抄模型**（我们继续自己写服务端，但按成熟模型设计）：
 
@@ -693,8 +693,8 @@ read_state(principal_id, scope: channel|topic, scope_id,
 ### 10.4 三条必须避开的坑（都有实证）
 
 1. **别把"线程"做成容器**。Spacebar 开发六年仍未实现 message threads；Discord 用一套 channel 类型枚举
-   + 独立 `ThreadMember` 表表达线程 = 等于第二套频道系统。Zulip/Slack/Matrix 都收敛到"消息上的扁平关系
-   + 每用户关注/已读状态"。
+   - 独立 `ThreadMember` 表表达线程 = 等于第二套频道系统。Zulip/Slack/Matrix 都收敛到"消息上的扁平关系
+   - 每用户关注/已读状态"。
 2. **别抄位域权限 + rank 阶梯**。Stoat 需要写注释限制"只用低 52 位以适配 JS"；位域还冻结权限词表。
    用命名权限点 + 行级 allow/deny 覆盖（同一套词表，用户覆盖胜过角色，deny 在**同一层**内先于 allow）。
 3. **别把已读状态混成一个数**。Matrix 有三个：`m.read`（同事可见）、`m.read.private`（只用于清通知）、
@@ -746,13 +746,13 @@ iOS 与鸿蒙是从零写壳（但同样只是壳）。保活服务本身是为"
 
 ### 11.2 三个平台的硬事实（均为官方文档实查）
 
-| | iOS | Android | 鸿蒙 NEXT |
-| --- | --- | --- | --- |
-| 复用现有壳 | 否（要新写壳） | **可以**（现有壳基础上加推送/登录） | **完全不能**：NEXT（= HarmonyOS 5）**不跑 APK**，要新写 ArkTS 应用 |
-| 内部分发 | **App Store 走不通**：WebView 套壳撞 4.2，远控类撞 **4.2.7（要求主机与客户端在同一局域网、且"云应用瘦客户端不适合上架"）**；→ **Enterprise Program：299 USD/年**，要求**报名主体自身 ≥100 名员工**（明确不接受分支机构）、D-U-N-S、验证面试、每年复核 | 直接发 APK 在国内企业内部很常见（自建更新或 MDM）；但**不上架会影响推送权限**（见右） | **In-house/指定设备发布**：每个 Profile 100 台设备、最多 100 个 Profile（205 人足够），**支持手机**；企业开发者账号需营业执照 + 对公账户 |
-| 推送 | APNs，一个团队 key 打所有 App，无日配额 | **厂商碎、且与上架绑定**：小米"必须完成上架后才能启用推送"；OPPO 自 2024-07-29 起**非商店安装失去公信**；vivo 自 2025-02-17 起**非商店安装默认关闭运营消息**；华为/荣耀/魅族另有各自账号与分类审核 | Push Kit **免费**；但**未申请"自分类权益"时每天每设备只有 2 条**；IM 属"服务与通讯类"不受条数限制（华为原文举例就是"企业内部办公应用，同事间的点对点聊天消息"），需申请，约 3 个工作日 |
-| 后台 | 静默推送不保证送达（"每小时别超过两三條"、被强杀即丢弃）→ 聊天必须发**可见通知** | 进程被杀后只有厂商通道能到；各 OEM 要用户手动加白名单（自启动/后台保护） | **WebView 后台什么都拿不到**（文档明确挂起后不能用网络与定时器）→ 实时只能靠原生推送 |
-| 特别约束 | Enterprise 报名主体必须是**有 ≥100 员工的法人实体**（三家子公司要注意报哪个主体） | 各厂商还要申请渠道/模板/自分类权益（属"账号文书"而非代码） | **不能自带 WebView 内核**，只能用系统的 Chromium，且随系统版本从 **M99 / M114 / M132 / M144** 不等 → 我们的 web 包必须至少在 M114 与 M144 上测过 |
+|            | iOS                                                                                                                                                                                                                                                   | Android                                                                                                                                                                                            | 鸿蒙 NEXT                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 复用现有壳 | 否（要新写壳）                                                                                                                                                                                                                                        | **可以**（现有壳基础上加推送/登录）                                                                                                                                                                | **完全不能**：NEXT（= HarmonyOS 5）**不跑 APK**，要新写 ArkTS 应用                                                                                                                     |
+| 内部分发   | **App Store 走不通**：WebView 套壳撞 4.2，远控类撞 **4.2.7（要求主机与客户端在同一局域网、且"云应用瘦客户端不适合上架"）**；→ **Enterprise Program：299 USD/年**，要求**报名主体自身 ≥100 名员工**（明确不接受分支机构）、D-U-N-S、验证面试、每年复核 | 直接发 APK 在国内企业内部很常见（自建更新或 MDM）；但**不上架会影响推送权限**（见右）                                                                                                              | **In-house/指定设备发布**：每个 Profile 100 台设备、最多 100 个 Profile（205 人足够），**支持手机**；企业开发者账号需营业执照 + 对公账户                                               |
+| 推送       | APNs，一个团队 key 打所有 App，无日配额                                                                                                                                                                                                               | **厂商碎、且与上架绑定**：小米"必须完成上架后才能启用推送"；OPPO 自 2024-07-29 起**非商店安装失去公信**；vivo 自 2025-02-17 起**非商店安装默认关闭运营消息**；华为/荣耀/魅族另有各自账号与分类审核 | Push Kit **免费**；但**未申请"自分类权益"时每天每设备只有 2 条**；IM 属"服务与通讯类"不受条数限制（华为原文举例就是"企业内部办公应用，同事间的点对点聊天消息"），需申请，约 3 个工作日 |
+| 后台       | 静默推送不保证送达（"每小时别超过两三條"、被强杀即丢弃）→ 聊天必须发**可见通知**                                                                                                                                                                      | 进程被杀后只有厂商通道能到；各 OEM 要用户手动加白名单（自启动/后台保护）                                                                                                                           | **WebView 后台什么都拿不到**（文档明确挂起后不能用网络与定时器）→ 实时只能靠原生推送                                                                                                   |
+| 特别约束   | Enterprise 报名主体必须是**有 ≥100 员工的法人实体**（三家子公司要注意报哪个主体）                                                                                                                                                                     | 各厂商还要申请渠道/模板/自分类权益（属"账号文书"而非代码）                                                                                                                                         | **不能自带 WebView 内核**，只能用系统的 Chromium，且随系统版本从 **M99 / M114 / M132 / M144** 不等 → 我们的 web 包必须至少在 M114 与 M144 上测过                                       |
 
 **最容易漏的一条合规**：**工信部 APP 备案对所有 App 都强制**（即使不上任何商店）——需提供包名/Bundle ID、
 公钥、Android 的 MD5 或 iOS 的 SHA-1、SDK 厂商清单，约 20 个工作日审核，且**备案号要在 App 内展示**；
@@ -794,12 +794,12 @@ iOS 与鸿蒙是从零写壳（但同样只是壳）。保活服务本身是为"
 
 **厂商级推送权限（不上架时）——这是本节最重要的一张表**：
 
-| 厂商 | 不上架能否启用推送 | 不上架能发什么 | 依据 |
-| --- | --- | --- | --- |
-| **vivo** | **不能** | 仅"受限/测试权限"：1000 条/天测试消息，**不能给线上用户推送** | 厂商原文："应用必须上架才具备线上推送能力，上架后才可以给线上用户推送……推送权限为【正式】" |
-| **OPPO** | **不能** | 仅测试权限（1000 条/天），且**"通讯与服务"类不支持**——即聊天通知这类根本发不了；正式权限"资源上架后方可申请" | 厂商文档 + 聚合器文档 |
-| **小米** | **高风险（未证实）** | 若可启用：默认通道仅 **1 条/设备/天**，私信类需平台申请+模板 | ⚠️ 我此前引用的"必须完成上架后才能启用推送"**在小米官方文档中查不到**（已证伪）；但极光 JPush 的对照表把小米标为"需要上架"。**待实测**：拿真包名 + release 证书指纹到小米推送控制台试启停 |
-| 华为 / 荣耀 / 魅族 | 可以（聚合器口径，厂商文档未直读） | 服务与通讯类不限量；但**未申请"自分类权益"时会被智能分类**，可能落进每天 2 条的营销桶 | 极光 JPush《厂商通道参数申请指南》 |
+| 厂商               | 不上架能否启用推送                 | 不上架能发什么                                                                                               | 依据                                                                                                                                                                                      |
+| ------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **vivo**           | **不能**                           | 仅"受限/测试权限"：1000 条/天测试消息，**不能给线上用户推送**                                                | 厂商原文："应用必须上架才具备线上推送能力，上架后才可以给线上用户推送……推送权限为【正式】"                                                                                                |
+| **OPPO**           | **不能**                           | 仅测试权限（1000 条/天），且**"通讯与服务"类不支持**——即聊天通知这类根本发不了；正式权限"资源上架后方可申请" | 厂商文档 + 聚合器文档                                                                                                                                                                     |
+| **小米**           | **高风险（未证实）**               | 若可启用：默认通道仅 **1 条/设备/天**，私信类需平台申请+模板                                                 | ⚠️ 我此前引用的"必须完成上架后才能启用推送"**在小米官方文档中查不到**（已证伪）；但极光 JPush 的对照表把小米标为"需要上架"。**待实测**：拿真包名 + release 证书指纹到小米推送控制台试启停 |
+| 华为 / 荣耀 / 魅族 | 可以（聚合器口径，厂商文档未直读） | 服务与通讯类不限量；但**未申请"自分类权益"时会被智能分类**，可能落进每天 2 条的营销桶                        | 极光 JPush《厂商通道参数申请指南》                                                                                                                                                        |
 
 补充事实：推送投递按**包名 + 签名证书指纹**判定，与安装来源无关——所以**必须用 release 证书在各厂商平台登记**
 （debug 包拿不到厂商推送）；但 vivo/OPPO 即便登记了 release 证书，未上架仍只有测试权限。
@@ -830,6 +830,294 @@ iOS 与鸿蒙是从零写壳（但同样只是壳）。保活服务本身是为"
 **对通知策略的最终结论**：**企微应用消息是跨厂商的基线通道**（免费、2048 字节 text/textcard、
 每应用 200 人次/天 × 账号上限、单成员 30 次/分与 1000 次/时；落地只能到网页），
 **App 存活时的长连接**做应用内投递，**厂商原生推送只作为华为/荣耀/魅族的增强**。
+
+## 十二、UI 层调研：成熟聊天界面能不能直接接进来（2026-10-17）
+
+问题（负责人口径）："重要的是 UI 能不能直接接进来，也就是成熟的 UI 界面设置。"——即不想手搓界面，
+希望拿一个成熟的聊天 UI 改一改就用。以下均为实查（许可证逐文件核对、LOC 实测）。
+
+### 12.1 直接回答：**没有可以直接插进来的成熟聊天界面**
+
+| 候选                              | 实际性质                                                 | 为什么不能直接用                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stream Chat React**             | **不是开源**                                             | LICENSE 是"SOURCE CODE LICENSE AGREEMENT…PROPRIETARY PRODUCT"，要求使用者是 Stream 的**付费客户**且非竞品；UI 绑死 `stream-chat` SDK 与云端           |
+| **CometChat UIKit**               | **不是开源**                                             | 许可证只写了 ToS 链接；`CometChat.init(appId)` 绑死其云（私有化是 Enterprise 附加项）                                                                 |
+| **Sendbird UIKit**                | MIT，但**焊死自家 SDK**                                  | 真 MIT 可 fork，但 `@sendbird/chat` 是直接依赖，没有可注入的"chat client"接口；数据层换不动                                                           |
+| **腾讯 ChatUIKit React**          | MIT，但**焊死腾讯云 SDK**                                | 界面最贴中文 IM（会话列表/消息列表/输入框/群管理齐全），但没有自托管方案                                                                              |
+| **Element Web**                   | AGPL/GPL/商业三选一 + **53% 文件 import matrix-js-sdk**  | 内部分发也会触发 GPL 的源码义务；且 1306/2482 个文件写死在 Matrix 数据层上                                                                            |
+| **Mattermost webapp**             | `webapp/` 确为 **Apache-2.0**（已核对 LICENSE.txt 原文） | 但 85 万行；真正拖住你的是 `mattermost-redux` 的 **326 文件 / 8.8 万行领域逻辑**（teams/channels/posts/Apps/策略），不是"换掉一个 API client"能解决的 |
+| **Rocket.Chat 客户端**            | MIT（`ee/` 除外）                                        | 是 **Meteor 应用**：451 个文件调 384 个端点、认证是 Meteor Accounts；界面部分（MessageList/Message 组件）**未发布**                                   |
+| **chatscope/chat-ui-kit-react**   | MIT，唯一有完整 IM 骨架                                  | 样式停在 2022（预编译 CSS + FontAwesome）、无虚拟化；只适合当**需求清单**                                                                             |
+| **Revolt / Wire / OpenIM 客户端** | AGPL/GPL                                                 | 许可证直接出局（OpenIM 的 React/Electron 客户端是 AGPL-3.0）                                                                                          |
+
+**唯一"整包拿过来改"算术成立的是 Tailchat**（Apache-2.0，客户端 3.0 万行 + shared 8 千行）：
+React+TS+**Tailwind**+zustand、Discord 式"群→面板"结构、代码里明确支持前后端分离
+（`client/web/build/webpack.config.ts` 的 `SERVICE_URL`）、**传输层只有 3 个文件 451 行**
+（`client/shared/api/{request,socket}.ts`，改这里 + 73 个端点调用点即可指向我们的后端）。
+代价：客户端停在 **React 18 / Tailwind 2 / antd 4 / axios 0.21**（上游只维护服务端与 admin-next），
+缺**输入中提示、线程、通知层、通用文件发送**，且 fork 后没有上游更新路径。
+**许可证前置条件**：`client/shared/package.json` 写的是 `"license": "GPLv3"`（与根 Apache-2.0 矛盾），
+fork 前要拿到作者的书面更正。
+
+### 12.2 我们仓库里已经有"最难做对的那一层"
+
+成熟感的来源不是"有没有库"，而是三件事：**会话列表的信息密度**、**消息列表的滚动行为**、
+**消息的可操作性**（表情/线程/附件）。而其中"最容易做丑"的消息渲染与输入区，
+**我们仓库里已经有一整套成熟件**（Vercel AI Elements，Apache-2.0，已 vendor）：
+
+- `packages/ui/src/components/ai-elements/conversation.tsx` — `Conversation` / `ConversationContent` /
+  `ConversationScrollButton`，底层是 `StickToBottom`（贴底、用户上翻即停、回到底部按钮）。
+- `message.tsx` — `Message` / `MessageContent` / `MessageActions` / `MessageAction`（消息行与操作区）。
+- `prompt-input*.tsx`（含 attachments 上下文）与 `LexicalChatInput.tsx`（1,538 行，带 @提及、粘贴、草稿、提交语义）。
+- `chat-loading.tsx` / `shimmer.tsx` / `attachments.tsx` / `image-preview-dialog.tsx` / `code-block.tsx` 等。
+
+`components.json` 里还注册着 AI Elements registry（`@ai-elements` → ai-sdk.dev），可直接 `shadcn add` 补件。
+**结论：第 11.4 节那种裸 `<div>` 气泡 + 裸 `<textarea>` + 手写 `scrollTop=scrollHeight` 的写法是错的**——
+不是因为缺库，而是因为没用手边已装好的成熟件。
+
+### 12.3 目标写法（"接成熟件"的具体清单）
+
+1. **消息时间线**：改用 `Conversation`(StickToBottom) + `Message`/`MessageContent`，行为与 agent 对话一致（同一套滚动语义）。
+2. **列表引擎**：`react-virtuoso`（MIT，唯一有原生聊天语义：`followOutput` 贴底、`firstItemIndex`+`startReached`
+   前插历史不跳位、`initialTopMostItemIndex` 直达未读、`atBottomStateChange` 跳到底部）。
+3. **输入区**：`PromptInput` 家族（附件、快捷键、提交语义），需要 @提及则接 `LexicalChatInput`。
+4. **会话行字段清单**：照 chatscope 的 `unreadCnt` / `unreadDot` / `lastSenderName` / `lastActivityTime` / `active`
+   把"成熟会话行"该有的信息补全（头像、预览、时间、未读、静音/置顶）。
+5. **缺什么去 Mattermost 抄零件**（Apache-2.0，样式需移植到 Tailwind）：虚拟化消息视图、线程视图、
+   文件预览（含 pdfjs）、emoji picker、快捷键系统、@提及。
+6. **表情/回复/线程/附件**：`emoji-mart` 或 `frimousse`（均 MIT）+ 上面的抽象。
+
+### 12.4 两条路线，供拍板
+
+- **路线 A（推荐，周级）**：继续自持界面，但**改成搭成熟组件**——AI Elements（已在仓）+ react-virtuoso +
+  Mattermost 零件 + chatscope 字段清单。保留我们的身份、组织隔离与 agent 能力，改动集中在 UI 层。
+- **路线 B（整包 fork，月级 + 长期维护）**：fork Tailchat 客户端，repoint 到 msgbus（451 行传输层 + 73 个端点），
+  改登录为我们的 JWT/企微。先做一个 spike 验证 repoint 与登录要多久；代价是接手一个旧栈客户端并自行维护，
+  且没有上游更新路径。
+
+### 12.5 已落地：按成熟 IM 的组织方式重排界面（2026-10-17 / 10-18）
+
+不再手搓，改成"沿用成熟客户端的界面组织 + 用仓库里已有的成熟件"。
+
+**定稿的形态（2026-10-18 用户拍板）：C 的骨架 + B 的消息列 + 微信式的会话行。**
+
+- **骨架（三栏 + 可收起右栏）**：会话列表（`w-52`）｜消息列（`flex-1`）｜右栏（`w-60`，群设置；
+  线程、成员名片之后放这里）。消息列表头右侧一个 `PanelRightIcon` 开关，单聊不显示（没有可设置的）。
+  三个都塞不下时——该侧边面板最窄可以被拖到 240px——按容器宽度退化，不看窗口宽度：
+  实测宽度 < 700px 时右栏改成**浮层**盖在消息列上（`absolute right-0 z-20 shadow-xl`），
+  < 460px 时列表与消息列**二选一**（列表 `hidden`，消息列头部给返回键）。
+  宽度用 `ResizeObserver` 量面板根节点，阈值写在 `MessagesSidePane.tsx`。
+- **消息列不用气泡**（B 的形态）：36px 头像 + 「姓名 + 时刻」+ 正文，自己的消息写作「某某（你）」并
+  **保持左对齐**。理由不只是"跟主流"（Slack / Teams / Discord / Zulip 都收敛到这个形态，气泡只留在消费级
+  IM）：气泡会砍掉近一半可用宽度，而 agent 的产出、代码、日志在气泡里很难看。
+  表头时刻只给 **HH:MM**，日期交给分隔线——两处都写"昨天"是重复。
+- **会话行用微信式**：40px 头像（单聊圆形/群方形）+ 名称 + 预览（自己的消息加「你：」）+ 右上角时间 +
+  未读徽标，顶部搜索框，空态/无结果态，选中与悬停有反馈。
+- **纯逻辑层** `packages/ui/src/im/imPresentation.ts`（15 条单测）：头像取色（同一 id 固定色）、
+  姓名缩写（中文取后两字/英文取首字母）、**时间文案统一在规则层成句**（会话行时间、消息时刻、日期分隔；
+  早先返回 `weekday:3`/`yesterday` 这类 token 让调用方各自映射，结果消息头把 token 原样渲染了出来）、
+  会话标题/副标题、预览文案、**时间线组织**（跨天插日期分隔、未读位置插「以下是新消息」、
+  同一人 5 分钟内合并头像与姓名）。
+- **滚动**用仓库里已有的 StickToBottom（`Conversation`/`ConversationContent`/`ConversationScrollButton`），
+  不手写 `scrollTop = scrollHeight`。撤回悬浮两步确认，草稿按会话存 localStorage（`uwork:im-draft:<id>`）。
+
+**顺手修掉的真机 bug（10-18）**：没打开项目时点侧栏「消息」入口什么都不出现。
+`openMessagesSidePane` 用 `workspaceIdentity || workspacePath` 当 `workspaceKey`，两者都空时 tab 的
+`workspaceKey` 是空串，而可见性判断是 `tab.workspaceKey == null || tab.workspaceKey === activeWorkspaceKey`——
+空串既不等于 `null` 也不等于当前 key，tab 被过滤掉了。修法是把空串归一成"没有 workspace"
+（`normalizeSidePaneWorkspaceKey`，`packages/ui/src/lib/workspaceSidePane.ts`），并补两条回归用例。
+教训：**"全局 tab" 的判据必须是 `null`，不能在调用方用空串凑**。
+
+**仍未做（要"完全成熟"还差的）**：回复引用、表情回应、附件与图片预览、正在输入提示、
+系统消息（"X 加入了群聊"）、消息内跳转的快捷键（现在只有查找条）。这些在 §12.3 的清单里，按顺序补。
+
+### 12.7 成熟度补齐：发送状态 / 会话内搜索 / 置顶静音 / 群成员数（2026-10-18）
+
+四个都只动客户端，不动协议与表结构。
+
+- **发送中/失败（乐观发送）** `imOutbox.ts` + `useIm.ts` + `ImTimeline.tsx`：
+  点发送先落一条本地消息（立刻可见），状态由发送结果决定；失败不删不改正文，行上给「重试/删除」。
+  **重试必须复用同一条的 `clientMsgId`**——否则"请求到了服务端、只是回包丢了"会变成两条消息。
+  为此 `IImService.sendMessage` 接受调用方传入的 `clientMsgId`（不传仍由服务内部生成，行为不变）。
+  认领回包按 `clientMsgId` 匹配，**不看正文**（正文可能被服务端规整）。
+- **会话内搜索** `imSearch.ts` + `ImConversationSearchBar.tsx`：只搜**已加载**的消息，条上写明范围
+  （"仅搜已加载的 N 条"）——把"没搜到"和"没加载"混在一起就是骗人。命中处套 `<mark>`，
+  当前命中整行高亮并 `scrollIntoView({block:"center"})`；Enter/Shift+Enter 上下条，Esc 关闭，切会话自动收起。
+- **置顶/静音** `imPreferences.ts` + `ImConversationList.tsx` + `useImSidebar.ts`：
+  **纯客户端偏好，不入库**（不是团队事实、也不是权限，服务端多一张表只会多一份要治理的数据）。
+  置顶优先排序；静音不进侧栏总角标、未读从数字降级成圆点——静音的语义是"别打扰我"，不是"我看不到了"。
+  用一个小 store（`useSyncExternalStore`）而不是层层传参，因为列表与侧栏角标在两棵子树里。
+  存储不可用时（隐私模式/实现不完整）降级到内存，不让面板打不开。
+- **群表头成员数**：会话摘要里没有成员数，按会话调一次 `listMembers` 计数，切走时取消，
+  避免旧会话的响应盖到新会话表头上。
+
+**顺手修掉的一类真 bug（不是 IM 的，已连根拔掉）**：状态只在 `requestAnimationFrame` 里提交。
+**窗口被遮挡/最小化时 Chromium 暂停渲染，rAF 回调不是延迟、而是被丢弃**——那次提交就永久丢了，
+恢复窗口也回不来（触发它的事件已经过去）。受害面比想象大：右侧面板永久不可见（终端、预览、IM）、
+粘性分组表头永久 `opacity-0`、toast 永久停在未进入态（到点又被自动移除，用户什么都没看到）、
+Rive 角色头像永不初始化。修法是收口到一个调度器 **`packages/ui/src/lib/nextFrame.ts`（`runOnNextFrame`）**：
+页面不可见时**同步执行**（异步兜底会被隐藏页面的定时器节流拖到分钟级）；页面可见时走 rAF
+**另加 250ms 兜底定时器**，谁先到谁执行——覆盖"排上队之后窗口才被遮挡"这种竞态；返回取消函数。
+四个站点（`useAnimatedResizablePanel`、`StickyGroupHeaderSlot`、`components/ui/toast`、
+`components/ai-elements/persona`）已改用它。**判据**：只要"某个状态只有 rAF 一条提交路径"，就是这一类。
+（其余几十处 rAF 是聚焦/测量/滚动这类自愈动作，不改——隐藏窗口里丢一次没有永久代价。）
+
+**验证**：新增 11 条纯逻辑用例（出站队列/搜索/偏好，`test/imComposerState.test.ts`）、
+5 条 jsdom 组件用例（置顶排序与置顶标记、静音圆点 vs 数字、命中 `<mark>` 与整行高亮、乐观消息两种状态与重试/删除，
+`test/imPaneFeatures.test.ts`）、5 条调度器用例（`test/nextFrame.test.ts`）、3 条面板可见性用例
+（隐藏窗口里打开必须可见 / rAF 被丢弃时兜底定时器兜住 / 关闭不依赖帧，`test/animatedPanelVisibility.test.ts`）、
+1 条服务层 `clientMsgId` 透传用例。
+真机 CDP 实测：查找条给出"仅搜已加载的 1 条"/"无匹配"、行菜单打开且置顶/静音写进 localStorage 并点亮图标、
+取消后回到 `{}`。**未真机验证**：群成员数（灰度范围内还没有群）、静音圆点（需要真的未读）、
+失败重试（不想给同事发测试消息；失败态由 jsdom 用例覆盖、`clientMsgId` 复用由服务层用例覆盖）。
+
+### 12.8 按设计稿补齐四区 + 建立视觉系统（2026-10-18）
+
+用户反馈"客户端还是太简单、UI 完全简陋、不协调"之后，做了一次**先看像素再改**的返工。
+对照 `im-ui-directions.html` 的 C 方案逐项补齐：
+
+| 设计稿元素            | 之前       | 现在                                                                |
+| --------------------- | ---------- | ------------------------------------------------------------------- |
+| `.rail` 第一栏        | 无         | 56px 图标栏（消息 / 通讯录）+ 底部本人头像 + 未读角标               |
+| `.pane .cat` 列表分组 | 平铺       | 置顶 / 单聊 / 群聊分组标题（搜索时不分）                            |
+| `.members` 右栏       | 群设置表单 | 成员面板：在线 / 离线分组、头像、部门、群主标记；设置收进右上角入口 |
+| `.toolbar` 悬停工具条 | 只有撤回   | 回复 / 转发 / 复制 / 撤回（撤回只在自己消息上）                     |
+| `.sys` 系统消息       | 无         | 居中胶囊行，文案客户端 i18n 渲染                                    |
+| 引用块（B 方向）      | 无         | 消息里显示被引用者 + 摘要，点击跳回原消息（滚动 + 短暂高亮）        |
+
+**视觉系统** `packages/ui/src/im/imChrome.ts`（一处定义、四个区共用）——"不协调"的根因是每个组件各写一套：
+
+- **两级底色**（用主题 token，不新造颜色）：导航 chrome（rail / 列表 / 右栏）= `bg-sidebar` #161616，
+  内容 canvas（消息列）= `bg-background` #0f0f0f。之前全是同一个 #0f0f0f，只靠 hairline 硬撑。
+- **间距节奏 4/8/12/16**；行高统一（列表行 56 / 成员行 44 / 区头 48）；字号四档（13 名称 / 12 次要 / 11 时间 / 14 正文 22 行高）。
+- **选中态用灰面 + 左侧 2px 强调条**，不再用蓝色 accent——蓝色只留给未读，否则"选中"和"未读"抢同一个信号。
+- **消息列贴底**（`min-h-full justify-end`）并对内容加 `max-w-3xl`：面板可能被拖到 1000px+，正文不能拉成一行 200 字。
+- **消息列表头去掉重复标题**：面板 tab、列头、列表头三处都写"消息"是廉价感的主要来源；列表头只留"能做的事"（搜索 / 新建 / 刷新）。
+
+**三个真 bug（这轮引入/发现）**：
+
+1. **hooks 顺序**：把 `useMemo` 放在早返回（未加载 / 无权限）之后 → 真机报
+   `Rendered more hooks than during the previous render`，整块面板进错误边界。教训：早返回之前的所有 hook 都必须无条件。
+2. 新文件（`imChrome.ts` / `ImDirectoryList.tsx`）在 dev server 运行期创建后，Vite 模块图解析失败
+   （报"自己 import 自己"）→ 面板空白；**重启 dev** 即恢复。新增文件后如果界面整块空掉，先怀疑这个。
+3. 消息列不贴底（历史消息堆在顶部、下面一大片空）——这是"看起来不像成熟 IM"的直接原因之一。
+
+**服务端（msgbus）同步扩展并已部署生产**（`docker compose -p ucas-proxy-prod build msgbus && up -d`，
+注意生产部署目录是 `/home/services/ucas-proxy`，不是 `/root/ucas-proxy`）：
+
+- `messages.reply_to_id` 用 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 原地迁移（启动即执行，幂等）；
+  读取侧**自连接**出引用摘要（客户端不必回查，被引用的那条可能不在已加载的一页里）；
+  引用目标必须同会话（跨会话引用会让引用块泄露另一个会话的内容）。
+- **系统消息** `kind='system'`，body 是 **JSON 载荷**（谁做了什么），文案由客户端按语言渲染——
+  把中文写进库里等于把语言钉死在服务端。建群 / 加人 / 移除 / 退群 / 改名各记一条，与普通消息共用 seq 分配。
+- **成员详情 + 在线**：`GET /:id/members` 增加 `details`（角色 / 加入时间 / online），`members` 字符串数组保留兼容；
+  在线状态由 hub 的活连接判定（**多端登录时关掉一端不算离线**）；上下线时向该用户所在会话广播 `presence`，
+  客户端只更新那一个人（不重拉全量）。
+- 实测：msgbus 4 套件 **67 条**（新增 11 条：引用校验/预览、系统消息 seq 与顺序、成员详情、presence 上线下线、多端）；
+  生产 `GET :id/members` 200 且 `details[me].online === true`（桌面端连着新 WS），客户端成员面板实测 1 个在线点。
+
+**仍未做**：表情回应（需要新表 + 端点 + WS 聚合）、附件/图片预览（上传管线）、正在输入。
+这三项里"表情回应"是设计稿 `.toolbar` 上唯一还没落地的按钮——没有把握就不放死按钮。
+
+### 12.9 设计稿最后三项：表情回应 / 附件与图片 / 正在输入（2026-10-18）
+
+**表情回应**（设计稿 `.toolbar` 上那个"表情"按钮）
+
+- 表 `message_reactions(message_id, user_id, emoji)`，主键就是三者的组合——**重复点同一个表情幂等**，
+  计数永远由行数算出来，不存冗余的 count 列。
+- **协议不带 `mine`**：那是"看的人"视角的标记，同一个载荷广播给不同的人会串（谁点的就以为自己也点过）。
+  服务端只给事实 `{emoji, count, userIds}`（userIds 截断 20 个），客户端自己算高亮。
+  这条是被测试逼出来的：广播帧带着 `mine: true` 发给别人，对方会看到自己"点过"。
+- 客户端：工具条给一屏放得下的常用表情（👍🎉✅👀🙏😅），不做完整 emoji 面板；
+  消息下方是 chip（emoji + 计数），自己点过高亮，点击即切换。
+
+**附件与图片**
+
+- **元数据入库、字节落卷**（compose 新增 `msgbus-uploads:/data/uploads`）。不塞 `bytea`：几十 MB 的图片
+  进 PG 会拖垮 autovacuum 与备份；也没有可用的对象存储桶，先落卷，换实现只动 store 一层。
+- 上传用 **raw body**（文件名/类型走 `x-file-name`/`x-file-mime`），不引 multer 依赖；
+  先写文件再登记，登记失败删文件（否则卷里会留下没人认领的字节）。单文件上限 20 MiB。
+- 消息 `kind='attachment'`，body 是 `{"attachmentId","name","mime","size"}`：后三个是发送方上传完
+  就已知的展示信息（省一次回查），**服务端只校验 attachmentId 属于本会话**——跨会话引用会被 400 拒掉，
+  否则可以把别处会话的文件贴进来。
+- 下载 `GET /api/attachments/:id` 带成员校验；**字节用带鉴权的 fetch 取成 blob 再喂 `<img>`**，
+  不能把 URL 直接给 `<img src>`（带不了 Authorization，塞 URL 里又会进日志）；object URL 用完即释放。
+  图片（png/jpeg/gif/webp/bmp/avif）内联，**SVG 不内联**；其它一律文件卡片，点击下载。
+- 本机"用 App 打开"没有做成：需要新增平台能力（本机落盘 + `openExternalFile`），现有的
+  `materializeWorkflowArtifactFile` 是 workflow 专用，不适合借用。当前行为是浏览器下载语义。
+
+**正在输入**
+
+- **不落库、不进 seq**：客户端节流 3 秒发 `{type:'typing'}`，服务端校验成员资格后只转给会话里的其他人，
+  接收侧 4 秒没有新帧就自己消失（撤销帧不值当）。多端登录时过滤掉自己的 id（"你正在输入"没有意义）。
+
+**这一轮新增的测试**：服务端 74 条（+7：表情聚合与幂等、非成员 403、附件上传/下载/跨会话引用/空上传、
+typing 转发与拒绝、回应广播）；客户端 184 条相关用例（+20：chip 与高亮、附件三种渲染分支、
+表情/typing 帧的客户端接线、typing 离线静默）。
+
+**生产验证**（部署镜像里跑，不是在本地）：临时 schema 里跑完整 store 冒烟——引用预览、回应聚合
+（`count: 2, userIds: [对方, 我]`）、系统消息与普通消息共用 seq（1,2,3）、附件元数据与成员校验、
+跨会话引用被拒；再用 HTTP 探路由语义：随机消息加表情 404 not_found、空上传 400、随机附件 404、无令牌 401。
+**未做的真机验证**：两个真人之间的表情/附件/输入中往返（需要同事在线配合），以及被遮挡窗口下的像素复核
+（截图是旧帧，一律以 DOM 为准）。
+
+### 12.10 两方联调：插一个测试账号 + 第二个协议客户端（2026-10-18）
+
+用户建议："插入一个测试用户，新开一个实例，在两个用户之间测试"。落地方式比开第二个桌面端更省事，
+而且**用的是同一套协议**：
+
+1. **测试账号**：往 control-plane 的 `users` 插一行
+   `id=11111111-2222-4333-8444-555555555555`、`wecom_userid=uwork.imtest`、`name=IM 测试账号`、
+   `department=测试与服务保障部`（落在灰度部门里 → 不需要改 env、不用重启就能进白名单快照，
+   60 秒后 msgbus 的 `allowlistUsers` 从 17 变 18）。
+   **移除办法**：`DELETE FROM users WHERE id='11111111-…'`，等快照过期即恢复。
+   注意：它会出现在另外 16 人的通讯录里（白名单内的可见性是对称的），名字带"测试"便于识别。
+2. **对端客户端** `services/msgbus/scripts/im-peer.mjs`（dev 工具，不进镜像）：
+   用同一套 REST + WS 协议扮演"另一个人"——`whoami / dm / send / reply / react / attach / typing /
+withdraw / listen`。在 msgbus 容器里跑最省事（那里有 JWT_SECRET、也够得着 3010）。
+   于是本机的一个真实客户端就能把所有**入向**路径看全（收消息、别人正在输入、别人点的表情、
+   别人发的图片、建群产生的系统消息），不用请同事配合。
+
+**两方联调当场抓到的三个真问题**（都是自测发现不了的）：
+
+1. **别人点的表情不显示**：service 更新了自己的缓存并转发了 `message_reactions` 事件，但面板 hook
+   （`useImConversation`）没订阅这个 kind → React state 没变、UI 不重绘。**本地点击也一样不显示**
+   （服务端不过滤发起端，所以两条路径共用同一个修复）。
+2. **新端点 404，看起来像"功能没实现"**：内层 nginx 只把 `/api/conversations` 转给 msgbus，
+   新加的 `/api/messages`（表情）与 `/api/attachments`（附件）落到了 control-plane。
+   外层 1Panel openresty 是 `location /` 全转发（含 Upgrade），所以**只缺内层两段**；
+   附件那段的 `proxy_buffering off` + `client_max_body_size 25m` 也一并配了。
+3. **会话列表把系统消息的 JSON 当预览**：`IM: {"action":"member_left",...}` 直接显示给用户。
+   预览统一收口到一个函数：系统消息 → 人话、附件 → `[图片]/[文件] 文件名`、其余走原文案，
+   搜索过滤也走同一个口子（否则搜索会去匹配 JSON）。
+
+**已验证的路径**（桌面端真实 UI + 对端脚本）：入向消息与三处未读角标（行/rail/侧栏入口）+
+「以下是新消息」分隔线；正在输入（收 + 发）；表情（别人点 → chip 高亮为 false、自己点 → 变 true 且计数 +1）；
+图片附件（内联，blob URL + 鉴权 fetch，实测 240×120 原图）；引用回复（引用块显示"辛晓华 | 原文"并可跳转）；
+系统消息三连（创建群 / 改名 / 退群，都是人话胶囊）；我方发送到达对端（对端 `listen` 收到 `typing` 与
+`message` 帧、seq 连续）。
+
+**测试与清理**：服务端 74 条、客户端相关 215 条全绿。联调产生的数据只在我与测试账号之间
+（DM + 一个两人群），同事看不到；重复发出的那条测试消息已撤回。
+
+### 12.6 怎么在真机上验证桌面 UI（不用 GUI 自动化）
+
+dev 起来的 Electron 渲染进程自己开着 CDP：`http://127.0.0.1:9229/json/list` → 取 `title === "UWork"`
+那条的 `webSocketDebuggerUrl`，用 Node 内置 `WebSocket` 就能 `Runtime.evaluate` 读 DOM、
+`Input.dispatchMouseEvent` 点按钮、`Page.reload` 重载。写脚本时必须知道的三件事：
+
+1. **截图在窗口被遮挡时是旧帧**（`Page.captureScreenshot`，`fromSurface:false` 也一样），
+   里面的内容可能停在几分钟前；**判断界面是否正确一律以 DOM 为准**（`outerHTML` / 几何 / `innerText`）。
+2. 用 `Runtime.evaluate` 里的 `element.click()` 就能触发 React 的 onClick；**Radix 菜单不吃 `click`**，
+   要给它 `pointerdown`+`pointerup`+`click` 三个事件，或者先 `focus()` 再发 `keydown Enter`。
+   `Input.dispatchMouseEvent` 在被遮挡的窗口里不生效，别用它排查"点了没反应"。
+3. 排错先 `Runtime.enable` + `Log.enable` 再 `Page.reload`，把 `exceptionThrown`/`consoleAPICalled`
+   收下来——比盯着 DOM 猜快得多。
+4. **被遮挡的窗口里 `document.visibilityState === "hidden"`，rAF / 截图 / 合成帧全部停摆**。
+   判断"界面到底渲染了没"要看 DOM 而不是像素；真要用像素，先让窗口到前台。
+5. 要复现"rAF 死掉"的环境：`Page.addScriptToEvaluateOnNewDocument({ source: "window.requestAnimationFrame = () => 1" })`
+   再 `Page.reload`，此时点开右侧面板若仍然可见，说明可见性提交没有依赖那一帧。
+   注意注入是**按 CDP 会话记账**的，`removeScriptToEvaluateOnNewDocument` 必须在同一会话里调用，用完记得 reload 清掉。
 
 ## 相关文档
 
