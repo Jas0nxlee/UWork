@@ -119,7 +119,7 @@ describe("resourceManagerWindow", () => {
       const snapshot = await module.buildResourceUsageSnapshot({ includeHosts: false });
       const byPid = new Map(snapshot.processes.map((row) => [row.pid, row]));
       expect(byPid.get(mainPid)).toMatchObject({
-        name: "zcode-main",
+        name: "uwork-main",
         category: "base",
         groupKey: "main",
         cpuPercent: 1.2,
@@ -181,7 +181,7 @@ describe("resourceManagerWindow", () => {
             processes: [
               {
                 pid: agentPid,
-                name: "zcode-agent-glm-demo",
+                name: "uwork-agent-glm-demo",
                 category: "base",
                 groupKey: "cli",
                 groupLabel: "cli",
@@ -293,9 +293,8 @@ describe("resourceManagerWindow", () => {
 
   it("linux 上 Electron 单核口径的 CPU 会除以逻辑核数；其它平台原样", async () => {
     // 归一化函数已提升为资源管理器 UI 与 ARMS 资源遥测共用，断言跟随实现搬到共用模块。
-    const { normalizeElectronCpuToMachinePercent } = await import(
-      "../src/main/electronCpuNormalization.js"
-    );
+    const { normalizeElectronCpuToMachinePercent } =
+      await import("../src/main/electronCpuNormalization.js");
     expect(
       normalizeElectronCpuToMachinePercent(40, { platform: "linux", logicalCpuCount: 8 }),
     ).toBe(5);

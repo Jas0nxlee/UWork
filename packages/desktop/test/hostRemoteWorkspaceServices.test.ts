@@ -35,11 +35,7 @@ import {
   ISettingsSyncService,
   type ZCodeAgentSessionRuntimePreferencesRequest,
 } from "@zcode/services";
-import {
-  BUILTIN_MODEL_PROVIDER_IDS,
-  projectAccessTokenFingerprint,
-  type ApiClient,
-} from "@zcode/shared";
+import { type ApiClient } from "@zcode/shared";
 import { createRemoteConnectionServiceCollection } from "../src/host/remoteConnectionServiceCollection.js";
 import { createRemotePromptAttachmentTaskService } from "../src/host/remotePromptAttachments.js";
 import { setDataBaseDir } from "@zcode/services/node";
@@ -289,7 +285,7 @@ describe("remote workspace host service wiring", () => {
     { sharedOwner: true, team: false },
     { sharedOwner: false, team: true },
   ])(
-    "远程用量使用 Token，已有 Local Host owner=$sharedOwner，team=$team，不依赖旧 Key",
+    "远程 Host 不从历史套餐凭据恢复登录，owner=$sharedOwner，team=$team",
     async ({ sharedOwner, team }) => {
       const home = createTempHome();
       const owner = {
@@ -299,40 +295,9 @@ describe("remote workspace host service wiring", () => {
       };
       if (sharedOwner)
         vi.spyOn(nodeServices, "getAccountRequestAuthService").mockReturnValue(owner);
-      const urls: string[] = [];
-      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-        const url = String(input);
-        urls.push(url);
-        let data: unknown;
-        if (url.endsWith("/getCustomerInfo"))
-          data = {
-            organizations: [{ organizationId: "org", projects: [{ projectId: "project" }] }],
-          };
-        else if (url.includes("/api_keys") && !url.endsWith("/access_tokens"))
-          data = [
-            {
-              name: team ? "zcode-team-api-key" : "zcode-api-key",
-              apiKey: "key",
-              keyType: 2,
-            },
-          ];
-        else if (url.endsWith("/access_tokens"))
-          data = {
-            accessToken: "project-token",
-            tokenType: "Bearer",
-            expiresIn: 600,
-            expiresAt: Date.now() / 1000 + 600,
-          };
-        else if (url.includes("/querySubscribeDetail"))
-          data = { hasSubscription: true, status: "EFFECTIVE", memberGrantStatus: "VALID" };
-        else if (url.includes("/quota/limit")) {
-          expect(new Headers(init?.headers).get("authorization")).toBe("project-token");
-          data = { level: "pro", limits: [] };
-        } else data = [];
-        return new Response(JSON.stringify({ code: 200, data }), {
-          headers: { "content-type": "application/json" },
-        });
-      });
+      const fetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("Unexpected network"));
       const services = createRemoteWorkspaceServiceCollection({
         clientConfigService,
         connectionServices: makeRemoteServices(),
@@ -345,40 +310,24 @@ describe("remote workspace host service wiring", () => {
       });
       try {
         const credentials = services.get(ICredentialService);
-        await credentials.save("oauth:bigmodel:access_token", "login-token");
+        await credentials.save("oauth:bigmodel:access_token", "historical-login");
         await credentials.save(
           "oauth:bigmodel:user_info",
-          JSON.stringify({ id: "user", username: "user", displayName: "User" }),
+          JSON.stringify({ id: "historical-user", team }),
         );
+        await credentials.save("custom-api-key", "personal-key");
+        // UWork 已退役供应商账号；Host 装配不能借历史凭据或共享 owner 重新启用套餐。
+        const oauth = services.get(IOAuthService);
+        expect(await oauth.restoreCachedSessionState()).toEqual({ status: "signed-out" });
+        expect(await oauth.getProviders()).toEqual([]);
+        await expect(oauth.refreshToken()).rejects.toThrow(/removed|移除/);
         await expect(
-          services.get(IUsageStatsService).getEntitlementSnapshot({
-            includeSubscription: false,
-            preferredProviderId: team
-              ? BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan
-              : BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
-            accountAccess: {
-              type: "zhipu-account",
-              family: "bigmodel",
-              ...(team
-                ? {
-                    planKind: "team-coding-plan" as const,
-                    organizationId: "org",
-                    projectId: "project",
-                  }
-                : { planKind: "individual-coding-plan" as const }),
-            },
-            requirePreferredProvider: true,
-            allowEnvApiKey: false,
-          }),
-        ).resolves.toMatchObject({
-          authenticated: true,
-          quota: { level: "pro" },
-        });
-        expect(urls.some((url) => url.includes("/copy/"))).toBe(false);
-        expect(urls.filter((url) => url.endsWith("/access_tokens"))).toHaveLength(
-          sharedOwner ? 0 : 1,
-        );
-        expect(owner.resolveCurrent).toHaveBeenCalledTimes(sharedOwner ? 1 : 0);
+          services.get(ICodingPlanSubscriptionService).getStaticProducts(),
+        ).rejects.toThrow(/移除/);
+        expect(await credentials.load("oauth:bigmodel:access_token")).toBeNull();
+        expect(await credentials.load("custom-api-key")).toBe("personal-key");
+        expect(owner.resolveCurrent).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
@@ -391,46 +340,13 @@ describe("remote workspace host service wiring", () => {
     { family: "zai" as const, team: false },
     { family: "zai" as const, team: true },
   ])(
-    "fallback $family team=$team 的 401 指纹到达 PAT owner 并只刷新一次",
+    "fallback $family team=$team 拒绝历史登录与 PAT 重试，且不发出换证请求",
     async ({ family, team }) => {
       const home = createTempHome();
       const authFactory = vi.spyOn(nodeServices, "createAccountRequestAuthService");
-      let issued = 0;
-      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-        const url = String(input);
-        const authorization = new Headers(init?.headers).get("authorization");
-        // 桌面存储的是业务 JWT；这里不应再次调用 /api/auth/z/login。
-        expect(url).not.toContain("/api/auth/z/login");
-        let data: unknown;
-        if (url.endsWith("/getCustomerInfo")) {
-          expect(authorization).toBe(family === "zai" ? "Bearer business-jwt" : "business-jwt");
-          data = {
-            organizations: [{ organizationId: "org", projects: [{ projectId: "project" }] }],
-          };
-        } else if (url.endsWith("/access_tokens")) {
-          expect(authorization).toBe("Bearer business-jwt");
-          data = {
-            accessToken: `pat-${++issued}`,
-            tokenType: "Bearer",
-            expiresIn: 600,
-            expiresAt: Date.now() / 1000 + 600,
-          };
-        } else if (url.includes("/api_keys")) {
-          expect(authorization).toBe(
-            !team && family === "zai" ? "Bearer business-jwt" : "business-jwt",
-          );
-          data = [
-            {
-              name: team ? "zcode-team-api-key" : "zcode-api-key",
-              apiKey: "key",
-              keyType: 2,
-            },
-          ];
-        } else throw new Error("Unexpected endpoint");
-        return new Response(JSON.stringify({ code: 200, data }), {
-          headers: { "content-type": "application/json" },
-        });
-      });
+      const fetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("Unexpected network"));
       const services = createRemoteWorkspaceServiceCollection({
         clientConfigService,
         connectionServices: makeRemoteServices(),
@@ -442,10 +358,10 @@ describe("remote workspace host service wiring", () => {
       });
       try {
         const credentials = services.get(ICredentialService);
-        await credentials.save(`oauth:${family}:access_token`, "business-jwt");
+        await credentials.save(`oauth:${family}:access_token`, "historical-login");
         await credentials.save(
           `oauth:${family}:user_info`,
-          JSON.stringify({ id: "user", username: "user", displayName: "User" }),
+          JSON.stringify({ id: "historical-user" }),
         );
         const auth = authFactory.mock.results.at(-1)!.value as ReturnType<
           typeof nodeServices.createAccountRequestAuthService
@@ -465,23 +381,31 @@ describe("remote workspace host service wiring", () => {
               : { planKind: "individual-coding-plan" as const }),
           },
         };
-        const first = await auth.resolveCurrent(input);
-        expect(first.apiKey).toBe("pat-1");
+        // 退役凭据不可读，首次与并发重试都必须在网络边界前拒绝，不能重新换取 PAT。
+        await expect(auth.resolveCurrent(input)).rejects.toMatchObject({
+          name: "AccountRequestCredentialUnavailableError",
+        });
         const retry = {
           ...input,
-          expectedAccountScope: first.accountScope,
-          rejectedProjectTokenFingerprint: await projectAccessTokenFingerprint(first.apiKey!),
+          expectedAccountScope: "historical-scope",
+          rejectedProjectTokenFingerprint: "a".repeat(64),
         };
-        const recovered = await Promise.all([
+        const results = await Promise.allSettled([
           auth.resolveCurrent(retry),
           auth.resolveCurrent(retry),
         ]);
-        expect(recovered.map((value) => value.apiKey)).toEqual(["pat-2", "pat-2"]);
-        expect((await auth.resolveCurrent(retry)).apiKey).toBe("pat-2");
-        expect(issued).toBe(2);
-        await credentials.save(`oauth:${family}:access_token`, "other-login");
-        await expect(auth.resolveCurrent(retry)).rejects.toThrow("project_token_scope_invalidated");
-        expect(issued).toBe(2);
+        expect(results).toEqual([
+          {
+            status: "rejected",
+            reason: expect.objectContaining({ name: "AccountRequestCredentialUnavailableError" }),
+          },
+          {
+            status: "rejected",
+            reason: expect.objectContaining({ name: "AccountRequestCredentialUnavailableError" }),
+          },
+        ]);
+        expect(await credentials.load(`oauth:${family}:access_token`)).toBeNull();
+        expect(fetch).not.toHaveBeenCalled();
       } finally {
         rmSync(home, { recursive: true, force: true });
       }

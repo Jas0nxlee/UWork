@@ -21,6 +21,10 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
 
 ## 验收
 
+### 2026-10-18 测试装配约束
+
+主进程测试通过受控环境变量为 `resolveDesktopHomePath` 提供临时基准目录；服务测试同时使用 `setDataBaseDir`，清理时恢复全部覆盖。bootstrap 不再接受废弃的 home 参数。用户级 fixture 与断言均使用 `.uwork`，项目级 `.zcode` 保留。手动导出归档标签使用 `.uwork`，反馈归档既有 `.zcode/cli`、`.zcode/computer-use/run` 标签暂保留兼容；两者均从 UWork 源目录提供数据。手动导出的 3 天 CLI 日志窗口同时识别当前与历史归档前缀，继续验证脱敏、凭据排除和时间窗口，不能通过跳过验证或恢复上游目录使测试变绿。
+
 - 自动化验收入口为 `scripts/test/uworkBranding.test.ts`，由桌面发布 CI 的行为测试步骤执行。Desktop Main 的 `desktopRuntimeEnv` 唯一负责 Electron 应用名、userData 与 sessionData；服务路径 API 唯一负责用户级数据根；测试不增加目录写入或迁移逻辑。
 - Node 测试执行源码中的运行时身份与路径初始化声明，以 Electron appData 为受控边界：正式、开发、预览模式分别返回 `UWork`、`UWork Dev`、`UWork Preview`，默认 sessionData 为对应 userData 下的 `session`，均不落入 `ZCode*` 目录。
 - 保留既有显式覆盖接口：`ZCODE_DESKTOP_APPLICATION_NAME`、`ZCODE_DESKTOP_USER_DATA_DIR`、`ZCODE_DESKTOP_SESSION_DATA_DIR` 优先于默认值；启用 `ZCODE_DESKTOP_USE_ELECTRON_DEFAULT_USER_DATA` 时不覆盖 Electron 默认目录，显式 userData 仍优先。
