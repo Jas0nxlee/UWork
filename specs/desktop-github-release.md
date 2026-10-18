@@ -17,6 +17,7 @@
 - `v3.16.1` 的 Windows 构建因 Git 换行转换破坏固定资源哈希而失败，未公开 Release；保留失败标签。`v3.16.2` 包含相同功能修复和原始字节检出规则，完整性与五平台发布门禁不变。
 - `v3.16.2` 未公开：Windows 生产 fuse 与旧 Playwright Electron 启动通道不兼容；`v3.16.3` 保持正式包安全设置，使用 Chromium CDP 验收原始产物，原生 view 归属由独立 fixture 验证，保留前序标签及失败证据。
 - `v3.16.3` 未公开：Linux fixture 缺少与既有安装包测试一致的启动参数，且真正的安装包验收捕获 Main 登录 IPC 漏导入造成的同步错误框。`v3.16.4` 修复接线并执行真实回调回归，保持所有五平台构建、原始资源校验和安全设置。
+- `v3.16.4` 未公开：Windows 正式包功能验收通过，但私有目录清理遇到 EBUSY；Linux ARM64 原生 fixture 在视口就绪前测量几何。`v3.16.5` 加入有限文件删除重试与视口事实检查，保留原断言、前序标签及五平台完整发布门禁。
 - 打包身份配置兼容现有单组织公开配置，不凭客户端支持多组织宣称三个组织已经启用。stage 成功后仅记录规范化配置的组织数量，不输出组织标识、地址、配置内容或凭据。数量证据来自当前构建的日志。
 - 发布说明须明确公开 SkillHub 使用匿名下载，不能代表组织私有技能授权；多租户生产启用仍依赖服务端组织绑定唯一约束、空 Host 拒绝和 review 组织归属校验等前置项。客户端发布不是生产企业验收，本次不实施独立后端仓库的改造。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
@@ -30,6 +31,19 @@
 - 测试进程树回收成功后，Windows 临时 Cookie 文件可能短暂返回 EBUSY。私有测试目录删除使用 `fs.rm` 的有限重试（10 次、200ms 线性退避），耗尽仍失败；不以固定等待或吞掉清理错误替代进程归属验证及功能验收。
 - 原生 iframe 布局 fixture 先观察其 CSS 视口与实际 view bounds / zoom 一致，再执行原有几何断言；样式节点存在本身不是视口就绪证据。保留居中误差小于 2 像素、二维码/说明不裁剪和全部主题/宽度/缩放用例，不扩大容差。
 - 原生 view fixture 在各平台完整安装包构建前运行，先验证快速的源码/平台接线；正式包 CDP 验收仍在打包后执行。任一阶段失败均保留发布阻断。
+
+```mermaid
+sequenceDiagram
+    participant Test as 布局 fixture
+    participant Main as Main view owner
+    participant Frame as 授权 frame
+    Test->>Main: 设置 surface 与 zoom
+    Main->>Frame: bounds / viewport IPC 与样式注入
+    Test->>Frame: 短快照读取（不在 frame 内挂起等待）
+    Frame-->>Test: style 已存在且 CSS 视口等于 bounds / zoom
+    Test->>Test: 执行原有居中、裁剪、主题与缩放断言
+```
+
 - Windows 的 `.zcode-install-manifest` 由桌面打包流程独立生成，记录最终安装目录内的程序所有权。Computer Use 使用开源占位包或真实 producer 都必须生成清单；只有 Helper 的资源准备与校验依赖 producer，不能让可选能力改变升级清理合同。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
 - macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。
