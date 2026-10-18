@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
 import { runPptxEditCases } from "./lib/officePptxEditCases.mjs";
 import { runPptxUiCases } from "./lib/officePptxUiCases.mjs";
 
@@ -280,6 +281,7 @@ async function main() {
   check(sample.rendered.slides === 4, `真样本产物能被渲染器打开（${sample.rendered.slides} 页）`);
 
   await runPptxUiCases({ page, check });
+  await runPptxCanvasCases({ page, check });
 
   await harness.close();
   if (failures.length > 0) {

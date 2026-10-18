@@ -9,13 +9,8 @@ import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
-import {
-  patchTxBody,
-  readDeckSlides,
-  readSlideText,
-  writeDeckSlides,
-  type PptxSlide,
-} from "./pptText.js";
+import { buildPreviewBytes, composeCurrentSlides } from "./pptDeckCompose.js";
+import { readDeckSlides, readSlideText, writeDeckSlides, type PptxSlide } from "./pptText.js";
 import {
   deleteShape as applyDeleteShape,
   duplicateShape as applyDuplicateShape,
@@ -68,6 +63,8 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
    * 界面上的"形状列表/幻灯片文本"要靠这个版本号重算，否则列表是旧的（实测：新建文本框点了没出现）。
    */
   const [revision, setRevision] = useState(0);
+  /** 画布要渲染的字节 = 当前状态（渲染器接整份文件，而改动只在 XML 映射里，所以每改一次重算一份）。 */
+  const [previewBytes, setPreviewBytes] = useState<ArrayBuffer | null>(null);
 
   const sourceRef = useRef<ArrayBuffer | null>(null);
   const revisionRef = useRef<{ size: number; mtimeMs: number } | null>(null);
@@ -117,6 +114,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       }
       const raw = base64ToArrayBuffer(preview.dataBase64);
       sourceRef.current = raw;
+      setPreviewBytes(raw.slice(0));
       const deck = await readDeckSlides(raw);
       baselineXmlRef.current = deck.sourceXml;
       currentXmlRef.current = new Map(deck.sourceXml);
@@ -149,6 +147,24 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     return xml ? readSlideShapes(xml) : [];
   }, []);
 
+  /** 当前状态（各页 XML + 文字改动）：保存与画布渲染共用同一份口径。 */
+  const composeCurrent = useCallback(
+    () => composeCurrentSlides(currentXmlRef.current, editsRef.current),
+    [],
+  );
+
+  /** 重算画布要渲染的字节（只替换改过的页，其余部件逐字节保留）。 */
+  const refreshPreview = useCallback(async () => {
+    const source = sourceRef.current;
+    if (!source) return;
+    const bytes = await buildPreviewBytes({
+      source,
+      baseline: baselineXmlRef.current,
+      current: composeCurrent(),
+    });
+    if (bytes) setPreviewBytes(bytes);
+  }, [composeCurrent]);
+
   /** 对某张幻灯片的 XML 做一次补丁（形状/格式/层级都在这里落地）。 */
   const patchSlideXml = useCallback(
     (partName: string, patch: (xml: string) => string, label: string) => {
@@ -160,8 +176,9 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       setRevision((value) => value + 1);
       setDirty(true);
       setStatus(`${label}（保存时只写回这一页）`);
+      void refreshPreview();
     },
-    [setDirty, setStatus],
+    [refreshPreview, setDirty, setStatus],
   );
 
   /** 幻灯片级操作：直接对整份文件做补丁，然后把新的部件内容读回来。 */
@@ -195,13 +212,14 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
         setRevision((value) => value + 1);
         setDirty(true);
         setStatus(`${label}（${slides.length} 页）· 点「保存到文件」写回`);
+        void refreshPreview();
       } catch (error) {
         setStatus(`${label}失败：${error instanceof Error ? error.message : String(error)}`);
       } finally {
         setBusy(false);
       }
     },
-    [busy, readSlideText, setBusy, setDirty, setStatus],
+    [busy, readSlideText, refreshPreview, setBusy, setDirty, setStatus],
   );
 
   /** 改形状几何。 */
@@ -324,8 +342,9 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
           : current,
       );
       setDirty(editsRef.current.size > 0);
+      void refreshPreview();
     },
-    [setDirty, slides],
+    [refreshPreview, setDirty, slides],
   );
 
   const save = useCallback(async () => {
@@ -344,14 +363,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     try {
       setStatus(`写回中（${editsRef.current.size} 处文字改动）…`);
       // 起点是"当前状态"（形状/幻灯片改动已经落在里面），文字改动再叠上去
-      const current = new Map(currentXmlRef.current);
-      for (const [key, lines] of editsRef.current) {
-        const [partName, indexText] = key.split("#");
-        if (!partName || indexText === undefined) continue;
-        const xml = current.get(partName);
-        if (xml === undefined) continue;
-        current.set(partName, patchTxBody(xml, Number(indexText), lines));
-      }
+      const current = composeCurrent();
       const written = await writeDeckSlides({
         source,
         baseline: baselineXmlRef.current,
@@ -382,6 +394,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       sourceRef.current = written.bytes.slice(0);
       editsRef.current = new Map();
       setDirty(false);
+      void refreshPreview();
       const backupName = result.backup ? result.backup.split("/").pop() : "";
       setStatus(
         `已保存到 ${path} · ${Math.round(result.bytes / 1024)} KiB${backupName ? ` · 备份 ${backupName}` : ""} · 只改了 ${written.changedSlides.length} 张幻灯片的文字`,
@@ -396,7 +409,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     } finally {
       setBusy(false);
     }
-  }, [busy, fileService, path, setDirty]);
+  }, [busy, composeCurrent, fileService, path, refreshPreview, setDirty]);
 
   return {
     status,
@@ -409,6 +422,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     loadDocument,
     save,
     revision,
+    previewBytes,
     setBlockLines,
     editedCount: editsRef.current.size,
     shapesOf,
