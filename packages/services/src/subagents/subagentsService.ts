@@ -32,6 +32,7 @@ import {
   resolveUserSubagentRoot,
   resolveWorkspaceSubagentRoot,
   resolveZCodeStorageRoot,
+  resolveSubagentCliConfigPath,
   type SubagentStorageOptions,
 } from "./subagentStorage.js";
 import type { ISubagentsService } from "./subagents.js";
@@ -404,11 +405,10 @@ async function discoverPluginAgents(params: {
   };
 }
 
-import { getUworkUserCliConfigPath } from "#src/paths.js";
-
-async function readPluginConfig(_options?: SubagentStorageOptions): Promise<PluginConfigSummary> {
+async function readPluginConfig(options?: SubagentStorageOptions): Promise<PluginConfigSummary> {
   try {
-    const configPath = getUworkUserCliConfigPath();
+    // 插件启停与 profile/state 必须属于同一实例，不能重新读取进程真实用户配置。
+    const configPath = resolveSubagentCliConfigPath(options);
     const raw = await readFile(configPath, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return { enabledPlugins: {}, suppressedBuiltins: [] };

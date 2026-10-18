@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import {
+  resolveUserCliConfigPath,
+  resolveUserStorageRoot,
+  UWORK_DATA_ROOT_DIR_NAME,
+} from "@zcode/shared";
 import { getUworkUserStorageRoot, getUworkUserCliConfigPath } from "#src/paths.js";
 
 const HOME_PREFIX = "~/";
@@ -35,8 +40,23 @@ export async function resolveZCodeStorageRoot(options?: SubagentStorageOptions):
   const storageDir =
     typeof storage.dir === "string" && storage.dir.trim().length > 0
       ? storage.dir.trim()
-      : getUworkUserStorageRoot();
+      : resolveInstanceStorageRoot(options);
   return resolveConfigPath(storageDir, options);
+}
+
+function resolveInstanceStorageRoot(options?: SubagentStorageOptions): string {
+  // 显式 homeDir 是实例隔离边界；忽略它会让测试的模型覆盖和样例写进真实用户目录。
+  return options?.homeDir?.trim()
+    ? resolveUserStorageRoot({
+        ZCODE_STORAGE_DIR: join(options.homeDir, UWORK_DATA_ROOT_DIR_NAME),
+      })
+    : getUworkUserStorageRoot();
+}
+
+export function resolveSubagentCliConfigPath(options?: SubagentStorageOptions): string {
+  return options?.homeDir?.trim()
+    ? resolveUserCliConfigPath({ ZCODE_STORAGE_DIR: resolveInstanceStorageRoot(options) })
+    : getUworkUserCliConfigPath();
 }
 
 export function resolveConfigPath(path: string, options?: SubagentStorageOptions): string {
@@ -47,10 +67,10 @@ export function resolveConfigPath(path: string, options?: SubagentStorageOptions
 }
 
 async function readUserCliConfig(
-  _options?: SubagentStorageOptions,
+  options?: SubagentStorageOptions,
 ): Promise<Record<string, unknown>> {
   try {
-    const raw = await readFile(getUworkUserCliConfigPath(), "utf8");
+    const raw = await readFile(resolveSubagentCliConfigPath(options), "utf8");
     const parsed = JSON.parse(raw) as unknown;
     return isObjectRecord(parsed) ? parsed : {};
   } catch {

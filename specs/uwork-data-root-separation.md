@@ -50,6 +50,28 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
 
 路径键迁移仅适用于 cli/config.json 的 skills（规范化 SKILL.md 绝对路径 → enable）和 command（命令文件绝对路径 → enable）两个受控映射。普通对象键、工作区路径和共享 .agents 路径保持原样；UWork 根内键重定位后原禁用状态必须保持。技能配置读写在调用时解析有效 CLI 根，避免 bootstrap 前导入缓存旧路径。
 
+## Subagent 显式用户目录隔离（2026-10-18）
+
+- `SubagentsService({ homeDir })` 的显式目录是实例级隔离边界：用户 agents、state、CLI 配置与插件启停全部从 `homeDir/.uwork` 解析，不能读取进程真实用户目录或另一实例的配置。无显式目录时继续使用服务公开路径 API，保留运行时数据根与显式 CLI storage root 的优先级。
+- CLI 配置中的 `storage.dir` 继续决定 agents/state/plugin cache 的存储根，`~/` 相对于实例的 homeDir 展开；插件启停仍从该实例的 CLI 配置读取。工作区 `.zcode/agents` 保持项目约定。
+- 路径解析器唯一拥有目录选择；Settings 写入与 Host watcher 复用同一解析结果，不增加模型回退或配置写入路径。父轮读取完整快照后固定 definitions，修改配置在下一父轮生效；已启动子任务保留原选择。
+- 回归覆盖：两个显式 homeDir 的配置、内置模型覆盖、用户 profile、插件启停互相隔离；未指定 homeDir 使用运行时路径；测试样例不能出现在真实用户目录。无效显式 provider 仍返回 `provider-not-found`。
+
+```mermaid
+sequenceDiagram
+    participant Caller as Settings / 测试实例
+    participant Paths as Subagent 路径解析器
+    participant Disk as 实例目录
+    participant Host as Host snapshot
+    participant Parent as CLI 父轮
+    Caller->>Paths: 显式 homeDir / 默认运行时根
+    Paths-->>Caller: 同一实例的 config、agents、state 路径
+    Caller->>Disk: 保存 profile / 模型覆盖
+    Disk-->>Host: watcher 发布完整快照
+    Parent->>Host: 新父轮 readRuntimeConfig
+    Host-->>Parent: 固定本轮 definitions
+```
+
 ## 上游同步回归修复（2026-10-14）
 
 `paths.copyDataDirectory` 继续作为公开入口，唯一实现委托 `dataDirectoryMigration.ts`。上游的 `.zcode/v2` 复制实现不能替换 UWork 的整根迁移，否则没有旧 ZCode 数据的用户会收到 ENOENT，同时安装过 ZCode 的用户会复制另一应用的数据后切换到空的 UWork 根。
