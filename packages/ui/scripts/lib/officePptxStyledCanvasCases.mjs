@@ -6,7 +6,7 @@
  * 缩放层绕中心放大、盖住整个编辑位，左侧列表点不动。所以这里**带上真编译的 Tailwind CSS**，
  * 把编辑位放进一个"侧栏尺寸"的容器里再验一遍：
  *   ① 画布不越出自己的列（不盖住左侧幻灯片列表）；
- *   ② 缩放后的渲染面与交互层都夹在画布框内（`overflow-hidden` 真的生效）；
+ *   ② 渲染面与页面盒子严丝合缝、画布框自己裁剪/可滚动（不会画到框外）；
  *   ③ 有 Tailwind 时点击依然能选中形状（换算与命中测试不依赖样式）。
  */
 import { readFileSync } from "node:fs";
@@ -57,6 +57,21 @@ export async function runPptxStyledCanvasCases({ repoRoot, editorDir, check }) {
         if (window.__pptxPane?.canvas?.()?.ready) break;
       }
       const canvas = window.__pptxPane?.canvas?.() ?? null;
+      const frameNode = document.querySelector("[data-pptx-canvas-frame]");
+      if (canvas && frameNode) {
+        const surfaceRect = document
+          .querySelector("[data-pptx-canvas-surface]")
+          ?.getBoundingClientRect();
+        canvas.surface = surfaceRect
+          ? {
+              left: surfaceRect.left,
+              top: surfaceRect.top,
+              width: surfaceRect.width,
+              height: surfaceRect.height,
+            }
+          : null;
+        canvas.frameOverflow = getComputedStyle(frameNode).overflow;
+      }
       const list = document.querySelector("[data-pptx-slide]");
       const listRect = list?.getBoundingClientRect() ?? null;
       const host = document.getElementById("host");
@@ -73,16 +88,19 @@ export async function runPptxStyledCanvasCases({ repoRoot, editorDir, check }) {
               (listRect?.top ?? 0) + (listRect?.height ?? 0) / 2,
             )
             ?.closest("[data-pptx-slide]") !== null,
-        /** 字号是不是真的生效了（证明 Tailwind CSS 确实编译进来了）。 */
-        listFontSize: list ? getComputedStyle(list).fontSize : null,
+        /** 字号是不是真的生效了（证明 Tailwind CSS 确实编译进来了）：右下缩放读数带 text-[11px]。 */
+        listFontSize: (() => {
+          const node = document.querySelector("[data-pptx-zoom-value]");
+          return node ? getComputedStyle(node).fontSize : null;
+        })(),
       };
     });
     const canvas = styled.canvas;
     const frame = canvas?.frame;
     const layer = canvas?.layer;
     check(
-      styled.listFontSize === "12px",
-      `检查页真的带上了 Tailwind（左侧列表字号 ${styled.listFontSize}，text-xs）`,
+      styled.listFontSize === "11px",
+      `检查页真的带上了 Tailwind（缩放读数 ${styled.listFontSize}，text-[11px]）`,
     );
     check(
       Boolean(frame) &&
@@ -91,12 +109,19 @@ export async function runPptxStyledCanvasCases({ repoRoot, editorDir, check }) {
       `画布不越出自己的列（画布 ${Math.round(frame?.left ?? -1)}~${Math.round((frame?.left ?? 0) + (frame?.width ?? 0))}，列表右缘 ${Math.round(styled.listRect?.right ?? -1)}）`,
     );
     check(styled.topAtList === true, "缩放层没有盖住左侧幻灯片列表（点击落回列表本身）");
+    // 画布现在是**可滚动**的（页面比框高就滚，PowerPoint 也这样），所以不能再说"页面全落在框内"；
+    // 要断言的是：渲染面跟页面盒子严丝合缝（不会出现渲染面比页面大、画到外面），且框本身在裁剪/可滚动。
+    const surface = styled.canvas?.surface ?? null;
     check(
-      Boolean(layer) &&
-        layer.left >= frame.left - 1 &&
-        layer.left + layer.width <= frame.left + frame.width + 1 &&
-        layer.top + layer.height <= frame.top + frame.height + 1,
-      "缩放后的渲染面与交互层都夹在画布框内（overflow-hidden 生效）",
+      Boolean(surface) &&
+        Math.abs(surface.left - layer.left) <= 1 &&
+        Math.abs(surface.width - layer.width) <= 1 &&
+        Math.abs(surface.height - layer.height) <= 1,
+      `渲染面与页面盒子严丝合缝（面 ${Math.round(surface?.width ?? -1)}×${Math.round(surface?.height ?? -1)} vs 页 ${Math.round(layer?.width ?? -1)}×${Math.round(layer?.height ?? -1)}）`,
+    );
+    check(
+      styled.canvas?.frameOverflow === "auto" || styled.canvas?.frameOverflow === "scroll",
+      `画布框自己裁剪/可滚动（overflow=${styled.canvas?.frameOverflow}），页面比框高时靠滚动看全`,
     );
 
     // 有 Tailwind 时仍然点得中形状（命中测试与换算不该依赖样式）

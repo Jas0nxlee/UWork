@@ -45,6 +45,14 @@ export async function runPptxCanvasCases({ page, check }) {
     x: layer.left + ((box.x + box.width / 2) / EMU_PER_PX) * mounted.scale,
     y: layer.top + ((box.y + box.height / 2) / EMU_PER_PX) * mounted.scale,
   });
+  /** 取点在每次点击前重取画布矩形：界面会滚动（比如双击把焦点给了文本框），旧矩形会失效。 */
+  const centerLive = async (box) => {
+    const c = await readCanvas();
+    return {
+      x: c.layer.left + ((box.x + box.width / 2) / EMU_PER_PX) * c.scale,
+      y: c.layer.top + ((box.y + box.height / 2) / EMU_PER_PX) * c.scale,
+    };
+  };
   const titlePoint = center(titleBox);
   await page.mouse.click(titlePoint.x, titlePoint.y);
   await page.waitForTimeout(200);
@@ -114,15 +122,34 @@ export async function runPptxCanvasCases({ page, check }) {
     `拉右下角不动左上角（x=${resized.x}）`,
   );
 
-  // ④ 点空白处 → 取消选择（空白处就是"页面里没有任何形状"的地方）
+  // ④ 点空白处 → 取消选择。空白处取"页面右上角"：形状都在左半与中部，
+  // 而画布比视口高时页面底部会落在视口外（鼠标事件发不出去，断言会假失败——踩过）
   const emptyX = layer.left + layer.width * 0.82;
-  const emptyY = layer.top + layer.height * 0.82;
+  const emptyY = layer.top + layer.height * 0.12;
+  const inViewport = await page.evaluate(
+    ([x, y]) => x > 0 && y > 0 && x < innerWidth && y < innerHeight,
+    [emptyX, emptyY],
+  );
+  check(inViewport, `空白点落在视口内（${Math.round(emptyX)},${Math.round(emptyY)}）`);
   await page.mouse.click(emptyX, emptyY);
   await page.waitForTimeout(200);
   const cleared = await readCanvas();
+  const emptyDiag = await page.evaluate(
+    ([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return {
+        at: [Math.round(x), Math.round(y)],
+        hit: hit
+          ? `${hit.tagName}[${hit.getAttribute("data-pptx-canvas-layer") !== null ? "layer" : (hit.getAttribute("class") ?? "").slice(0, 30)}]`
+          : "null",
+        isLayer: hit?.getAttribute("data-pptx-canvas-layer") !== null,
+      };
+    },
+    [emptyX, emptyY],
+  );
   check(
     cleared?.selected === null && cleared?.handles === 0,
-    "点空白处取消选择（选框与手柄都收起来）",
+    `点空白处取消选择（选框与手柄都收起来）｜点 ${JSON.stringify(emptyDiag)}｜点了以后 selected=${cleared?.selected} handles=${cleared?.handles}`,
   );
 
   // ⑤ 双击形状 → 焦点落到它的文本框（就地改字的入口）
@@ -135,5 +162,81 @@ export async function runPptxCanvasCases({ page, check }) {
   check(
     typeof focused === "string" && focused.includes("#0"),
     `双击形状把焦点给了它的文本框（${focused}）`,
+  );
+
+  // ⑥ 形状拖到页面外之后，四个角手柄仍然抓得住（真机上踩过：手柄被画框裁掉＝"看得见点不着"）
+  await page.evaluate(() =>
+    document.querySelector("[data-pptx-canvas-frame]")?.scrollIntoView({ block: "center" }),
+  );
+  await page.waitForTimeout(250);
+  // 上一步双击把焦点给了文本框，可能顺带滚动了；重新点选一次再拖
+  const beforeOff = await readBox("标题 1");
+  await page.mouse.click((await centerLive(beforeOff)).x, (await centerLive(beforeOff)).y);
+  await page.waitForTimeout(250);
+  const offPoint = await centerLive(await readBox("标题 1"));
+  const dragDiag = { before: await readBox("标题 1"), offPoint, canvas: await readCanvas() };
+  await page.mouse.move(offPoint.x, offPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(offPoint.x + 420, offPoint.y + 320, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const pushed = await readBox("标题 1");
+  console.log(
+    "dragDiag",
+    JSON.stringify({ ...dragDiag, after: pushed, afterCanvas: await readCanvas() }),
+  );
+  const reachable = await page.evaluate(() => {
+    const out = {};
+    const frame = document.querySelector("[data-pptx-canvas-frame]")?.getBoundingClientRect();
+    for (const corner of ["nw", "ne", "sw", "se"]) {
+      const node = document.querySelector(`[data-pptx-canvas-handle='${corner}']`);
+      if (!node) {
+        out[corner] = { ok: false, note: "手柄不存在" };
+        continue;
+      }
+      const rect = node.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      out[corner] = {
+        ok: hit === node,
+        style: node.getAttribute("style"),
+        boxStyle: node.parentElement?.getAttribute("style")?.slice(0, 120),
+        at: [Math.round(cx), Math.round(cy)],
+        hit: hit
+          ? `${hit.tagName}[${hit.getAttribute("data-pptx-canvas-handle") ?? (hit.getAttribute("class") ?? "").slice(0, 24)}]`
+          : "null",
+        outOfViewport: cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight,
+        vsFrame: [Math.round(rect.left - frame.left), Math.round(rect.top - frame.top)],
+      };
+    }
+    return {
+      viewport: [innerWidth, innerHeight],
+      frame: frame && [
+        Math.round(frame.left),
+        Math.round(frame.top),
+        Math.round(frame.width),
+        Math.round(frame.height),
+      ],
+      handles: out,
+    };
+  });
+  check(
+    Object.values(reachable.handles).every((h) => h.ok),
+    `形状拖到页面外后四个手柄都还抓得住（视口 ${reachable.viewport}，框 ${reachable.frame}，手柄 ${JSON.stringify(reachable.handles)}）`,
+  );
+  const seHandle = await page.evaluate(() => {
+    const rect = document.querySelector("[data-pptx-canvas-handle='se']").getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(seHandle.x, seHandle.y);
+  await page.mouse.down();
+  await page.mouse.move(seHandle.x + 30, seHandle.y + 24, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const afterOffPageResize = await readBox("标题 1");
+  check(
+    afterOffPageResize.width > pushed.width && afterOffPageResize.height > pushed.height,
+    `页面外的形状也能缩放（${pushed.width}×${pushed.height} → ${afterOffPageResize.width}×${afterOffPageResize.height}）`,
   );
 }
