@@ -1,5 +1,13 @@
 # UWork 可选企业身份登录
 
+## Main 原生登录 IPC 接线回归（2026-10-18）
+
+`OpenEnterpriseLogin`、`CancelEnterpriseLogin`、`UpdateEnterpriseLogin` 显式绑定同一个
+`enterpriseLoginView` owner 的导出。Main 只做所属主 frame 的校验与转发，不保存身份状态。
+`on` 回调中的未定义引用会成为未捕获异常并弹出同步原生错误框，阻塞窗口与调试连接；不能
+通过延长等待或吞掉错误恢复。回归执行生产注册的真实回调及其实际导入绑定，验证三个操作的
+所属窗口参数，以及其他 frame 的打开拒绝、取消/更新忽略。安装包验收继续验证真实扫码入口。
+
 ## 安装即可扫码的发布配置（2026-09-30）
 
 - 正式 GitHub 安装包在 Windows、macOS、Linux 均携带经过严格 schema 校验的默认企业微信公开配置。仅包含 CorpID、AgentID、orgId、HTTPS 认证服务地址和同源回调；Secret、Token、UCAS Key 与用户会话不能进入配置或安装包。
