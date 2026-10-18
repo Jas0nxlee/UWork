@@ -28,6 +28,8 @@
 - 正式 Windows 包保持 `enableNodeCliInspectArguments=false`。安装包测试用子进程启动未改写的产物，经 Chromium CDP 连接真实 Renderer，不依赖 Playwright Electron 的 Node Inspector 通道。隔离目录同时覆盖应用数据、userData 与 sessionData；清理仅终止该测试自己启动的进程树，清理不是产品正常退出验收。真实安装包验证登录按钮、内嵌二维码 surface、新建与取消的授权 WebContents target、唯一 UWork 主页面；窗口归属与不新建 BrowserWindow 继续由同版本 Electron 的原生 view fixture 验证。测试不启用正式包 fuse、不增加产品调试接口，也不删除功能断言。
 - 非特权 Linux CI 的原生 view fixture 与安装包验收使用相同的 `--no-sandbox` 测试参数，避免未配置 root-owned SUID helper 时在断言前退出；该参数不写入正式安装包或用户启动配置。其他平台不追加此参数。
 - 测试进程树回收成功后，Windows 临时 Cookie 文件可能短暂返回 EBUSY。私有测试目录删除使用 `fs.rm` 的有限重试（10 次、200ms 线性退避），耗尽仍失败；不以固定等待或吞掉清理错误替代进程归属验证及功能验收。
+- 原生 iframe 布局 fixture 先观察其 CSS 视口与实际 view bounds / zoom 一致，再执行原有几何断言；样式节点存在本身不是视口就绪证据。保留居中误差小于 2 像素、二维码/说明不裁剪和全部主题/宽度/缩放用例，不扩大容差。
+- 原生 view fixture 在各平台完整安装包构建前运行，先验证快速的源码/平台接线；正式包 CDP 验收仍在打包后执行。任一阶段失败均保留发布阻断。
 - Windows 的 `.zcode-install-manifest` 由桌面打包流程独立生成，记录最终安装目录内的程序所有权。Computer Use 使用开源占位包或真实 producer 都必须生成清单；只有 Helper 的资源准备与校验依赖 producer，不能让可选能力改变升级清理合同。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
 - macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。

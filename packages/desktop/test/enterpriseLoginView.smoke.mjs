@@ -63,12 +63,16 @@ const timer = setTimeout(() => {
 // 每次只读取一个快照，让 Main 的串行 styleTask 在两次观察之间继续执行。
 async function waitForFrameValue(frame, expression, ready = Boolean) {
   const deadline = Date.now() + 5000;
+  let lastValue;
   while (Date.now() < deadline) {
     const value = await frame.executeJavaScript(expression);
+    lastValue = value;
     if (ready(value)) return value;
     await new Promise((done) => setTimeout(done, 20));
   }
-  assert.fail("Native frame did not publish the expected styled layout");
+  assert.fail(
+    `Native frame did not publish the expected styled layout: ${JSON.stringify(lastValue)}`,
+  );
 }
 async function run() {
   try {
@@ -182,13 +186,24 @@ async function run() {
     await new Promise((done) => layoutGuest.once("did-finish-load", done));
     const frame = layoutGuest.mainFrame.frames[0];
     assert.ok(frame);
+    const expectedFrameWidth = Math.round(
+      owner.contentView.children[0].getBounds().width / layoutGuest.getZoomFactor(),
+    );
     const boxes = await waitForFrameValue(
       frame,
       `(() => { const q=document.querySelector('.qrcode'), t=document.querySelector('.title'), s=document.querySelector('.status'); if(getComputedStyle(t).display!=='none') return null; const qr=q.getBoundingClientRect(), sr=s.getBoundingClientRect(); return {qr:qr.toJSON(),status:sr.toJSON(),width:innerWidth,height:innerHeight}; })()`,
+      // iframe 样式已注入不代表视口尺寸 IPC 已提交；先观察正确宽度，再测量几何事实。
+      (value) => value && Math.abs(value.width - expectedFrameWidth) <= 1,
     );
-    assert.ok(Math.abs(boxes.qr.x + boxes.qr.width / 2 - boxes.width / 2) < 2);
-    assert.ok(boxes.qr.y >= 0 && boxes.qr.bottom <= boxes.height);
-    assert.ok(boxes.status.height > 0 && boxes.status.bottom <= boxes.height);
+    assert.ok(
+      Math.abs(boxes.qr.x + boxes.qr.width / 2 - boxes.width / 2) < 2,
+      JSON.stringify(boxes),
+    );
+    assert.ok(boxes.qr.y >= 0 && boxes.qr.bottom <= boxes.height, JSON.stringify(boxes));
+    assert.ok(
+      boxes.status.height > 0 && boxes.status.bottom <= boxes.height,
+      JSON.stringify(boxes),
+    );
     cancelEnterpriseLoginView(owner.webContents.id, layout.id);
     await layoutResult;
     layoutMode = false;
@@ -205,6 +220,9 @@ async function run() {
         const pending = openEnterpriseLoginView({ sender: owner.webContents }, modern);
         const modernGuest = owner.contentView.children[0].webContents;
         await new Promise((done) => modernGuest.once("did-finish-load", done));
+        const expectedWidth = Math.round(
+          owner.contentView.children[0].getBounds().width / modernGuest.getZoomFactor(),
+        );
         const layout = await waitForFrameValue(
           modernGuest,
           `(() => {
@@ -212,6 +230,7 @@ async function run() {
             const qr=document.querySelector('.wwLogin_qrcode_img'), box=document.querySelector('.wwLogin_qrcode_box'), desc=document.querySelector('.wwLogin_qrcode_desc'), panel=document.querySelector('.wwLogin_panel');
             return {qr:qr.getBoundingClientRect().toJSON(),box:box.getBoundingClientRect().toJSON(),desc:desc.getBoundingClientRect().toJSON(),panel:panel.getBoundingClientRect().toJSON(),width:innerWidth,height:innerHeight,background:getComputedStyle(panel).backgroundColor,header:getComputedStyle(document.querySelector('.wwLogin_panel_header')).display};
         })()`,
+          (value) => value && Math.abs(value.width - expectedWidth) <= 1,
         );
         assert.ok(
           Math.abs(layout.box.x + layout.box.width / 2 - layout.width / 2) < 2,

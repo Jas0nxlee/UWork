@@ -132,10 +132,6 @@ jobs:
         env:
           UWORK_ENTERPRISE_IDENTITY_CONFIG: ${{ secrets.UWORK_ENTERPRISE_IDENTITY_CONFIG }}
         run: pnpm exec tsx scripts/desktop-enterprise-identity.ts stage
-      - name: Build native desktop installers
-        run: pnpm --dir packages/desktop exec node scripts/bundle.mjs --os ${{ matrix.platform }} --arch ${{ matrix.arch }} --skip-prepare
-      - name: Verify bundled public WeCom configuration
-        run: pnpm exec tsx scripts/desktop-enterprise-identity.ts verify ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify native login view ownership and callback routing
         if: matrix.platform != 'linux'
         timeout-minutes: 2
@@ -144,6 +140,10 @@ jobs:
         if: matrix.platform == 'linux'
         timeout-minutes: 2
         run: xvfb-run -a node packages/desktop/scripts/native-enterprise-login-smoke.mjs
+      - name: Build native desktop installers
+        run: pnpm --dir packages/desktop exec node scripts/bundle.mjs --os ${{ matrix.platform }} --arch ${{ matrix.arch }} --skip-prepare
+      - name: Verify bundled public WeCom configuration
+        run: pnpm exec tsx scripts/desktop-enterprise-identity.ts verify ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh desktop can open WeCom scanning
         if: matrix.platform != 'linux'
         timeout-minutes: 10
