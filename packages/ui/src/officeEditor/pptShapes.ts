@@ -56,6 +56,8 @@ export interface PptxShape {
   bounds: ShapeBounds;
   /** 每个 `a:txBody` 的段落（形状一般一个；表格单元格会有多个）。 */
   textBodies: ShapeParagraphFormat[][];
+  /** 首个 run 的格式（功能区要拿它显示"加粗亮着/字号 32"这类选中态）。 */
+  runFormat: ShapeRunFormat;
 }
 
 function parser(): DOMParser {
@@ -112,6 +114,38 @@ function boundsOf(shape: Element): ShapeBounds {
     width: num(extent.getAttribute("cx")) ?? 0,
     height: num(extent.getAttribute("cy")) ?? 0,
     ...(rotation === undefined ? {} : { rotation }),
+  };
+}
+
+/**
+ * 首个 run 的格式（`a:rPr`）：功能区显示选中态用。
+ * 只在**第一个 txBody 的第一段第一个 run** 上取样——形状当前是"整体统一样式"的粒度，
+ * 多字体混排时按首个 run 报，与写入侧的口径一致。
+ */
+function runFormatOf(shape: Element): ShapeRunFormat {
+  const body = shape.getElementsByTagNameNS("*", "txBody")[0];
+  const run = body?.getElementsByTagNameNS(A_NS, "r")[0];
+  const properties = run
+    ? Array.from(run.children).find(
+        (child) => child.namespaceURI === A_NS && child.localName === "rPr",
+      )
+    : undefined;
+  if (!properties) return {};
+  const size = num(properties.getAttribute("sz"));
+  const color = properties.getElementsByTagNameNS(A_NS, "srgbClr")[0]?.getAttribute("val");
+  const font = properties.getElementsByTagNameNS(A_NS, "latin")[0]?.getAttribute("typeface");
+  return {
+    ...(properties.getAttribute("b") === "1" ? { bold: true } : {}),
+    ...(properties.getAttribute("i") === "1" ? { italic: true } : {}),
+    ...(properties.getAttribute("u") && properties.getAttribute("u") !== "none"
+      ? { underline: true }
+      : {}),
+    ...(properties.getAttribute("strike") && properties.getAttribute("strike") !== "noStrike"
+      ? { strike: true }
+      : {}),
+    ...(size === undefined ? {} : { size: Math.round(size / 100) }),
+    ...(color ? { color: `#${color}` } : {}),
+    ...(font ? { font } : {}),
   };
 }
 
@@ -175,6 +209,7 @@ export function readSlideShapes(xml: string): PptxShape[] {
       ...(placeholder ? { placeholder } : {}),
       bounds: boundsOf(shape),
       textBodies: textBodiesOf(shape),
+      runFormat: runFormatOf(shape),
     } satisfies PptxShape;
   });
 }

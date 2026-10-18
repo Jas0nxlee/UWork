@@ -10,6 +10,9 @@ export async function runPptxUiCases({ page, check }) {
     const { bytes } = await window.__pptx.fixture();
     await window.__pptx.mountPane(bytes.slice(0));
     await new Promise((resolve) => setTimeout(resolve, 400));
+    // 形状列表与文本块都在右侧窗格里，窗格默认收起 → 先点开
+    document.querySelector("[data-pptx-open-format]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
     return {
       shapeChips: Array.from(document.querySelectorAll("[data-pptx-shape]")).map((n) =>
         n.getAttribute("data-pptx-shape"),

@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
+import { runPptxPanelCases } from "./lib/officePptxPanelCases.mjs";
+import { runPptxRibbonCases } from "./lib/officePptxRibbonCases.mjs";
 import { runPptxStyledCanvasCases } from "./lib/officePptxStyledCanvasCases.mjs";
 import { runPptxEditCases } from "./lib/officePptxEditCases.mjs";
 import { runPptxUiCases } from "./lib/officePptxUiCases.mjs";
@@ -225,17 +227,25 @@ async function main() {
   const ui = await page.evaluate(async () => {
     const { bytes } = await window.__pptx.fixture();
     await window.__pptx.mountPane(bytes);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const slides = [...document.querySelectorAll("[data-pptx-slide]")];
+    // 文本块在右侧「设置形状格式」窗格里，而窗格**默认收起**（免得挤窄画布）——先点开它
+    const openFormat = document.querySelector("[data-pptx-open-format]");
+    openFormat?.click();
     await new Promise((resolve) => setTimeout(resolve, 300));
     const areas = [...document.querySelectorAll("[data-pptx-block]")];
-    const slides = [...document.querySelectorAll("[data-pptx-slide]")];
     return {
       areas: areas.length,
       slideButtons: slides.length,
+      opened: Boolean(document.querySelector("[data-pptx-task-pane]")),
       first: areas[0]?.value ?? null,
       status: document.querySelector("[data-office-toolbar]")?.textContent?.slice(0, 80) ?? "",
     };
   });
-  check(ui.areas === 2 && ui.slideButtons === 2, `界面渲染出 2 页 / 2 个文本框（${ui.areas}）`);
+  check(
+    ui.areas === 2 && ui.slideButtons === 2 && ui.opened,
+    `界面渲染出 2 页缩略图 / 2 个文本框（窗格按需打开 ${ui.opened}）`,
+  );
   check(ui.first === "标题一\n副标题", `文本框里是原文（${JSON.stringify(ui.first)}）`);
   check(
     ui.status.includes("已载入") && ui.status.includes("张幻灯片"),
@@ -284,6 +294,8 @@ async function main() {
   await runPptxUiCases({ page, check });
   await runPptxCanvasCases({ page, check });
   await runPptxStyledCanvasCases({ repoRoot, editorDir, check });
+  await runPptxRibbonCases({ page, check });
+  await runPptxPanelCases({ page, check });
 
   await harness.close();
   if (failures.length > 0) {
