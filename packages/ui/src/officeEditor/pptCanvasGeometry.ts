@@ -90,6 +90,25 @@ export function isOffPage(box: CanvasBox, viewport: CanvasViewport): boolean {
   );
 }
 
+/** 渲染器量到的每页元素几何（96dpi 像素）→ EMU 记账的 `{名字: 框}`。 */
+export function measuredBoxesOf(
+  elements: readonly {
+    nodeName: string;
+    bounds: { x: number; y: number; width: number; height: number };
+  }[],
+): Record<string, CanvasBox> {
+  const boxes: Record<string, CanvasBox> = {};
+  for (const element of elements) {
+    boxes[element.nodeName] = {
+      x: element.bounds.x * EMU_PER_PX,
+      y: element.bounds.y * EMU_PER_PX,
+      width: element.bounds.width * EMU_PER_PX,
+      height: element.bounds.height * EMU_PER_PX,
+    };
+  }
+  return boxes;
+}
+
 export interface CanvasDragState {
   mode: "move" | "resize";
   corner: CanvasCorner;

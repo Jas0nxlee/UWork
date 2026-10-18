@@ -45,7 +45,7 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
           {
             kind: "select",
             label: "字号",
-            title: "字号（磅）",
+            title: "字号",
             options: SIZES.map((size) => ({ label: String(size), args: [size] })),
             current: (style) => (style.size ? String(style.size) : null),
           },
@@ -78,7 +78,7 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
       {
         label: "形状",
         items: [
-          button("文本框", "新建文本框", "pptxAddTextBox", { icon: "TextAdd24Regular" }),
+          button("文本框", "新建文本框", "pptxAddTextBox", { icon: "Textbox24Regular" }),
           button("复制形状", "复制选中的形状", "pptxDuplicateShape", { icon: "Copy24Regular" }),
           button("删除形状", "删除选中的形状", "pptxDeleteShape", { icon: "Delete24Regular" }),
           button("上移一层", "把形状往上挪一层", "pptxShapeUp", { icon: "ArrowUp24Regular" }),
@@ -95,7 +95,7 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
         label: "文本",
         items: [
           button("文本框", "在页面中部新建一个文本框", "pptxAddTextBox", {
-            icon: "TextAdd24Regular",
+            icon: "Textbox24Regular",
           }),
         ],
       },

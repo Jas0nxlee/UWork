@@ -11,6 +11,8 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
   type RefObject,
@@ -64,6 +66,9 @@ export function DropdownPanel({
     color: string;
     background: string;
   } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  /** 面板最大高度：夹在视口里，装不下就在面板内部滚动（不设上限会超出屏幕、最下面的项点不到）。 */
+  const [maxHeight, setMaxHeight] = useState(320);
 
   useEffect(() => {
     if (!open) {
@@ -115,25 +120,48 @@ export function DropdownPanel({
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", measure);
-    // 面板打开时若容器滚动就关掉，避免面板与触发器错位
-    document.addEventListener("scroll", onClose, true);
+    // 面板打开时若**别处**滚动就关掉，避免面板与触发器错位。
+    // 但面板自己的滚动（面板内容高、要滚着看）不能算——早先一刀切用捕获监听，
+    // 结果"一滚就关"，看起来就是"折叠菜单滚不动也点不着"（用户反馈）。
+    const onScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && (panelRef.current?.contains(target) || anchorRef.current?.contains(target))) {
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", measure);
-      document.removeEventListener("scroll", onClose, true);
+      document.removeEventListener("scroll", onScroll, true);
     };
   }, [anchorRef, minWidth, onClose, open]);
+
+  useLayoutEffect(() => {
+    if (!open || !position) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    panel.style.maxHeight = "none";
+    // 夹到视口内：装不下就在面板内部滚（而不是超出屏幕让下面的项点不到）
+    const available = window.innerHeight - position.top - 8;
+    panel.style.maxHeight = `${Math.max(160, Math.min(340, available))}px`;
+    setMaxHeight(panel.clientHeight);
+  }, [open, position, children]);
 
   if (!open || !position) return null;
   return createPortal(
     <div
+      ref={panelRef}
       data-ribbon-dropdown
-      className="fixed z-50 max-h-72 overflow-auto rounded border border-white/15 py-1 shadow-xl"
+      className="fixed z-50 rounded border border-white/15 py-1 shadow-xl"
       style={{
         left: position.left,
         top: position.top,
         width: position.width,
+        maxHeight,
+        overflowY: "auto",
         color: position.color,
         backgroundColor: position.background,
       }}

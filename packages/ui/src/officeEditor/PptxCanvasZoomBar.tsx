@@ -56,9 +56,9 @@ export function PptxCanvasZoomBar({
         data-pptx-zoom-fit
         className={buttonClass}
         onClick={() => onZoomChange(() => 100)}
-        title="适应宽度（Ctrl/⌘ + 滚轮也能缩放）"
+        title="适应窗口（整页可见；Ctrl/⌘ + 滚轮也能缩放）"
       >
-        适应
+        适应窗口
       </button>
       <select
         data-pptx-zoom-presets

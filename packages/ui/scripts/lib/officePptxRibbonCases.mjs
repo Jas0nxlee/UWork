@@ -108,6 +108,85 @@ export async function runPptxRibbonCases({ page, check }) {
     `「视图」标签的缩放命令能改画布（${zoomBefore} → 缩小 ${zoomShrunk} → 放大 ${zoomBack}｜按钮 ${titles.join("/") || "没找到"}）`,
   );
 
+  // ③b 折叠菜单（»）：**滚它不能关、点了要生效**（用户反馈"折叠部分没法滚动和点击"）
+  // 先切回「开始」——它组分多，才会出现 »（视图只有一个组，没有 »）
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
+      (node) => (node.textContent ?? "").trim() === "开始",
+    );
+    tab?.click();
+  });
+  await page.waitForTimeout(300);
+  const menuOpened = await page.evaluate(async () => {
+    const more = document.querySelector("[data-office-ribbon-more]");
+    if (!more) return { opened: false, reason: "这个宽度下没有 » （所有分组都放下了）" };
+    more.click();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return { opened: Boolean(document.querySelector("[data-ribbon-dropdown]")), reason: "" };
+  });
+  const scrollStays = await page.evaluate(async () => {
+    const panel = document.querySelector("[data-ribbon-dropdown]");
+    if (!panel) return { stillOpen: false, items: 0, scrollable: false };
+    const scrollable = panel.scrollHeight > panel.clientHeight + 1;
+    panel.scrollTop = 40;
+    panel.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return {
+      stillOpen: Boolean(document.querySelector("[data-ribbon-dropdown]")),
+      items: panel.querySelectorAll("button").length,
+      scrollable,
+      scrollTop: panel.scrollTop,
+    };
+  });
+  check(
+    menuOpened.opened && scrollStays.stillOpen && scrollStays.items > 0,
+    `折叠菜单能打开、滚动时不自己关掉（${scrollStays.items} 个项目，可滚 ${scrollStays.scrollable}，滚动后仍开着 ${scrollStays.stillOpen}）`,
+  );
+
+  // 面板里的按钮点得动：点"新建一页（空白）"要真的加一页
+  const slidesBeforeMenu = await page.evaluate(() => window.__pptxPane?.slideCount?.() ?? 0);
+  const clickedInMenu = await page.evaluate(() => {
+    const panel = document.querySelector("[data-ribbon-dropdown]");
+    const node = panel
+      ? [...panel.querySelectorAll("button")].find(
+          (item) => (item.getAttribute("title") ?? "") === "新建一页（空白）",
+        )
+      : null;
+    if (!node) return false;
+    node.click();
+    return true;
+  });
+  await page.waitForTimeout(1500);
+  const slidesAfterMenu = await page.evaluate(() => window.__pptxPane?.slideCount?.() ?? 0);
+  check(
+    clickedInMenu && slidesAfterMenu === slidesBeforeMenu + 1,
+    `折叠菜单里的命令点得动（${slidesBeforeMenu} → ${slidesAfterMenu} 页）`,
+  );
+
+  // ③c 有图标的按钮**不再显示文字**（文字标签太占宽；之前正是图标名不在图标表里才退回显示文字）
+  const labelWidth = await page.evaluate(async () => {
+    const find = () =>
+      [...document.querySelectorAll("button")].find(
+        (item) => (item.getAttribute("title") ?? "") === "加粗",
+      );
+    let node = find();
+    if (!node) {
+      // 收进 » 里的分组：把它打开再找
+      document.querySelector("[data-office-ribbon-more]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      node = find();
+    }
+    if (!node) return null;
+    return {
+      text: (node.textContent ?? "").trim(),
+      width: Math.round(node.getBoundingClientRect().width),
+    };
+  });
+  check(
+    labelWidth !== null && labelWidth.text === "" && labelWidth.width <= 40,
+    `有图标的按钮只显图标（加粗按钮文字 ${JSON.stringify(labelWidth?.text)}，宽 ${labelWidth?.width}px）`,
+  );
+
   // ④ 「开始」里的幻灯片命令：新建一页
   await page.evaluate(() => {
     const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(

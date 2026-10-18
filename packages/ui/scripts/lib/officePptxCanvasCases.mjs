@@ -152,19 +152,122 @@ export async function runPptxCanvasCases({ page, check }) {
     `点空白处取消选择（选框与手柄都收起来）｜点 ${JSON.stringify(emptyDiag)}｜点了以后 selected=${cleared?.selected} handles=${cleared?.handles}`,
   );
 
-  // ⑤ 双击形状 → 焦点落到它的文本框（就地改字的入口）
+  // ⑤ 双击形状 → **在页面上就地改字**（编辑层出现在形状的位置上，字号按形状的格式算）
   const titleAgain = center(resized);
   await page.mouse.dblclick(titleAgain.x, titleAgain.y);
-  await page.waitForTimeout(300);
-  const focused = await page.evaluate(
-    () => document.activeElement?.getAttribute("data-pptx-block") ?? null,
+  await page.waitForTimeout(400);
+  const editing = await page.evaluate(() => {
+    const node = document.querySelector("[data-pptx-text-editor]");
+    const canvas = window.__pptxPane?.canvas?.() ?? null;
+    return node
+      ? {
+          value: node.value,
+          fontSize: getComputedStyle(node).fontSize,
+          editingText: canvas?.editingText ?? false,
+          handles: canvas?.handles ?? -1,
+        }
+      : null;
+  });
+  check(
+    Boolean(editing) && editing.value.includes("标题一"),
+    `双击形状就在页面上改字（编辑层里是原文 ${JSON.stringify(editing?.value ?? null)}）`,
   );
   check(
-    typeof focused === "string" && focused.includes("#0"),
-    `双击形状把焦点给了它的文本框（${focused}）`,
+    editing?.editingText === true && editing.handles === 0,
+    "就地改字时选框与手柄让位（不挡编辑）",
+  );
+  // 双击的**第二下**会把刚聚焦的编辑层 blur 掉：编辑层必须扛住这一下活下来
+  // （真机实测：没有这条保护时"双击进编辑"会被自己立刻关掉，看起来就是双击没反应）
+  await page.waitForTimeout(900);
+  const survived = await page.evaluate(() => ({
+    editor: Boolean(document.querySelector("[data-pptx-text-editor]")),
+    focused: document.activeElement?.getAttribute("data-pptx-text-editor") !== null,
+  }));
+  check(survived.editor && survived.focused, "编辑层扛住了双击第二下的失焦（还在编辑、仍聚焦）");
+  // 敲一个字要落到编辑层里（不是在画布上乱窜）
+  await page.keyboard.press("End");
+  await page.keyboard.type("X");
+  const typed = await page.evaluate(
+    () => document.querySelector("[data-pptx-text-editor]")?.value ?? "",
+  );
+  check(typed.includes("X"), `键入落到编辑层（现在 ${JSON.stringify(typed.slice(0, 16))}…）`);
+  await page.keyboard.press("Escape");
+  // 字号 = 形状的磅值 × 4/3 × scale（渲染器是 96dpi 像素）
+  const expectedFont = Math.max(9, 20 * (4 / 3) * mounted.scale).toFixed(1);
+  check(
+    editing !== null &&
+      Math.abs(Number.parseFloat(editing.fontSize) - Number.parseFloat(expectedFont)) < 1.5,
+    `编辑层字号按形状格式算（${editing?.fontSize} ≈ ${expectedFont}px）`,
   );
 
+  // ⑤b Esc = 放弃：文本不变、编辑层消失
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const afterCancel = await page.evaluate(() => ({
+    editor: Boolean(document.querySelector("[data-pptx-text-editor]")),
+    status: document.querySelector("[data-office-toolbar]")?.textContent?.slice(-40) ?? "",
+  }));
+  check(!afterCancel.editor, "Esc 退出就地改字、不改文本");
+
+  // ⑤c 改字 → 点到别处提交：这一页 XML 里的文字变了
+  const beforeText = await page.evaluate(() => {
+    const part = window.__pptxPane.slideCount ? document.querySelector("[data-pptx-block]") : null;
+    return part?.value ?? null;
+  });
+  const againPoint = center(resized);
+  await page.mouse.dblclick(againPoint.x, againPoint.y);
+  await page.waitForTimeout(400);
+  const diagOpen = await page.evaluate(() => ({
+    editor: Boolean(document.querySelector("[data-pptx-text-editor]")),
+    focused: document.activeElement?.tagName ?? null,
+    value: document.querySelector("[data-pptx-text-editor]")?.value?.slice(0, 14) ?? null,
+    hits: (() => {
+      const node = document.elementFromPoint(
+        document.querySelector("[data-pptx-canvas-layer]")?.getBoundingClientRect().left + 5,
+        document.querySelector("[data-pptx-canvas-layer]")?.getBoundingClientRect().top + 5,
+      );
+      return node ? `${node.tagName}[${(node.getAttribute("class") ?? "").slice(0, 24)}]` : null;
+    })(),
+  }));
+  console.log("⑤c after dblclick:", JSON.stringify(diagOpen));
+  await page.keyboard.press("Meta+A");
+  await page.keyboard.type("改过的标题");
+  const diagTyped = await page.evaluate(
+    () => document.querySelector("[data-pptx-text-editor]")?.value?.slice(0, 20) ?? null,
+  );
+  console.log("⑤c after typing:", JSON.stringify(diagTyped));
+  const emptyPoint = await page.evaluate(() => {
+    const canvas = window.__pptxPane.canvas();
+    return {
+      x: canvas.layer.left + canvas.layer.width * 0.8,
+      y: canvas.layer.top + canvas.layer.height * 0.15,
+    };
+  });
+  await page.mouse.click(emptyPoint.x, emptyPoint.y);
+  await page.waitForTimeout(700);
+  const committed = await page.evaluate(() => {
+    const editor = Boolean(document.querySelector("[data-pptx-text-editor]"));
+    const blocks = [...document.querySelectorAll("[data-pptx-block]")].map((node) => node.value);
+    const status = document.querySelector("[data-office-toolbar]")?.textContent?.slice(-46) ?? "";
+    return { editor, blocks, status };
+  });
+  check(
+    !committed.editor && committed.blocks.some((text) => String(text).includes("改过的标题")),
+    `点到别处＝提交，文字进了这一页（${JSON.stringify(committed.blocks).slice(0, 60)}｜${committed.status}）`,
+  );
+  void beforeText;
+
   // ⑥ 形状拖到页面外之后，四个角手柄仍然抓得住（真机上踩过：手柄被画框裁掉＝"看得见点不着"）
+  // 先把画布框撑高：裸检查页没有 CSS，列高会塌成 160px，页面会小到"拖出去＝整块在页外"，
+  // 那种情况下四个手柄会夹到同一个角，验不出"每个手柄都可点"这件事。
+  await page.evaluate(() => {
+    const frame = document.querySelector("[data-pptx-canvas-frame]");
+    if (frame) frame.style.minHeight = "620px";
+  });
+  await page.waitForTimeout(400);
+  // （先确认不在编辑态：编辑时手柄是藏起来的，那是设计）
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(200);
   await page.evaluate(() =>
     document.querySelector("[data-pptx-canvas-frame]")?.scrollIntoView({ block: "center" }),
   );

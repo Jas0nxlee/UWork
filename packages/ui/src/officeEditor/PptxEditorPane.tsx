@@ -15,10 +15,10 @@ import { useCallback as useStableCallback } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
 import { OfficeRibbon } from "./OfficeRibbon.js";
-import { ShapeInspector } from "./PptxShapeInspector.js";
+import { PptxFormatPane } from "./PptxFormatPane.js";
 import { PptxSlideCanvas } from "./PptxSlideCanvas.js";
 import { PptxSlideThumbnails } from "./PptxSlideThumbnails.js";
-import { PptxTextBlocks } from "./PptxTextBlocks.js";
+import { installPptxPaneDebug } from "./pptxPaneDebug.js";
 import { PPTX_RIBBON_TABS } from "./pptxRibbonTabs.js";
 import { pptxRibbonStyle, runPptxRibbonCommand } from "./pptxRibbonRun.js";
 import { shapeLines } from "./pptShapes.js";
@@ -74,15 +74,40 @@ export function PptxEditorPane({
    * （用户口径）。选中形状时自动弹出，点 ✕ 收起。
    */
   const [formatPane, setFormatPane] = useState(false);
+  /** 编辑区（缩略图 + 画布 + 窗格那一行）的宽度：太窄时窗格改成浮层，别把画布挤没。 */
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [rowWidth, setRowWidth] = useState(0);
+  /**
+   * 面板**占布局**、不浮层盖住画布：PowerPoint 是"面板一开，页面自动缩小、整页仍看得见"
+   * （用户口径）。所以这里不再按宽度切成浮层，画布那边改成"适应窗口"缩放。
+   */
+  const paneFloating = false;
+  void rowWidth;
+  /** 缩略图面板也能收起：窄的时候把它让给画布。 */
+  const [thumbsOpen, setThumbsOpen] = useState(true);
   /** 一份文件只解析一次的预览文档：画布与左栏缩略图共用。 */
   const preview = usePptxPreview(previewBytes);
+  /** 就地改字：正在编辑哪个形状、草稿文本（双击形状进入，⌘↵/点别处提交，Esc 放弃）。 */
+  const [editing, setEditing] = useState<{ shape: string; text: string } | null>(null);
   /** 文本框的 DOM 引用：画布双击"就地改字"要能把焦点移到对应的文本框上。 */
   const blockRefs = useRef(new Map<number, HTMLTextAreaElement>());
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () => setRowWidth(row.clientWidth);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     setActiveSlide(0);
     setActiveShape(null);
     setFormatPane(false);
+    setEditing(null);
   }, [path]);
 
   // 选中形状就自动把「设置形状格式」窗格打开（PowerPoint 里选中对象右边的窗格也是这个意思）
@@ -123,6 +148,7 @@ export function PptxEditorPane({
         return;
       }
       setFormatPane(true);
+      setEditing(null);
       const element = blockRefs.current.get(block.index);
       element?.focus();
       element?.scrollIntoView({ block: "nearest" });
@@ -175,72 +201,58 @@ export function PptxEditorPane({
     ],
   );
 
+  /**
+   * 形状（XML 里的 txBody）与文本框（readSlideText 的块）是两套编号，不该靠"顺序一样"来猜——
+   * 按**文字内容**（去掉空白）匹配出它的块编号；匹配不上返回 null（例如组里的形状）。
+   */
+  const blockIndexOfShape = useCallback(
+    (name: string): number | null => {
+      const target = shapes.find((item) => item.name === name);
+      const wanted = (target ? shapeLines(target).join("\n") : "").replace(/\s+/g, "");
+      if (!wanted) return null;
+      const blocks = slide?.blocks ?? [];
+      const matched = blocks.find((block) => block.lines.join("\n").replace(/\s+/g, "") === wanted);
+      return matched ? matched.index : null;
+    },
+    [shapes, slide],
+  );
+
+  /** 双击形状：能对上文本块就**就地改字**；对不上（组里的形状等）退到右栏文本框。 */
+  const beginTextEdit = useCallback(
+    (name: string) => {
+      const index = blockIndexOfShape(name);
+      const target = shapes.find((item) => item.name === name);
+      if (index === null || !target) {
+        focusBlockOfShape(name);
+        return;
+      }
+      setActiveShape(name);
+      setEditing({ shape: name, text: shapeLines(target).join("\n") });
+    },
+    [blockIndexOfShape, focusBlockOfShape, shapes],
+  );
+
+  /** 提交就地改字：走的是同一条文本补丁（保存时仍然只写回改过的那几页）。 */
+  const commitTextEdit = useCallback(() => {
+    if (!editing) return;
+    const index = blockIndexOfShape(editing.shape);
+    if (index !== null && slide) setBlockLines(slide.partName, index, editing.text.split("\n"));
+    setEditing(null);
+  }, [blockIndexOfShape, editing, setBlockLines, slide]);
+
   // 与 Excel/Word 编辑位同款：把"看状态"的小口子挂到 globalThis，真机排查与自动化都用它
-  useEffect(() => {
-    const global = globalThis as Record<string, unknown>;
-    global.__pptxPane = {
-      slideCount: () => slides?.length ?? 0,
-      shapeNames: () =>
-        slides?.[activeSlide]
-          ? shapesOf(slides[activeSlide].partName).map((item) => item.name)
-          : [],
-      shapeBounds: (name: string) => {
-        const partName = slides?.[activeSlide]?.partName;
-        if (!partName) return null;
-        const found = shapesOf(partName).find((item) => item.name === name);
-        return found ? found.bounds.width : null;
-      },
-      /** 形状的完整几何（EMU）：画布断言按它算"该点在哪儿"。 */
-      shapeBox: (name: string) => {
-        const partName = slides?.[activeSlide]?.partName;
-        if (!partName) return null;
-        const found = shapesOf(partName).find((item) => item.name === name);
-        return found ? { ...found.bounds } : null;
-      },
-      /** 画布状态：渲染出来了没 / 选中哪个形状 / 选框与手柄在不在。 */
-      canvas: () => {
-        const frame = document.querySelector("[data-pptx-canvas-frame]");
-        if (!frame) return null;
-        const selection = document.querySelector("[data-pptx-canvas-selection]");
-        const host = frame.querySelector("[data-pptx-canvas-host]");
-        const layer = frame.querySelector("[data-pptx-canvas-layer]");
-        const rect = (node: Element | null) => {
-          if (!node) return null;
-          const box = node.getBoundingClientRect();
-          return { left: box.left, top: box.top, width: box.width, height: box.height };
-        };
-        return {
-          ready: frame.getAttribute("data-pptx-canvas-ready") === "true",
-          scale: Number(frame.getAttribute("data-pptx-canvas-scale") ?? 0),
-          zoom: Number(frame.getAttribute("data-pptx-canvas-zoom") ?? 0),
-          pageWidth: Number(frame.getAttribute("data-pptx-canvas-page-width") ?? 0),
-          renderedNodes: host ? host.childElementCount : 0,
-          selected: selection?.getAttribute("data-pptx-canvas-selection") ?? null,
-          handles: frame.querySelectorAll("[data-pptx-canvas-handle]").length,
-          frame: rect(frame),
-          layer: rect(layer),
-          selectionRect: rect(selection),
-        };
-      },
-      /** 左栏缩略图面板的状态（缩略图画出来没、当前页高亮对不对）。 */
-      thumbnails: () => {
-        const panel = document.querySelector("[data-pptx-slide-panel]");
-        if (!panel) return null;
-        const items = [...panel.querySelectorAll("[data-pptx-slide]")];
-        return {
-          count: items.length,
-          rendered: items.filter((item) => {
-            const host = item.querySelector("[data-pptx-thumb-host]");
-            return host ? host.childElementCount > 0 : false;
-          }).length,
-          active: items.findIndex((item) => item.querySelector("[data-pptx-thumb-host]")),
-        };
-      },
-    };
-    return () => {
-      if (global.__pptxPane) global.__pptxPane = undefined;
-    };
-  });
+  useEffect(
+    () =>
+      installPptxPaneDebug({
+        slideCount: () => slides?.length ?? 0,
+        activePartName: () => slides?.[activeSlide]?.partName ?? null,
+        shapes: () => {
+          const partName = slides?.[activeSlide]?.partName;
+          return partName ? shapesOf(partName) : [];
+        },
+      }),
+    [activeSlide, shapesOf, slides],
+  );
 
   const totalBlocks = useMemo(
     () => (slides ?? []).reduce((total, item) => total + item.blocks.length, 0),
@@ -277,21 +289,37 @@ export function PptxEditorPane({
           正在打开演示文稿…
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <PptxSlideThumbnails
-            slides={slides}
-            preview={preview}
-            activeSlide={activeSlide}
-            busy={busy}
-            onSelectSlide={(index) => {
-              setActiveSlide(index);
-              setActiveShape(null);
-            }}
-            onAdd={() => void addSlideAction()}
-            onDuplicate={(partName) => void duplicateSlideAction(partName)}
-            onDelete={(partName) => void deleteSlideAction(partName)}
-            onMove={(partName, to) => void moveSlideAction(partName, to)}
-          />
+        <div ref={rowRef} className="relative flex min-h-0 flex-1">
+          {thumbsOpen ? (
+            <PptxSlideThumbnails
+              slides={slides}
+              preview={preview}
+              activeSlide={activeSlide}
+              busy={busy}
+              onSelectSlide={(index) => {
+                setActiveSlide(index);
+                setActiveShape(null);
+                setEditing(null);
+              }}
+              onAdd={() => void addSlideAction()}
+              onDuplicate={(partName) => void duplicateSlideAction(partName)}
+              onDelete={(partName) => void deleteSlideAction(partName)}
+              onMove={(partName, to) => void moveSlideAction(partName, to)}
+              onCollapse={() => setThumbsOpen(false)}
+            />
+          ) : (
+            <div className="flex w-6 shrink-0 flex-col items-center border-r border-border pt-1">
+              <button
+                type="button"
+                data-pptx-thumbs-open
+                className="rounded px-1 text-foreground-subtle hover:text-foreground"
+                onClick={() => setThumbsOpen(true)}
+                title="展开幻灯片缩略图"
+              >
+                ›
+              </button>
+            </div>
+          )}
           {/* 中：画布 */}
           {slide ? (
             // minWidth:0 必须写死：画布里的页面是按"框宽"算大小的，列要是被内容撑宽了，
@@ -308,104 +336,50 @@ export function PptxEditorPane({
                 activeShape={activeShape}
                 onSelect={setActiveShape}
                 onCommitBounds={(name, bounds) => setShapeBounds(slide.partName, name, bounds)}
-                onRequestText={focusBlockOfShape}
+                onRequestText={beginTextEdit}
+                editing={editing}
+                onEditingText={(text) =>
+                  setEditing((current) => (current ? { ...current, text } : current))
+                }
+                onEditingCommit={commitTextEdit}
+                onEditingCancel={() => setEditing(null)}
                 zoom={zoom}
                 onZoomChange={setZoom}
                 onOpenFormatPane={() => setFormatPane(true)}
               />
             </div>
           ) : null}
-          {/* 右：任务窗格（设置形状格式 / 文本）——默认收起，别把中间的画布挤窄 */}
+          {/* 右：任务窗格——窄容器里浮在画布上，宽容器里占布局（不然画布会被挤到 100 多像素） */}
           {formatPane ? (
-            <div
-              className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-border"
-              data-pptx-task-pane
-            >
-              <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                <span className="text-[11px] font-medium">设置形状格式</span>
-                <button
-                  type="button"
-                  data-pptx-close-format
-                  className="rounded px-1 text-foreground-subtle hover:text-foreground"
-                  onClick={() => setFormatPane(false)}
-                  title="收起窗格（把画布让出来）"
-                >
-                  ✕
-                </button>
-              </div>
-              {shape && slide ? (
-                <ShapeInspector
-                  shape={shape}
-                  onBounds={(bounds) => setShapeBounds(slide.partName, shape.name, bounds)}
-                  onFormat={(format) => setShapeFormat(slide.partName, shape.name, format)}
-                  onParagraph={(format) => setShapeParagraph(slide.partName, shape.name, format)}
-                  onMoveZ={(direction) => moveShape(slide.partName, shape.name, direction)}
-                  onDuplicate={() => duplicateShape(slide.partName, shape.name)}
-                  onDelete={() => {
-                    removeShape(slide.partName, shape.name);
-                    setActiveShape(null);
-                  }}
-                />
-              ) : (
-                <div className="px-3 py-2 text-[11px] text-foreground-subtlest">
-                  在画布上点一个形状，或从下面的形状列表里选一个，这里就会出现它的位置、大小与文字格式。
-                </div>
-              )}
-              {slide ? (
-                <div className="border-t border-border px-3 py-2">
-                  <div className="flex items-center justify-between pb-1">
-                    <span className="text-[11px] text-foreground-subtle">
-                      这一页的形状（也可以在画布上点）
-                    </span>
-                    <button
-                      type="button"
-                      data-shape-add-textbox
-                      className="rounded border border-border px-2 py-0.5 text-[11px] hover:border-accent"
-                      onClick={() => addTextBox(slide.partName)}
-                    >
-                      ＋ 文本框
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {shapes.map((item) => (
-                      <button
-                        key={item.name}
-                        type="button"
-                        data-pptx-shape={item.name}
-                        className={`rounded border px-2 py-0.5 text-[11px] ${
-                          item.name === activeShape
-                            ? "border-sky-500 bg-sky-500/10 text-sky-200"
-                            : "border-border hover:border-accent"
-                        }`}
-                        onClick={() => setActiveShape(item.name)}
-                      >
-                        {item.name || "(未命名)"}
-                        {item.kind === "pic"
-                          ? " ·图片"
-                          : item.kind === "graphicFrame"
-                            ? " ·表格"
-                            : ""}
-                      </button>
-                    ))}
-                    {shapes.length === 0 ? (
-                      <span className="text-[11px] text-foreground-subtlest">
-                        这一页没有可编辑形状
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-              <div className="border-t border-border px-3 py-2">
-                <div className="pb-1 text-[11px] font-medium">文本</div>
-                <PptxTextBlocks
-                  slide={slide}
-                  registerRef={registerRef}
-                  onChange={(index, lines) => {
-                    if (slide) setBlockLines(slide.partName, index, lines);
-                  }}
-                />
-              </div>
-            </div>
+            <PptxFormatPane
+              shape={shape}
+              slide={slide}
+              shapes={shapes}
+              activeShape={activeShape}
+              floating={paneFloating}
+              onSelectShape={setActiveShape}
+              onClose={() => setFormatPane(false)}
+              onBounds={(bounds) =>
+                slide && shape && setShapeBounds(slide.partName, shape.name, bounds)
+              }
+              onFormat={(format) =>
+                slide && shape && setShapeFormat(slide.partName, shape.name, format)
+              }
+              onParagraph={(format) =>
+                slide && shape && setShapeParagraph(slide.partName, shape.name, format)
+              }
+              onMoveZ={(direction) =>
+                slide && shape && moveShape(slide.partName, shape.name, direction)
+              }
+              onDuplicate={() => slide && shape && duplicateShape(slide.partName, shape.name)}
+              onDelete={() => {
+                if (slide && shape) removeShape(slide.partName, shape.name);
+                setActiveShape(null);
+              }}
+              onAddTextBox={() => slide && addTextBox(slide.partName)}
+              registerBlockRef={registerRef}
+              onChangeBlock={(index, lines) => slide && setBlockLines(slide.partName, index, lines)}
+            />
           ) : null}
         </div>
       )}

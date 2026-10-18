@@ -124,6 +124,40 @@ export async function runPptxStyledCanvasCases({ repoRoot, editorDir, check }) {
       `画布框自己裁剪/可滚动（overflow=${styled.canvas?.frameOverflow}），页面比框高时靠滚动看全`,
     );
 
+    // 面板占布局、画布让位并自动缩小：PowerPoint 的行为（用户口径："弹出时不要直接遮盖主页面"）
+    const beforePane = await page.evaluate(() => {
+      const frame = document.querySelector("[data-pptx-canvas-frame]").getBoundingClientRect();
+      return Math.round(frame.width);
+    });
+    await page.evaluate(() => document.querySelector("[data-pptx-open-format]")?.click());
+    await page.waitForTimeout(700);
+    const withPane = await page.evaluate(() => {
+      const frame = document.querySelector("[data-pptx-canvas-frame]").getBoundingClientRect();
+      const box = document.querySelector("[data-pptx-canvas-page]").getBoundingClientRect();
+      const pane = document.querySelector("[data-pptx-task-pane]");
+      return {
+        canvasWidth: Math.round(frame.width),
+        panePosition: pane ? getComputedStyle(pane).position : null,
+        fullyVisible:
+          box.left >= frame.left - 1 &&
+          box.right <= frame.right + 1 &&
+          box.top >= frame.top - 1 &&
+          box.bottom <= frame.bottom + 1,
+        gapTop: Math.round(box.top - frame.top),
+        gapBottom: Math.round(frame.bottom - box.bottom),
+      };
+    });
+    check(
+      withPane.panePosition === "static" && withPane.canvasWidth < beforePane,
+      `窗格占布局、画布让位（画布 ${beforePane} → ${withPane.canvasWidth}px，position=${withPane.panePosition}）`,
+    );
+    check(
+      withPane.fullyVisible && Math.abs(withPane.gapTop - withPane.gapBottom) <= 2,
+      `开了窗格之后整页仍完整可见且上下居中（上 ${withPane.gapTop} / 下 ${withPane.gapBottom}）`,
+    );
+    await page.evaluate(() => document.querySelector("[data-pptx-close-format]")?.click());
+    await page.waitForTimeout(400);
+
     // 有 Tailwind 时仍然点得中形状（命中测试与换算不该依赖样式）
     const box = await page.evaluate(() => window.__pptxPane?.shapeBox?.("标题 1") ?? null);
     if (box) {

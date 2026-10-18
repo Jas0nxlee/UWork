@@ -58,6 +58,10 @@ import {
   TextWordCount24Regular,
   ZoomIn24Regular,
   ZoomOut24Regular,
+  Textbox24Regular,
+  SlideAdd24Regular,
+  Copy24Regular,
+  TextBulletList24Regular,
 } from "@fluentui/react-icons";
 import type { ComponentType } from "react";
 import type { RibbonStyle } from "./officeRibbonModel.js";
@@ -65,6 +69,10 @@ import type { RibbonStyle } from "./officeRibbonModel.js";
 /** 模型里 `icon` 字段写的是 Fluent 图标名，这里做名字到组件的查表。 */
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   ArrowUndo24Regular,
+  SlideAdd24Regular,
+  Copy24Regular,
+  Textbox24Regular,
+  TextBulletList24Regular,
   ArrowRedo24Regular,
   PaintBrush24Regular,
   ClearFormatting24Regular,

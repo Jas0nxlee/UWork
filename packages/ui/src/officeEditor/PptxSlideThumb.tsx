@@ -72,6 +72,7 @@ export function PptxSlideThumb({
       type="button"
       ref={boxRef}
       data-pptx-slide={pageIndex + 1}
+      data-pptx-slide-active={active ? "true" : "false"}
       onClick={onSelect}
       className="flex w-full items-start gap-1 rounded px-1 py-1 text-left"
       style={{ background: active ? "rgba(56,189,248,0.16)" : "transparent" }}

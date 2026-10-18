@@ -18,6 +18,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import {
   dragGeometry,
   emuToPx,
+  measuredBoxesOf,
   EMU_PER_PX,
   handleSpots,
   isOffPage,
@@ -28,6 +29,7 @@ import {
   type CanvasDragState,
 } from "./pptCanvasGeometry.js";
 import { PptxCanvasZoomBar } from "./PptxCanvasZoomBar.js";
+import { PptxTextEditor } from "./PptxTextEditor.js";
 import type { PresentationPageElement } from "@/presentation/types.js";
 import type { PptxShape } from "./pptShapes.js";
 import type { PptxPreviewState } from "./usePptxPreview.js";
@@ -54,10 +56,12 @@ export interface PptxSlideCanvasProps {
   onZoomChange: (updater: (value: number) => number) => void;
   /** 打开右侧「设置形状格式」窗格（窗格默认收起，免得把画布挤窄）。 */
   onOpenFormatPane: () => void;
+  /** 就地改字（双击形状进入）：null 表示不在编辑。 */
+  editing: { shape: string; text: string } | null;
+  onEditingText: (text: string) => void;
+  onEditingCommit: () => void;
+  onEditingCancel: () => void;
 }
-
-/** 画布区域最高多少像素（超了就在区域内滚动，而不是把整页布局顶开）。 */
-const MAX_FRAME_HEIGHT = 620;
 
 export function PptxSlideCanvas({
   preview,
@@ -71,11 +75,16 @@ export function PptxSlideCanvas({
   zoom,
   onZoomChange,
   onOpenFormatPane,
+  editing,
+  onEditingText,
+  onEditingCommit,
+  onEditingCancel,
 }: PptxSlideCanvasProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [availableWidth, setAvailableWidth] = useState(0);
+  const [availableHeight, setAvailableHeight] = useState(0);
   const [measured, setMeasured] = useState<Record<string, CanvasBox>>({});
   const [drag, setDrag] = useState<CanvasDragState | null>(null);
   /** 拖动中的实时几何（EMU）：只在拖的时候覆盖显示，松手才写回 XML。 */
@@ -85,7 +94,10 @@ export function PptxSlideCanvas({
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const update = () => setAvailableWidth(Math.max(0, frame.clientWidth - PAGE_MARGIN_PX * 2));
+    const update = () => {
+      setAvailableWidth(Math.max(0, frame.clientWidth - PAGE_MARGIN_PX * 2));
+      setAvailableHeight(Math.max(0, frame.clientHeight - PAGE_MARGIN_PX * 2));
+    };
     update();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(update);
@@ -119,16 +131,7 @@ export function PptxSlideCanvas({
       // 文档正在被换掉（改动后重算预览）：这一帧先不给兜底几何，下一帧就好了
       page = [];
     }
-    const boxes: Record<string, CanvasBox> = {};
-    for (const element of page) {
-      boxes[element.nodeName] = {
-        x: element.bounds.x * EMU_PER_PX,
-        y: element.bounds.y * EMU_PER_PX,
-        width: element.bounds.width * EMU_PER_PX,
-        height: element.bounds.height * EMU_PER_PX,
-      };
-    }
-    setMeasured(boxes);
+    setMeasured(measuredBoxesOf(page));
   }, [preview, pageIndex]);
 
   /** Ctrl/⌘ + 滚轮（触控板捏合）＝ 缩放，且**以指针为中心**（PowerPoint 的手感）。 */
@@ -165,14 +168,20 @@ export function PptxSlideCanvas({
     frame.scrollTop = pending.fy * frame.scrollHeight - pending.py;
   }, [zoom]);
 
-  const fitScale = preview.pageWidth > 0 ? availableWidth / preview.pageWidth : 0;
+  /**
+   * **适应窗口**：同时按可用宽与可用高算缩放，取小的那个。
+   * PowerPoint 就是这样——旁边面板一开，页面整体缩小、**整页仍然看得见**，
+   * 而不是"按宽度铺满、底下被切掉"或者被面板盖住。
+   */
+  const fitScale = (() => {
+    if (preview.pageWidth <= 0 || preview.pageHeight <= 0) return 0;
+    const byWidth = availableWidth / preview.pageWidth;
+    const byHeight = availableHeight > 0 ? availableHeight / preview.pageHeight : byWidth;
+    return Math.min(byWidth, byHeight);
+  })();
   const scale = (fitScale * zoom) / 100;
   const pageDisplayWidth = Math.round((preview.pageWidth || 0) * scale);
   const pageDisplayHeight = Math.round((preview.pageHeight || 0) * scale);
-  const frameHeight = Math.max(
-    180,
-    Math.min(pageDisplayHeight + PAGE_MARGIN_PX * 2, MAX_FRAME_HEIGHT),
-  );
   const toEmu = useCallback((px: number) => pxToEmu(px, scale), [scale]);
   const toPx = useCallback((emu: number) => emuToPx(emu, scale), [scale]);
 
@@ -220,6 +229,8 @@ export function PptxSlideCanvas({
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // 正在就地改字：点画布＝先提交（编辑层的 blur 会接管），不要顺手拖动
+    if (editing) return;
     const name = hitTest(event.clientX, event.clientY);
     onSelect(name);
     if (!name) return;
@@ -279,6 +290,10 @@ export function PptxSlideCanvas({
   };
 
   const activeBox = activeShape ? boxOf(activeShape) : null;
+  /** 正在编辑的形状（拿它的格式去渲染编辑层）。 */
+  const shapeOfEditing = editing
+    ? (shapes.find((item) => item.name === editing.shape) ?? null)
+    : null;
   const activeShapeKnown = activeShape ? shapes.some((item) => item.name === activeShape) : false;
   const viewport = { width: pageDisplayWidth, height: pageDisplayHeight, scale };
   const handleSpotList = activeBox ? handleSpots(activeBox, viewport) : [];
@@ -299,7 +314,9 @@ export function PptxSlideCanvas({
         style={{
           position: "relative",
           overflow: "auto",
-          height: frameHeight,
+          // 吃满这一列剩下的高度：页面因此可以"上下居中"，面板开合时也会自动重新适应
+          flex: "1 1 auto",
+          minHeight: 160,
           display: "flex",
           padding: PAGE_MARGIN_PX,
           // 框宽只由列宽决定，绝不被里面的页面撑宽（否则会正反馈放大，见 PptxEditorPane 的注释）
@@ -361,11 +378,25 @@ export function PptxSlideCanvas({
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
               onDoubleClick={(event) => {
+                if (editing) return;
                 const name = hitTest(event.clientX, event.clientY);
                 if (name && onRequestText) onRequestText(name);
               }}
             >
-              {activeBox ? (
+              {/* 就地改字：编辑层盖在形状位置上，字号/对齐/颜色按这个形状现有的格式算 */}
+              {editing && activeBox ? (
+                <PptxTextEditor
+                  box={activeBox}
+                  scale={scale}
+                  format={shapeOfEditing?.runFormat ?? {}}
+                  align={shapeOfEditing?.textBodies[0]?.[0]?.align}
+                  value={editing.text}
+                  onChange={onEditingText}
+                  onCommit={onEditingCommit}
+                  onCancel={onEditingCancel}
+                />
+              ) : null}
+              {activeBox && !editing ? (
                 <div
                   data-pptx-canvas-selection={activeShape ?? ""}
                   className="border-2 border-sky-400"
@@ -380,7 +411,7 @@ export function PptxSlideCanvas({
                 />
               ) : null}
               {/* 手柄与选框**同级**、都用页面坐标（挂在选框里的话，位置会被选框自身的 left/top 再加一遍） */}
-              {activeBox
+              {activeBox && !editing
                 ? handleSpotList.map(({ corner, left, top, cursor }) => (
                     <span
                       key={corner}

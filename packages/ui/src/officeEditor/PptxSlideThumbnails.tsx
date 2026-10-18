@@ -21,6 +21,10 @@ export interface PptxSlideThumbnailsProps {
   onDuplicate: (partName: string) => void;
   onDelete: (partName: string) => void;
   onMove: (partName: string, to: number) => void;
+  /** 收起面板（把宽度让给画布）。 */
+  onCollapse: () => void;
+  /** 嵌在浮层里：不要再画自己的边框/底部计数（外面那层已经画了）。 */
+  embedded?: boolean;
 }
 
 export function PptxSlideThumbnails({
@@ -33,11 +37,27 @@ export function PptxSlideThumbnails({
   onDuplicate,
   onDelete,
   onMove,
+  onCollapse,
+  embedded,
 }: PptxSlideThumbnailsProps) {
   const slide = slides[activeSlide];
   return (
-    <div className="flex w-44 shrink-0 flex-col border-r border-border" data-pptx-slide-panel>
+    <div
+      className={`flex flex-col ${embedded ? "min-h-0 flex-1" : "w-44 shrink-0 border-r border-border"}`}
+      data-pptx-slide-panel
+    >
       <div className="flex flex-col gap-1 border-b border-border p-1">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            data-pptx-thumbs-close
+            className="rounded px-1 text-[11px] text-foreground-subtle hover:text-foreground"
+            onClick={onCollapse}
+            title="收起缩略图（把宽度让给画布）"
+          >
+            ‹
+          </button>
+        </div>
         <div className="flex flex-wrap gap-1">
           <button
             type="button"
