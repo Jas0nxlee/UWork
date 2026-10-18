@@ -115,5 +115,6 @@ try {
 } finally {
   stage("cleaning up the test-owned process tree");
   await app?.close();
-  await rm(data, { recursive: true, force: true });
+  // Windows 的 Cookies 句柄可能在进程退出后短暂占用；使用 fs 的定向重试，耗尽后仍让验收失败。
+  await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
