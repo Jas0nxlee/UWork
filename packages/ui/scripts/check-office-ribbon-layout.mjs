@@ -14,10 +14,10 @@
  * 依赖：仓库已装的 esbuild / tailwindcss / react / playwright-core 与无头 Chromium。
  */
 import { writeFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
+import { emitTailwindCss } from "./lib/tailwindHarnessCss.mjs";
 import { checkSurfaceCentering, SURFACE_PROBE_SOURCE } from "./lib/officeSurfaceProbe.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -82,44 +82,6 @@ function App() {
 createRoot(document.getElementById("root")).render(<App />);
 `;
 
-const THEME_CSS = `@import "tailwindcss";
-@theme {
-  --color-background: #141414;
-  --color-surface: #1f1f1f;
-  --color-border: #3a3a3a;
-  --color-foreground: #f2f2f2;
-  --color-foreground-subtle: #b0b0b0;
-  --color-foreground-subtlest: #808080;
-}
-body { margin: 0; background: #141414; color: #f2f2f2; font-family: system-ui, sans-serif; }
-`;
-
-/** 从打好的包里抠出候选类名喂给 tailwind（等价于 CLI 扫源码，省得维护 @source）。 */
-function candidatesFrom(bundle) {
-  const tokens = new Set();
-  for (const match of bundle.matchAll(/["'`]([^"'`\n]{1,400})["'`]/g)) {
-    for (const token of match[1].split(/\s+/)) {
-      if (/^-?[a-z@![]/i.test(token) && /^[-\w@!:./[\]%(),#]+$/.test(token)) tokens.add(token);
-    }
-  }
-  return [...tokens];
-}
-
-async function emitCss(dir, bundle) {
-  const { compile } = await import("tailwindcss");
-  const loadStylesheet = async (id, base) => {
-    const { readFile } = await import("node:fs/promises");
-    const path =
-      id === "tailwindcss"
-        ? join(repoRoot, "node_modules/tailwindcss/index.css")
-        : resolve(base, id);
-    return { path, base: dirname(path), content: await readFile(path, "utf8") };
-  };
-  const compiler = await compile(THEME_CSS, { base: repoRoot, loadStylesheet });
-  const css = compiler.build(candidatesFrom(bundle));
-  await writeFile(join(dir, "harness.css"), css, "utf8");
-}
-
 async function bundle(dir) {
   const esbuild = await import("esbuild");
   const result = await esbuild.build({
@@ -183,7 +145,7 @@ async function main() {
     // 组件包与 CSS 都是现场构建的，必须在页面加载前写好
     prepareDir: async (dir) => {
       const code = await bundle(dir);
-      await emitCss(dir, code);
+      await emitTailwindCss({ dir, bundle: code, repoRoot });
     },
   });
   const page = harness.page;

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
+import { runPptxStyledCanvasCases } from "./lib/officePptxStyledCanvasCases.mjs";
 import { runPptxEditCases } from "./lib/officePptxEditCases.mjs";
 import { runPptxUiCases } from "./lib/officePptxUiCases.mjs";
 
@@ -282,6 +283,7 @@ async function main() {
 
   await runPptxUiCases({ page, check });
   await runPptxCanvasCases({ page, check });
+  await runPptxStyledCanvasCases({ repoRoot, editorDir, check });
 
   await harness.close();
   if (failures.length > 0) {
