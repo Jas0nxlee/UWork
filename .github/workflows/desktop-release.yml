@@ -43,8 +43,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm architecture:check
-      - name: Verify pinned Gen UI assets under Windows checkout settings
-        run: pnpm exec vitest run packages/desktop/test/genUiVendorCheckout.test.ts
+      - name: Verify pinned assets and isolated test process ownership
+        run: pnpm exec vitest run packages/desktop/test/genUiVendorCheckout.test.ts packages/desktop/test/packagedDesktopCdp.test.ts
       - name: Validate complete desktop Agent and shared runtime build
         run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
@@ -136,18 +136,26 @@ jobs:
         run: pnpm --dir packages/desktop exec node scripts/bundle.mjs --os ${{ matrix.platform }} --arch ${{ matrix.arch }} --skip-prepare
       - name: Verify bundled public WeCom configuration
         run: pnpm exec tsx scripts/desktop-enterprise-identity.ts verify ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Verify native login view ownership and callback routing
+        if: matrix.platform != 'linux'
+        timeout-minutes: 2
+        run: node packages/desktop/scripts/native-enterprise-login-smoke.mjs
+      - name: Verify native Linux login view ownership and callback routing
+        if: matrix.platform == 'linux'
+        timeout-minutes: 2
+        run: xvfb-run -a node packages/desktop/scripts/native-enterprise-login-smoke.mjs
       - name: Verify fresh desktop can open WeCom scanning
         if: matrix.platform != 'linux'
         timeout-minutes: 10
         env:
           DEBUG: pw:api
-        run: pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+        run: pnpm --dir packages/desktop exec tsx test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh Linux desktop can open WeCom scanning
         if: matrix.platform == 'linux'
         timeout-minutes: 10
         env:
           DEBUG: pw:api
-        run: xvfb-run -a pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+        run: xvfb-run -a pnpm --dir packages/desktop exec tsx test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify macOS resource signature
         if: matrix.platform == 'mac'
         shell: bash

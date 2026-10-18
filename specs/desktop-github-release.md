@@ -15,6 +15,7 @@
 - `v3.16.0` 发布原 PR #2/#3 与审查修复：公开 SkillHub 技能源、受信市场绑定、统一 UWork CLI/MCP/Agent 数据根、完整目录迁移以及多组织登录的并发与持久化修复。只有最新 PR head 经检查、复核并合入 `uwork`，且最终合并结果通过检查后才创建新版本标签。
 - `v3.16.1` 发布上游同步后的集成修复、原生登录配置与回调归属、企业身份变更下的网关写入校验、HTTP 绑定鉴权、子 Agent 配置隔离和 CLI 日志保留窗口修复。版本提交仅包含根版本、发布说明及本契约，保留无关本地改动；正常 pre-push hook 通过后推送分支与不可变标签，沿用五平台构建、启动检查、依赖审计与完整 Release 汇总门禁。
 - `v3.16.1` 的 Windows 构建因 Git 换行转换破坏固定资源哈希而失败，未公开 Release；保留失败标签。`v3.16.2` 包含相同功能修复和原始字节检出规则，完整性与五平台发布门禁不变。
+- `v3.16.2` 未公开：Windows 生产 fuse 与旧 Playwright Electron 启动通道不兼容；`v3.16.3` 保持正式包安全设置，使用 Chromium CDP 验收原始产物，原生 view 归属由独立 fixture 验证，保留前序标签及失败证据。
 - 打包身份配置兼容现有单组织公开配置，不凭客户端支持多组织宣称三个组织已经启用。stage 成功后仅记录规范化配置的组织数量，不输出组织标识、地址、配置内容或凭据。数量证据来自当前构建的日志。
 - 发布说明须明确公开 SkillHub 使用匿名下载，不能代表组织私有技能授权；多租户生产启用仍依赖服务端组织绑定唯一约束、空 Host 拒绝和 review 组织归属校验等前置项。客户端发布不是生产企业验收，本次不实施独立后端仓库的改造。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
@@ -23,6 +24,7 @@
 - Electron runtime 版本唯一读取 `packages/desktop/package.json` 的固定版本，开发、测试、安装包及 Windows Helper 校验不得另行硬编码。打包配置必须能在未暂存企业身份配置时正常加载；配置存在时从 `.release-config/enterprise-identity.json` 复制到 `resources/config/enterprise-identity.json`，设置 `UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG=1` 而配置缺失时在打包开始前拒绝构建。
 - Gen UI 的固定哈希资源（visualize assets 与受 runtime manifest 引用的 tweak runtime）按原始字节检出；Windows `core.autocrlf=true` 不能改写换行。完整性校验仍比较原始 SHA256，不归一化内容、不更新哈希去适配损坏资源。回归通过真实临时 Git index 和 Windows 换行配置检出全部受清单约束的文件，再逐一校验哈希。
 - 隔离安装包启动检查输出阶段标签，首次功能断言失败必须在清理前记录，不能由 Electron 关闭等待遮住原错误。校验步骤最多运行 10 分钟，到期失败；不以强杀后继续通过代替正常退出或功能验收。CI 启用 Playwright API 诊断以定位启动/页面/原生视图边界，不输出企业配置或凭据。
+- 正式 Windows 包保持 `enableNodeCliInspectArguments=false`。安装包测试用子进程启动未改写的产物，经 Chromium CDP 连接真实 Renderer，不依赖 Playwright Electron 的 Node Inspector 通道。隔离目录同时覆盖应用数据、userData 与 sessionData；清理仅终止该测试自己启动的进程树，清理不是产品正常退出验收。真实安装包验证登录按钮、内嵌二维码 surface、新建与取消的授权 WebContents target、唯一 UWork 主页面；窗口归属与不新建 BrowserWindow 继续由同版本 Electron 的原生 view fixture 验证。测试不启用正式包 fuse、不增加产品调试接口，也不删除功能断言。
 - Windows 的 `.zcode-install-manifest` 由桌面打包流程独立生成，记录最终安装目录内的程序所有权。Computer Use 使用开源占位包或真实 producer 都必须生成清单；只有 Helper 的资源准备与校验依赖 producer，不能让可选能力改变升级清理合同。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
 - macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。
