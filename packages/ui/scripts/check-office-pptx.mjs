@@ -50,6 +50,7 @@ async function main() {
           "pptShapes.ts",
           "pptSlides.ts",
           "pptPicture.ts",
+          "pptTableInsert.ts",
           "pptxValidate.ts",
           "usePptxDocument.ts",
         ],

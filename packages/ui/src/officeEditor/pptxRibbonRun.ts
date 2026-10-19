@@ -34,6 +34,8 @@ export interface PptxRibbonApi {
   setZoom: (updater: (value: number) => number) => void;
   /** 插入本机图片（data URI，来自取值对话框的文件选择）。 */
   insertPicture: (dataUri: string) => void;
+  /** 插入表格（行列；尺寸由编辑位按页面算）。 */
+  insertTable: (rows: number, cols: number) => void;
   /**
    * **点击那一刻**从当前 XML 现读选中形状的格式。
    * 开关类命令（加粗/斜体/项目符号）必须用它——早先读的是渲染时捕获的 shape 对象，
@@ -133,6 +135,17 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
       return;
 
     // —— 插入 ——
+    case "executeInsertTable": {
+      // 与 Word 同名（功能区那个"拖动选行列"的网格选择器就发这条命令）
+      const rows = Number(args[0]);
+      const cols = Number(args[1]);
+      if (!Number.isFinite(rows) || !Number.isFinite(cols) || rows < 1 || cols < 1) {
+        api.note(`表格行列数不对：${String(args[0])} × ${String(args[1])}`);
+        return;
+      }
+      api.insertTable(rows, cols);
+      return;
+    }
     case "pptxInsertPicture": {
       const dataUri = typeof args[0] === "string" ? args[0] : "";
       if (!dataUri.startsWith("data:image/")) {

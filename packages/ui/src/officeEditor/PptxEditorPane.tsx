@@ -56,6 +56,7 @@ export function PptxEditorPane({
     setShapeFormat,
     setShapeParagraph,
     moveShape,
+    patchTable,
     duplicateShape,
     removeShape,
     addTextBox,
@@ -199,6 +200,12 @@ export function PptxEditorPane({
         setParagraph: (format) =>
           partName && shape && setShapeParagraph(partName, shape.name, format),
         setZoom,
+        insertTable: (rows, cols) => {
+          if (!partName) return;
+          const size = previewFrame();
+          setStatus(`插入 ${rows} × ${cols} 表格…`);
+          patchTable(partName, rows, cols, size.width, size.height);
+        },
         insertPicture: (dataUri) =>
           partName &&
           void insertPictureAction(partName, dataUri, previewFrame().width, previewFrame().height),
@@ -210,6 +217,7 @@ export function PptxEditorPane({
       addSlideAction,
       addTextBox,
       insertPictureAction,
+      patchTable,
       preview,
       deleteSlideAction,
       duplicateShape,

@@ -187,6 +187,48 @@ export async function runPptxRibbonCases({ page, check }) {
     `有图标的按钮只显图标（加粗按钮文字 ${JSON.stringify(labelWidth?.text)}，宽 ${labelWidth?.width}px）`,
   );
 
+  // ③d 表格网格选择器：点「表格」→ 网格出现 → 点 3×4 → 形状列表里多一个表格
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
+      (node) => (node.textContent ?? "").trim() === "插入",
+    );
+    tab?.click();
+  });
+  await page.waitForTimeout(300);
+  const gridOpened = await page.evaluate(async () => {
+    const find = () =>
+      [...document.querySelectorAll("button")].find((node) =>
+        (node.getAttribute("title") ?? "").includes("插入表格"),
+      );
+    let node = find();
+    if (!node) {
+      document.querySelector("[data-office-ribbon-more]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      node = find();
+    }
+    if (!node) return false;
+    node.click();
+    return true;
+  });
+  await page.waitForTimeout(400);
+  const gridPicked = await page.evaluate(() => {
+    // 网格单元格的坐标在 aria-label 上（形如"4 列 3 行"）
+    const target = document.querySelector(
+      '[data-office-ribbon-table-grid] [aria-label="4 列 3 行"]',
+    );
+    if (!target) return false;
+    target.click();
+    return true;
+  });
+  await page.waitForTimeout(1500);
+  const shapes = await page.evaluate(() => window.__pptxPane?.shapeNames?.() ?? []);
+  const blocks = await page.evaluate(() => document.querySelectorAll("[data-pptx-block]").length);
+  void blocks;
+  check(
+    gridOpened && gridPicked && shapes.filter((name) => name.startsWith("表格")).length >= 1,
+    `功能区的表格网格能插出表格（形状：${shapes.join("、")}）`,
+  );
+
   // ④ 「开始」里的幻灯片命令：新建一页
   await page.evaluate(() => {
     const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(

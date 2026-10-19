@@ -311,7 +311,7 @@ export function RibbonItemRows({
               <RibbonItemRows items={item.items} style={style} run={run} />
             </div>
           ) : null}
-          {item.kind === "table" ? <RibbonTablePickView item={item} run={run} /> : null}
+          {item.kind === "table" ? <RibbonTablePickView item={item} run={run} nested /> : null}
           {item.kind === "find" ? <RibbonFindView item={item} run={run} /> : null}
           {item.kind === "gallery" ? (
             <StyleGalleryView gallery={item} style={style} run={run} onDone={dropdown.close} />

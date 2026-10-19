@@ -209,4 +209,63 @@ export async function runPptxEditCases({ page, check }) {
     pictureRoundTrip.inserted && !pictureRoundTrip.stillHasPic,
     `删除形状后这一页 XML 里没有 p:pic 了（${pictureRoundTrip.shapesAfter?.join("、") ?? "?"}）`,
   );
+
+  // ⑩ 插表格：p:graphicFrame + a:tbl（行列数、每个单元格有空 txBody、几何在 p:xfrm）
+  const tableInsert = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[1].partName;
+    const result = window.__pptx.insertTable(deck.sourceXml.get(part), {
+      rows: 3,
+      cols: 4,
+      pageWidth: 9144000,
+      pageHeight: 6858000,
+    });
+    const document2 = new DOMParser().parseFromString(result.xml, "application/xml");
+    const ns = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const frame = document2.getElementsByTagNameNS(
+      "http://schemas.openxmlformats.org/presentationml/2006/main",
+      "graphicFrame",
+    )[0];
+    const shapes = window.__pptx.readShapes(result.xml);
+    return {
+      name: result.name,
+      tail: frame ? (frame.lastElementChild?.nodeName ?? "") : "",
+      gridCols: frame?.getElementsByTagNameNS(ns, "gridCol").length ?? 0,
+      rows: frame?.getElementsByTagNameNS(ns, "tr").length ?? 0,
+      cells: frame?.getElementsByTagNameNS(ns, "tc").length ?? 0,
+      bodies: frame?.getElementsByTagNameNS(ns, "txBody").length ?? 0,
+      kinds: shapes.map((item) => `${item.name}:${item.kind}`),
+      bounds: shapes.find((item) => item.name === result.name)?.bounds ?? null,
+      blocks: (
+        await window.__pptx.readDeck(
+          await window.__pptx
+            .write({
+              source: bytes,
+              baseline: new Map([[part, deck.sourceXml.get(part)]]),
+              current: new Map([[part, result.xml]]),
+            })
+            .then((written) => written.bytes),
+        )
+      ).slides[1].blocks.length,
+    };
+  });
+  check(
+    tableInsert.gridCols === 4 && tableInsert.rows === 3 && tableInsert.cells === 12,
+    `插表格：4 列 3 行 12 个单元格（${tableInsert.gridCols}/${tableInsert.rows}/${tableInsert.cells}）`,
+  );
+  check(
+    tableInsert.bodies === 12 && tableInsert.tail.toUpperCase().endsWith("GRAPHIC"),
+    `每个单元格都有空的 txBody，且 p:graphicFrame 末子元素是 a:graphic（${tableInsert.bodies} 个 / ${tableInsert.tail}）`,
+  );
+  check(
+    tableInsert.kinds.some((item) => item.endsWith(":graphicFrame")) &&
+      tableInsert.bounds?.explicit === true,
+    `形状层认得这个表格且几何是显式的（${tableInsert.kinds.join("、")}）`,
+  );
+  check(
+    // 这一页本来还有一个文本框：1 + 12 个单元格 = 13 块
+    tableInsert.blocks === 13,
+    `写回后这一页读得出 12 个单元格 + 原文本框共 13 块（可继续逐格编辑）（${tableInsert.blocks}）`,
+  );
 }

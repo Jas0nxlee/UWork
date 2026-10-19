@@ -58,8 +58,8 @@ export async function runPptxCanvasCases({ page, check }) {
   await page.waitForTimeout(200);
   const selected = await readCanvas();
   check(
-    selected?.selected === "标题 1" && selected?.handles === 4,
-    `在画布上点中形状就选中（选中「${selected?.selected}」，${selected?.handles} 个手柄）`,
+    selected?.selected === "标题 1" && selected?.handles === 5,
+    `在画布上点中形状就选中（选中「${selected?.selected}」，${selected?.handles} 个手柄 = 4 角 + 旋转）`,
   );
 
   // ② 拖动：XML 里的 a:off 要跟着动，且画布重画（渲染的 DOM 换了一棵）

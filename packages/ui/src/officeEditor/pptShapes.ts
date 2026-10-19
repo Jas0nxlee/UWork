@@ -92,8 +92,15 @@ export function shapeNodes(document: Document): Element[] {
   );
 }
 
+/** 形状的几何容器元素：`a:xfrm`（sp/pic）或 **`p:xfrm`**（graphicFrame 表格/图表）。 */
+function xfrmOf(shape: Element): Element | undefined {
+  return (
+    shape.getElementsByTagNameNS(A_NS, "xfrm")[0] ?? shape.getElementsByTagNameNS(P_NS, "xfrm")[0]
+  );
+}
+
 function boundsOf(shape: Element): ShapeBounds {
-  const xfrm = shape.getElementsByTagNameNS(A_NS, "xfrm")[0];
+  const xfrm = xfrmOf(shape);
   const offset = xfrm?.getElementsByTagNameNS(A_NS, "off")[0];
   const extent = xfrm?.getElementsByTagNameNS(A_NS, "ext")[0];
   const rotationRaw = num(xfrm?.getAttribute("rot"));
@@ -246,9 +253,14 @@ export function setShapeBounds(
   const shape = shapeByName(document, shapeName);
   if (!shape) return xml;
   const container = transformContainer(shape);
-  let xfrm = container.getElementsByTagNameNS(A_NS, "xfrm")[0];
+  let xfrm = xfrmOf(container === shape ? shape : container) ?? xfrmOf(shape);
   if (!xfrm) {
-    xfrm = document.createElementNS(A_NS, "a:xfrm");
+    // graphicFrame（表格/图表）用 p:xfrm、其余用 a:xfrm：塞错命名空间 PowerPoint 会认为文件损坏
+    const isGraphicFrame = shape.localName === "graphicFrame";
+    xfrm = document.createElementNS(
+      isGraphicFrame ? P_NS : A_NS,
+      isGraphicFrame ? "p:xfrm" : "a:xfrm",
+    );
     container.insertBefore(xfrm, container.firstChild);
   }
   let offset = xfrm.getElementsByTagNameNS(A_NS, "off")[0];

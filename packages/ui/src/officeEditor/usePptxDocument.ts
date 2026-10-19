@@ -6,10 +6,10 @@
  */
 import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildPreviewBytes, composeCurrentSlides } from "./pptDeckCompose.js";
 import { openPptxDocumentForEdit } from "./pptOpen.js";
 import { savePptxDocument } from "./pptSave.js";
-import { insertPicture } from "./pptPicture.js";
+import { patchPictureBytes, patchTableXml } from "./pptInsertActions.js";
+import { buildPreviewBytes, composeCurrentSlides, readSlidePart } from "./pptDeckCompose.js";
 import { readDeckSlides, readSlideText, type PptxSlide } from "./pptText.js";
 import {
   deleteShape as applyDeleteShape,
@@ -31,13 +31,6 @@ export const MAX_EDITABLE_PPTX_BYTES = 60 * 1024 * 1024;
 
 export type PptxEditKey = string;
 
-/** 读 zip 里某个部件（幻灯片级操作之后用它把新的页读回来）。 */
-async function readSlidePart(bytes: ArrayBuffer, partName: string): Promise<string> {
-  const { default: JSZip } = await import("jszip");
-  const zip = await JSZip.loadAsync(bytes.slice(0));
-  return (await zip.file(partName)?.async("string")) ?? "";
-}
-
 export function editKey(partName: string, blockIndex: number): PptxEditKey {
   return `${partName}#${blockIndex}`;
 }
@@ -57,7 +50,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [writeBlocked, setWriteBlocked] = useState<string | null>(null);
-  /** 每改一次 XML 就 +1：改动不经过 React state，界面靠它重算（画布也拿它当重画 key）。 */
+  /** 每改一次 XML 就 +1：界面靠它重算（画布也拿它当重画 key）。 */
   const [revision, setRevision] = useState(0);
   /** 画布要渲染的字节 = 当前状态（渲染器接整份文件，而改动只在 XML 映射里，所以每改一次重算一份）。 */
   const [previewBytes, setPreviewBytes] = useState<ArrayBuffer | null>(null);
@@ -115,9 +108,8 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       setSlides(ordered.length > 0 ? ordered : deck.slides);
       setReady(true);
       const blocks = deck.slides.reduce((total, slide) => total + slide.blocks.length, 0);
-      setStatus(
-        `已载入 ${deck.slides.length} 张幻灯片 / ${blocks} 个文本块 · 文字可编辑，版式、图片、动画、母版原样保留 · 点「保存到文件」写回`,
-      );
+      const summary = ` · 文字可编辑，版式、图片、动画、母版原样保留 · 点「保存到文件」写回`;
+      setStatus(`已载入 ${deck.slides.length} 张幻灯片 / ${blocks} 个文本块${summary}`);
     } catch (error) {
       setStatus(`打开失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -139,7 +131,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     [],
   );
 
-  /** 预览重算的次数与最后一次的错误（排查"改了画布没动"用，挂在调试口子上）。 */
+  /** 预览重算次数与最后一次错误（挂在调试口子上，排查"改了画布没动"）。 */
   const previewBuildsRef = useRef(0);
   const previewErrorRef = useRef<string | null>(null);
 
@@ -307,14 +299,22 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       ),
     [patchSlideXml],
   );
-  /** 插图片：媒体部件、这一页的 .rels、p:pic 都是"包级手术" → 走 deck 补丁（逐字节保真不变）。 */
+  /** 插表格：只改这一页 XML（不像图片要动包）→ 普通补丁通道。 */
+  const patchTable = useCallback(
+    (partName: string, rows: number, cols: number, w: number, h: number) =>
+      patchSlideXml(
+        partName,
+        (xml) => patchTableXml(xml, rows, cols, w, h),
+        `插入 ${rows}×${cols} 表格`,
+      ),
+    [patchSlideXml],
+  );
+
+  /** 插图片：媒体部件、rels、p:pic 都是包级手术 → deck 补丁（逐字节保真不变）。 */
   const insertPictureAction = useCallback(
     (partName: string, dataUri: string, pageWidth: number, pageHeight: number) =>
       applyDeckPatch(
-        (source) =>
-          insertPicture({ source, partName, dataUri, pageWidth, pageHeight }).then(
-            (result) => result.bytes,
-          ),
+        (source) => patchPictureBytes(source, { partName, dataUri, pageWidth, pageHeight }),
         "插入图片",
       ),
     [applyDeckPatch],
@@ -412,8 +412,9 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       editsRef.current = new Map();
       setDirty(false);
       void refreshPreview();
+      const backup = result.backupName ? ` · 备份 ${result.backupName}` : "";
       setStatus(
-        `已保存到 ${path} · ${Math.round(result.megabytes / 1024)} KiB${result.backupName ? ` · 备份 ${result.backupName}` : ""} · 改了 ${result.changedSlides.length} 张幻灯片`,
+        `已保存到 ${path} · ${Math.round(result.megabytes / 1024)} KiB${backup} · 改了 ${result.changedSlides.length} 张幻灯片`,
       );
     } finally {
       setBusy(false);
@@ -444,11 +445,11 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     addTextBox,
     addSlideAction,
     insertPictureAction,
-    /** 调试：预览重算次数 / 最后一次错误 / 当前喂给渲染器的字节（排查"改了画布没动"）。 */
+    patchTable,
+    /** 调试三件套：预览重算次数/错误、当前喂给渲染器的字节、模型里某页的 XML。 */
     previewBuilds: () => previewBuildsRef.current,
     previewError: () => previewErrorRef.current,
     rawPreviewBytes: previewBytes,
-    /** 调试：模型里这一页的 XML（排查"模型改了、字节没改"）。 */
     modelXml: (partName: string) => currentXmlRef.current.get(partName) ?? null,
     duplicateSlideAction,
     deleteSlideAction,

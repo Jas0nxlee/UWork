@@ -7,6 +7,13 @@
  */
 import { patchTxBody, writeDeckSlides } from "./pptText.js";
 
+/** 读 zip 里某个部件（幻灯片级操作之后用它把新的页读回来）。 */
+export async function readSlidePart(bytes: ArrayBuffer, partName: string): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes.slice(0));
+  return (await zip.file(partName)?.async("string")) ?? "";
+}
+
 /** key 形如 `ppt/slides/slide1.xml#2`（`usePptxDocument` 的 editKey）。 */
 export type PptxEditMap = Map<string, string[]>;
 

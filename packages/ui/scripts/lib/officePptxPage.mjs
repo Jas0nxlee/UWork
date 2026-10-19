@@ -148,6 +148,8 @@ window.__pptx = {
     }
     return 'data:image/png;base64,' + btoa(binary);
   },
+  // —— 表格插入（pptTableInsert.ts）——
+  insertTable: (xml, input) => window.app.insertTable(xml, input),
   // —— 画布几何（pptCanvasGeometry.ts）——
   handleSpots: (box, viewport) => window.app.handleSpots(box, viewport),
   // —— 形状层（pptShapes.ts）——

@@ -105,6 +105,16 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
         ],
       },
       {
+        label: "表格",
+        items: [
+          {
+            kind: "table",
+            label: "表格",
+            title: "插入表格（拖动选行列，或直接填数字）",
+          },
+        ],
+      },
+      {
         label: "文本",
         items: [
           button("文本框", "在页面中部新建一个文本框", "pptxAddTextBox", {

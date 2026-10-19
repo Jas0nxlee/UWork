@@ -220,10 +220,22 @@ const TABLE_GRID_COLS = 10;
 const TABLE_GRID_ROWS = 8;
 
 /** 表格插入器：网格拖动选行列（Word/WPS 同款），下面还能直接填数字。 */
-export function RibbonTablePickView({ item, run }: { item: RibbonTable; run: RunCommand }) {
+export function RibbonTablePickView({
+  item,
+  run,
+  nested,
+}: {
+  item: RibbonTable;
+  run: RunCommand;
+  /** 嵌在「»」面板里：用**局部**打开状态——用全局单一打开源会在打开时把外层面板关掉，
+   *  自己随之被卸载（真机/检查实测：折叠状态下点表格，网格根本不出现）。 */
+  nested?: boolean;
+}) {
   const dropdown = useRibbonDropdown();
   const dropdownId = `table:${item.title}`;
-  const open = dropdown.openId === dropdownId;
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = nested ? localOpen : dropdown.openId === dropdownId;
+  const toggleOpen = () => (nested ? setLocalOpen((value) => !value) : dropdown.toggle(dropdownId));
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState({ rows: 0, cols: 0 });
   const [custom, setCustom] = useState({ rows: 3, cols: 3 });
@@ -231,7 +243,8 @@ export function RibbonTablePickView({ item, run }: { item: RibbonTable; run: Run
   const insert = (rows: number, cols: number) => {
     if (rows < 1 || cols < 1) return;
     run("executeInsertTable", [rows, cols]);
-    dropdown.close();
+    if (nested) setLocalOpen(false);
+    else dropdown.close();
   };
 
   return (
@@ -244,13 +257,18 @@ export function RibbonTablePickView({ item, run }: { item: RibbonTable; run: Run
         className={`flex h-8 items-center gap-1 rounded border px-2 text-xs ${
           open ? "border-sky-500 text-sky-200" : "border-border text-foreground hover:bg-surface"
         }`}
-        onClick={() => dropdown.toggle(dropdownId)}
+        onClick={toggleOpen}
       >
         <TableSimple24Regular className="size-5" />
         <span>{item.label}</span>
         <span className="text-foreground-subtle">▾</span>
       </button>
-      <DropdownPanel open={open} anchorRef={anchorRef} onClose={dropdown.close} minWidth={248}>
+      <DropdownPanel
+        open={open}
+        anchorRef={anchorRef}
+        onClose={nested ? () => setLocalOpen(false) : dropdown.close}
+        minWidth={248}
+      >
         <div className="px-2 py-1 text-xs text-foreground-subtle">
           {hover.rows > 0 ? `${hover.cols} × ${hover.rows} 表格` : "拖动选择行列"}
         </div>
