@@ -99,30 +99,27 @@ export function ShapeInspector({
         <>
           <div className="flex flex-wrap items-center gap-1 pb-2">
             <span className="pr-1 text-foreground-subtle">文字：</span>
-            <button type="button" className={buttonClass} onClick={() => onFormat({ bold: true })}>
-              加粗
-            </button>
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => onFormat({ italic: true })}
-            >
-              斜体
-            </button>
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => onFormat({ underline: true })}
-            >
-              下划线
-            </button>
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => onFormat({ strike: true })}
-            >
-              删除线
-            </button>
+            {(
+              [
+                ["加粗", "bold"],
+                ["斜体", "italic"],
+                ["下划线", "underline"],
+                ["删除线", "strike"],
+              ] as const
+            ).map(([label, key]) => (
+              <button
+                key={key}
+                type="button"
+                data-shape-format={key}
+                // **开关**而不是"设为开"：点第二次要能关掉（点测查出：早先写死 true，加粗永远关不掉）
+                className={`${buttonClass} ${
+                  shape.runFormat?.[key] ? "border-sky-500 bg-sky-500/10 text-sky-200" : ""
+                }`}
+                onClick={() => onFormat({ [key]: !shape.runFormat?.[key] })}
+              >
+                {label}
+              </button>
+            ))}
             <label className="flex items-center gap-1">
               字号
               <select

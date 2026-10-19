@@ -17,14 +17,11 @@
  * 这些都是点测当场查出来、还没修的，写在这里就能一直看见；修好一条就删一条。
  */
 const KNOWN_ISSUES = [
-  "右栏 › 文字：加粗",
-  "右栏 › 层级：上移一层",
-  "下拉 › 颜色下拉：选一个颜色",
+  // 点测查出来的、还没修完的（每修好一条就删一条）：
+  // 加粗"关不掉"——写回侧是对的（b="0"），按钮与命令的开关语义要单独过一遍；
   "加粗：选中形状点一次",
+  // 字号下拉（右栏那个 <select>）选了不落到 rPr；
   "字号下拉：选 32",
-  "把形状往上挪一层",
-  "按可用宽度显示",
-  "按 100% 显示",
 ];
 
 /** 把 report.check 包一层"已知问题不算失败"的过滤器（点测与关键断言共用）。 */
@@ -57,6 +54,15 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
   });
 
   /** 界面指纹：任何"有反应"的操作都会动到其中至少一项。 */
+  /** 选中形状当前的首个 run 格式（文字类按钮看"有没有翻转"）。 */
+  const shapeFormat = () =>
+    page.evaluate(() => {
+      const xml = window.__pptxPane?.modelXml?.("ppt/slides/slide1.xml") ?? "";
+      const name = window.__pptxPane?.shapeNames?.()?.[0];
+      const shape = window.__pptx.readShapes(xml).find((item) => item.name === name);
+      return shape?.runFormat ?? {};
+    });
+
   const fingerprint = () =>
     page.evaluate(() => {
       const pane = document.querySelector("[data-pptx-task-pane]");
@@ -245,20 +251,21 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
       await wait(250);
       errors.length = 0;
       if (title.includes("挪一层")) {
-        // 层级：选**最上层**那个；最下层再往下挪是天然 no-op
-        await page.evaluate(() => {
+        // 层级：**上移选最下层那个**、下移选最上层那个（选反了就是天然 no-op）
+        await page.evaluate((wantTop) => {
           const chips = [...document.querySelectorAll("[data-pptx-shape]")];
-          chips[chips.length - 1]?.click();
-        });
+          const target = wantTop ? chips[chips.length - 1] : chips[0];
+          target?.click();
+        }, title.includes("往下"));
         await wait(250);
       }
       if (title === "按可用宽度显示" || title === "按 100% 显示") {
-        // 这两个是"回到 100%"：先放大一次，否则当前就是 100% → 点了当然没变化
+        // 这两个是"回到 100%"：先经预设下拉设成 150%，否则当前就是 100% → 点了当然没变化
         await page.evaluate(() => {
-          const node = [...document.querySelectorAll("button")].find(
-            (item) => (item.getAttribute("title") ?? "") === "放大画布",
-          );
-          node?.click();
+          const select = document.querySelector("[data-pptx-zoom-presets]");
+          if (!select) return;
+          select.value = "150";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
         });
         await wait(400);
       }
@@ -321,12 +328,30 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
         document.querySelector("[data-pptx-open-format]")?.click();
       });
       await page.evaluate((useTop) => {
-        // 层级类操作用**最上层**那个形状（最下层再往下移是天然 no-op）
+        // 层级：**上移选最下层那个**、下移选最上层那个（选反了就是天然 no-op）
         const chips = [...document.querySelectorAll("[data-pptx-shape]")];
         const target = useTop ? chips[chips.length - 1] : chips[0];
         target?.click();
-      }, control.name.startsWith("层级"));
+      }, control.name.includes("下移"));
       await wait(350);
+    }
+    const toggles = {
+      "文字：加粗": "bold",
+      "文字：斜体": "italic",
+      "文字：下划线": "underline",
+      "文字：删除线": "strike",
+    };
+    const flag = toggles[control.name];
+    if (flag) {
+      // 文字格式是**开关**：点之前是开→点完该是关，反之亦然（点"当前已是的值"本来就没变化）
+      const beforeFlag = await shapeFormat();
+      await clickControl({ spec: control.spec, wait: 700 });
+      const afterFlag = await shapeFormat();
+      check(
+        Boolean(beforeFlag[flag]) !== Boolean(afterFlag[flag]),
+        `右栏 › ${control.name}（${flag}：${Boolean(beforeFlag[flag])} → ${Boolean(afterFlag[flag])}）`,
+      );
+      continue;
     }
     const result = await clickControl({ spec: control.spec, wait: 700 });
     check(
@@ -337,7 +362,7 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
 
   stage("下拉项与输入框");
   const selectControls = [
-    { name: "字号下拉：选 44", selector: "[data-shape-size]", option: "44" },
+    { name: "字号下拉：选一个与当前不同的字号", selector: "[data-shape-size]", option: null },
     { name: "颜色下拉：选一个颜色", selector: "[data-shape-color]", option: null },
     { name: "缩放预设：选 150%", selector: "[data-pptx-zoom-presets]", option: "150" },
   ];
@@ -353,9 +378,18 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
     const picked = await page.evaluate(({ selector, option }) => {
       const select = document.querySelector(selector);
       if (!select) return false;
+      if (option === null && selector === "[data-shape-size]") {
+        // 字号：挑一个与当前值不同的（点当前值本来就没变化）
+        const other = [...select.options].find((item) => item.value && item.value !== select.value);
+        if (!other) return false;
+        select.value = other.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }
       const target = option
         ? [...select.options].find((item) => item.value === option)
-        : [...select.options].find((item) => item.value && item.value.startsWith("#"));
+        : // 颜色：挑第一个非空且不等于当前值的（面板里存的是不带 # 的十六进制，"默认"是空值）
+          [...select.options].find((item) => item.value !== "" && item.value !== select.value);
       if (!target) return false;
       select.value = target.value;
       select.dispatchEvent(new Event("change", { bubbles: true }));
