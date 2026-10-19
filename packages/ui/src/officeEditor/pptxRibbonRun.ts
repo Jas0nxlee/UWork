@@ -34,6 +34,12 @@ export interface PptxRibbonApi {
   setZoom: (updater: (value: number) => number) => void;
   /** 插入本机图片（data URI，来自取值对话框的文件选择）。 */
   insertPicture: (dataUri: string) => void;
+  /**
+   * **点击那一刻**从当前 XML 现读选中形状的格式。
+   * 开关类命令（加粗/斜体/项目符号）必须用它——早先读的是渲染时捕获的 shape 对象，
+   * 实测"功能区加粗点了不生效"（读到的 bold 是空 → 开关算出来还是"开"→ 写回等于原值 → 整条命令静默 no-op）。
+   */
+  runFormat: () => ShapeRunFormat;
   /** 给状态栏留一句话（命令被拒时说明原因）。 */
   note: (message: string) => void;
 }
@@ -80,16 +86,16 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
     // 命令名与 Word/Excel 同名（executeBold / executeRowFlex / executeFont…）：
     // 于是"加粗亮不亮""左对齐亮不亮"直接复用 ribbonItemSupport 里现成的判定。
     case "executeBold":
-      needShape((current) => api.setFormat({ bold: toggle(current.runFormat.bold) }));
+      needShape(() => api.setFormat({ bold: toggle(api.runFormat().bold) }));
       return;
     case "executeItalic":
-      needShape((current) => api.setFormat({ italic: toggle(current.runFormat.italic) }));
+      needShape(() => api.setFormat({ italic: toggle(api.runFormat().italic) }));
       return;
     case "executeUnderline":
-      needShape((current) => api.setFormat({ underline: toggle(current.runFormat.underline) }));
+      needShape(() => api.setFormat({ underline: toggle(api.runFormat().underline) }));
       return;
     case "executeStrikeout":
-      needShape((current) => api.setFormat({ strike: toggle(current.runFormat.strike) }));
+      needShape(() => api.setFormat({ strike: toggle(api.runFormat().strike) }));
       return;
     case "executeFont": {
       const font = String(args[0] ?? "");

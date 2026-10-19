@@ -189,6 +189,13 @@ export function PptxEditorPane({
         deleteShape: () => partName && shape && removeShape(partName, shape.name),
         moveShape: (direction) => partName && shape && moveShape(partName, shape.name, direction),
         setFormat: (format) => partName && shape && setShapeFormat(partName, shape.name, format),
+        // 开关类命令现读格式（见 pptxRibbonRun 的 runFormat 注释）
+        runFormat: () => {
+          const current = partName
+            ? shapesOf(partName).find((item) => item.name === shape?.name)
+            : null;
+          return current?.runFormat ?? {};
+        },
         setParagraph: (format) =>
           partName && shape && setShapeParagraph(partName, shape.name, format),
         setZoom,
