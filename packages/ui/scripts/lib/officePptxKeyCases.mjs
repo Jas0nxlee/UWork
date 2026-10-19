@@ -37,28 +37,35 @@ export function buildPptxKeyCases({ page, mountPane, clickRibbon }) {
       },
     },
     {
-      name: "字号下拉：选 32 → 形状字号变 32",
+      name: "字号下拉：选一个与当前不同的字号 → rPr 的 sz 跟着变",
       run: async () => {
         await mountPane();
-        await page.click('[data-office-ribbon-tab="home"]');
-        await page.evaluate(() => {
-          const select = [...document.querySelectorAll("button")].find(
-            (b) => (b.getAttribute("title") ?? "") === "字号",
-          );
-          select?.click();
-        });
+        await page.evaluate(() => document.querySelector("[data-pptx-open-format]")?.click());
         await wait(300);
-        await page.evaluate(() => {
-          const option = [...document.querySelectorAll("[data-ribbon-dropdown] button")].find(
-            (b) => (b.textContent ?? "").trim() === "32",
+        const picked = await page.evaluate(() => {
+          const select = document.querySelector("[data-shape-size]");
+          if (!select) return null;
+          // 选一个与当前不同的（点当前值本来就没变化）
+          const other = [...select.options].find(
+            (item) => item.value && item.value !== select.value,
           );
-          option?.click();
+          if (!other) return null;
+          select.value = other.value;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return Number(other.value);
         });
-        await wait(400);
-        const xml = await page.evaluate(
-          () => window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "",
-        );
-        return { ok: /sz="3200"/.test(xml), detail: /sz="(\d+)"/.exec(xml)?.[1] ?? "无 sz" };
+        await wait(500);
+        const size = await page.evaluate(() => {
+          const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+          const name = window.__pptxPane.shapeNames()[0];
+          return (
+            window.__pptx.readShapes(xml).find((item) => item.name === name)?.runFormat?.size ?? 0
+          );
+        });
+        return {
+          ok: picked !== null && size === picked,
+          detail: `选了 ${picked} → rPr 里 ${size} 磅`,
+        };
       },
     },
     {
