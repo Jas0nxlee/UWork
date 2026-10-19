@@ -169,7 +169,12 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       const before = currentXmlRef.current.get(partName);
       if (before === undefined) return;
       const after = patch(before);
-      if (after === before) return;
+      if (after === before) {
+        // 写完等于没写：**说出来**，别静默（真机上"点了没反应"最难查；也让点测能区分
+        // "命令没跑到" 与 "跑到但值已经是这样"）
+        setStatus(`${label}：这一页没有实际变化（值已经是这样了）`);
+        return;
+      }
       currentXmlRef.current.set(partName, after);
       setRevision((value) => value + 1);
       setDirty(true);

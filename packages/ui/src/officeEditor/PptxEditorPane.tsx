@@ -277,10 +277,11 @@ export function PptxEditorPane({
         },
         previewBuilds,
         previewError,
+        runCommand: (command: string) => runRibbon(command, []),
         previewBytes: () => (rawPreviewBytes ? rawPreviewBytes.slice(0) : null),
         modelXml,
       }),
-    [activeSlide, previewBuilds, previewError, shapesOf, slides],
+    [activeSlide, previewBuilds, previewError, runRibbon, shapesOf, slides],
   );
 
   const totalBlocks = useMemo(
