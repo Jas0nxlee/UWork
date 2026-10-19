@@ -78,6 +78,9 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
         images: host?.querySelectorAll("img").length ?? 0,
         editor: Boolean(document.querySelector("[data-pptx-text-editor]")),
         dialog: Boolean(document.querySelector("[data-office-ribbon-prompt-file]")),
+        // 表格网格/其它下拉面板"开着"本身就是有反应（点了不改文档，但界面变了）
+        tableGrid: Boolean(document.querySelector("[data-office-ribbon-table-grid]")),
+        dropdown: Boolean(document.querySelector("[data-ribbon-dropdown]")),
       };
     });
   const changed = (before, after) => Object.keys(before).some((key) => before[key] !== after[key]);
@@ -281,7 +284,8 @@ export async function runPptxButtonCases({ page, report, clickRibbon, mountPane 
       };
       // 纯数字是字号选项：与当前字号相同时点了当然没变化（字号生效由"关键功能"里的具体断言管）
       const mayNoop = /^\d+$/.test(title);
-      if (title.includes("图片")) {
+      if (title.includes("图片") || title.includes("表格")) {
+        // 点了会开对话框/网格：验完收起来，免得影响下一条
         await page.keyboard.press("Escape").catch(() => {});
       }
       check(
