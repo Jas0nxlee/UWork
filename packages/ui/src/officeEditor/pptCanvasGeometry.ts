@@ -17,14 +17,18 @@ export const HANDLE_SIZE = 12;
 export const HANDLE_HALF = HANDLE_SIZE / 2;
 
 /** 形状几何，一律 EMU（与 XML 的 a:off/a:ext 同口径）。 */
+/** 旋转角（度，顺时针；XML 里是 60000 分之一度）。 */
 export interface CanvasBox {
   x: number;
   y: number;
   width: number;
   height: number;
+  /** 旋转角（度，顺时针；XML 里是 60000 分之一度）。 */
+  rotation?: number;
 }
 
-export type CanvasCorner = "nw" | "ne" | "sw" | "se";
+/** 八个缩放点（PowerPoint 同款：四角 + 四边中点）。 */
+export type CanvasCorner = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
 export interface CanvasHandle {
   corner: CanvasCorner;
@@ -70,11 +74,29 @@ export function handleSpots(box: CanvasBox, viewport: CanvasViewport): CanvasHan
   const right = clamp(emuToPx(box.x + box.width, viewport.scale), half, maxX);
   const top = clamp(emuToPx(box.y, viewport.scale), half, maxY);
   const bottom = clamp(emuToPx(box.y + box.height, viewport.scale), half, maxY);
+  const midX = (left + right) / 2;
+  const midY = (top + bottom) / 2;
+  // **小形状只显四角**：形状小于 3 个手柄身位时，中边手柄会盖住形状中间——
+  // 于是"从中心拖"抓到的是手柄，"移动"变成"拉扁"（真机/harness 实测：形状被压到最小高度）。
+  // PowerPoint 也是这个规矩：框太小就只给四个角。
+  const tooSmall = Math.min(right - left, bottom - top) < HANDLE_SIZE * 3;
+  if (tooSmall) {
+    return [
+      { corner: "nw", left: left - half, top: top - half, cursor: "nwse-resize" },
+      { corner: "ne", left: right - half, top: top - half, cursor: "nesw-resize" },
+      { corner: "se", left: right - half, top: bottom - half, cursor: "nwse-resize" },
+      { corner: "sw", left: left - half, top: bottom - half, cursor: "nesw-resize" },
+    ];
+  }
   return [
     { corner: "nw", left: left - half, top: top - half, cursor: "nwse-resize" },
+    { corner: "n", left: midX - half, top: top - half, cursor: "ns-resize" },
     { corner: "ne", left: right - half, top: top - half, cursor: "nesw-resize" },
-    { corner: "sw", left: left - half, top: bottom - half, cursor: "nesw-resize" },
+    { corner: "e", left: right - half, top: midY - half, cursor: "ew-resize" },
     { corner: "se", left: right - half, top: bottom - half, cursor: "nwse-resize" },
+    { corner: "s", left: midX - half, top: bottom - half, cursor: "ns-resize" },
+    { corner: "sw", left: left - half, top: bottom - half, cursor: "nesw-resize" },
+    { corner: "w", left: left - half, top: midY - half, cursor: "ew-resize" },
   ];
 }
 
@@ -110,7 +132,7 @@ export function measuredBoxesOf(
 }
 
 export interface CanvasDragState {
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "rotate";
   corner: CanvasCorner;
   name: string;
   startX: number;
@@ -132,14 +154,57 @@ export function dragGeometry(state: CanvasDragState, dx: number, dy: number): Ca
       height: base.height,
     };
   }
-  const west = state.corner === "nw" || state.corner === "sw";
-  const north = state.corner === "nw" || state.corner === "ne";
-  const width = Math.max(MIN_EMU, west ? base.width - dx : base.width + dx);
-  const height = Math.max(MIN_EMU, north ? base.height - dy : base.height + dy);
+  const corner = state.corner;
+  const west = corner === "nw" || corner === "w" || corner === "sw";
+  const east = corner === "ne" || corner === "e" || corner === "se";
+  const north = corner === "nw" || corner === "n" || corner === "ne";
+  const south = corner === "sw" || corner === "s" || corner === "se";
+  // 边中点只动一个轴，另一轴保持原值
+  const width = Math.max(MIN_EMU, west ? base.width - dx : east ? base.width + dx : base.width);
+  const height = Math.max(
+    MIN_EMU,
+    north ? base.height - dy : south ? base.height + dy : base.height,
+  );
   return {
     x: Math.round(west ? base.x + (base.width - width) : base.x),
     y: Math.round(north ? base.y + (base.height - height) : base.y),
     width: Math.round(width),
     height: Math.round(height),
   };
+}
+
+/** 旋转手柄离顶边的距离（显示像素）。 */
+export const ROTATE_OFFSET_PX = 26;
+
+/** 旋转手柄的位置：顶边中点**上方**一段距离处（PowerPoint 同款）。 */
+export function rotationHandleSpot(box: CanvasBox, viewport: CanvasViewport): CanvasHandle {
+  const half = HANDLE_HALF;
+  const maxX = Math.max(half, viewport.width - half);
+  const maxY = Math.max(half, viewport.height - half);
+  const top = clamp(emuToPx(box.y, viewport.scale), half, maxY);
+  const left = clamp(emuToPx(box.x + box.width / 2, viewport.scale), half, maxX);
+  return {
+    corner: "nw",
+    left: left - half,
+    top: Math.max(0, top - ROTATE_OFFSET_PX) - half,
+    cursor: "grab",
+  };
+}
+
+/** 从形状中心指向 (px,py) 的角度（度，0 = 正上方，顺时针为正）。 */
+export function angleFromCenter(
+  box: CanvasBox,
+  viewport: CanvasViewport,
+  px: number,
+  py: number,
+): number {
+  const centerX = emuToPx(box.x + box.width / 2, viewport.scale);
+  const centerY = emuToPx(box.y + box.height / 2, viewport.scale);
+  const degrees = (Math.atan2(px - centerX, centerY - py) * 180) / Math.PI;
+  return (degrees + 360) % 360;
+}
+
+/** 形状带旋转时，选框与手柄要一起转（度数）。 */
+export function rotationOf(box: CanvasBox): number {
+  return box.rotation ?? 0;
 }

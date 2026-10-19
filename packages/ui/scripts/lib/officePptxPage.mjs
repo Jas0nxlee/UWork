@@ -148,6 +148,8 @@ window.__pptx = {
     }
     return 'data:image/png;base64,' + btoa(binary);
   },
+  // —— 画布几何（pptCanvasGeometry.ts）——
+  handleSpots: (box, viewport) => window.app.handleSpots(box, viewport),
   // —— 形状层（pptShapes.ts）——
   readShapes: (xml) => window.app.readSlideShapes(xml),
   setShapeBounds: (xml, name, bounds) => window.app.setShapeBounds(xml, name, bounds),
