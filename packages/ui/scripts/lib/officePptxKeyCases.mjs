@@ -17,22 +17,27 @@ export function buildPptxKeyCases({ page, mountPane, clickRibbon }) {
 
   return [
     {
-      name: "加粗：选中形状点一次→XML 有 b=1，再点一次→关掉",
+      name: "加粗：选中形状点一次→关，再点一次→开（按标题那个 run 的 rPr 判）",
       run: async () => {
         await mountPane();
-        await clickRibbon("加粗");
-        await wait(400);
-        const on = await page.evaluate(
-          () => window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "",
-        );
-        await clickRibbon("加粗");
-        await wait(400);
-        const off = await page.evaluate(
-          () => window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "",
-        );
+        // 只看**标题那个形状**的 rPr（XML 里表格单元格也有 b="1"，整串搜会假通过/假失败）
+        const boldOfTitle = () =>
+          page.evaluate(() => {
+            const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+            const name = window.__pptxPane.shapeNames()[0];
+            const shape = window.__pptx.readShapes(xml).find((item) => item.name === name);
+            return shape?.runFormat?.bold === true;
+          });
+        const first = await boldOfTitle();
+        const clickedOnce = await clickRibbon("加粗");
+        await wait(600);
+        const second = await boldOfTitle();
+        const clickedTwice = await clickRibbon("加粗");
+        await wait(600);
+        const third = await boldOfTitle();
         return {
-          ok: /b="1"/.test(on) && !/b="1"/.test(off),
-          detail: `第一次 ${/b="1"/.test(on)} → 第二次 ${/b="1"/.test(off)}`,
+          ok: first !== second && third === first,
+          detail: `点到按钮 ${clickedOnce}/${clickedTwice}｜${first} → ${second} → ${third}`,
         };
       },
     },

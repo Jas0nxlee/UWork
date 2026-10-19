@@ -96,7 +96,8 @@ function boundsOf(shape: Element): ShapeBounds {
   const xfrm = shape.getElementsByTagNameNS(A_NS, "xfrm")[0];
   const offset = xfrm?.getElementsByTagNameNS(A_NS, "off")[0];
   const extent = xfrm?.getElementsByTagNameNS(A_NS, "ext")[0];
-  const rotation = num(xfrm?.getAttribute("rot"));
+  const rotationRaw = num(xfrm?.getAttribute("rot"));
+  const rotation = rotationRaw === undefined ? undefined : rotationRaw / 60000;
   if (!offset || !extent) {
     return {
       explicit: false,
@@ -268,7 +269,9 @@ export function setShapeBounds(
   if (bounds.y !== undefined) offset.setAttribute("y", String(Math.round(bounds.y)));
   if (bounds.width !== undefined) extent.setAttribute("cx", String(Math.round(bounds.width)));
   if (bounds.height !== undefined) extent.setAttribute("cy", String(Math.round(bounds.height)));
-  if (bounds.rotation !== undefined) xfrm.setAttribute("rot", String(Math.round(bounds.rotation)));
+  // OOXML 的 rot 单位是**60000 分之一度**（写得数会转出肉眼看不见的角度，等于没转）
+  if (bounds.rotation !== undefined)
+    xfrm.setAttribute("rot", String(Math.round((((bounds.rotation % 360) + 360) % 360) * 60000)));
   return writeBack(document);
 }
 
