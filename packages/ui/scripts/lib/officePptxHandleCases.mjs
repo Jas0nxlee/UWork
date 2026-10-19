@@ -114,8 +114,48 @@ export async function runPptxHandleCases({ page, check }) {
           null) === null,
     };
   });
+  // ⑤ 旋转：把旋转手柄拖到形状**右侧**（≈顺时针 90°），`a:xfrm@rot` 必须写成 60000 分之一度
+  const grabbed = await page.evaluate(() => {
+    const node = document.querySelector("[data-pptx-canvas-handle='rotate']");
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  const target = await page.evaluate(() => {
+    const canvas = window.__pptxPane.canvas();
+    const box = window.__pptxPane.shapeBox(window.__pptxPane.shapeNames()[0]);
+    // 形状中心的右侧
+    return {
+      x: canvas.layer.left + ((box.x + box.width + 20000) / 9525) * canvas.scale,
+      y: canvas.layer.top + ((box.y + box.height / 2) / 9525) * canvas.scale,
+    };
+  });
+  if (!grabbed) {
+    check(false, '找不到旋转手柄（data-pptx-canvas-handle="rotate"）');
+  } else {
+    await page.mouse.move(grabbed.x, grabbed.y);
+    await page.mouse.down();
+    await page.mouse.move(target.x, target.y, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(700);
+    const rotated = await page.evaluate(() => {
+      const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+      const raw = /<a:xfrm[^>]*\srot="(-?\d+)"/.exec(xml)?.[1] ?? null;
+      const box = window.__pptxPane.shapeBox(window.__pptxPane.shapeNames()[0]);
+      return { raw: raw === null ? null : Number(raw), rotation: box.rotation ?? null };
+    });
+    check(
+      rotated.raw !== null && rotated.raw % 60000 === 0 && Math.abs(rotated.raw - 5400000) < 900000,
+      `旋转写回 a:xfrm@rot，单位是 60000 分之一度（rot=${rotated.raw}，即 ${rotated.raw === null ? "?" : Math.round(rotated.raw / 60000)}°）`,
+    );
+    check(
+      typeof rotated.rotation === "number" && Math.abs(rotated.rotation - 90) < 15,
+      `读回来的角度是度（${rotated.rotation}°）`,
+    );
+  }
+
   check(
-    edge.handles === 8 && edge.centerFree,
-    `放大后是 8 个手柄且中心仍然空着（${edge.handles} 个）`,
+    edge.handles === 9 && edge.centerFree,
+    `放大后是 8 个缩放手柄 + 旋转手柄、且中心仍然空着（${edge.handles} 个）`,
   );
 }

@@ -14,21 +14,22 @@
  * **点选名单以本页 XML 为准**：渲染器还会画从版式/母版继承来的形状，它们不在本页 XML 里、
  * 改了也写不回去，所以不进名单——宁可点不到，不能"拖了半天没反应"。
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  angleFromCenter,
   dragGeometry,
-  emuToPx,
   measuredBoxesOf,
   EMU_PER_PX,
   handleSpots,
   isOffPage,
   PAGE_MARGIN_PX,
-  pxToEmu,
   type CanvasBox,
   type CanvasCorner,
   type CanvasDragState,
 } from "./pptCanvasGeometry.js";
 import { PptxCanvasZoomBar } from "./PptxCanvasZoomBar.js";
+import { PptxSelectionOverlay } from "./PptxSelectionOverlay.js";
+import { useCanvasViewport } from "./useCanvasViewport.js";
 import { PptxTextEditor } from "./PptxTextEditor.js";
 import type { PresentationPageElement } from "@/presentation/types.js";
 import type { PptxShape } from "./pptShapes.js";
@@ -47,7 +48,7 @@ export interface PptxSlideCanvasProps {
   onSelect: (name: string | null) => void;
   onCommitBounds: (
     name: string,
-    bounds: { x: number; y: number; width: number; height: number },
+    bounds: { x?: number; y?: number; width?: number; height?: number; rotation?: number },
   ) => void;
   /** 双击：希望就地改这个形状的文字（编辑位负责把焦点移到编辑层）。 */
   onRequestText?: (name: string) => void;
@@ -90,27 +91,21 @@ export function PptxSlideCanvas({
   const frameRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [availableWidth, setAvailableWidth] = useState(0);
-  const [availableHeight, setAvailableHeight] = useState(0);
+  const view = useCanvasViewport({
+    frameRef,
+    pageWidth: preview.pageWidth,
+    pageHeight: preview.pageHeight,
+    zoom,
+    onZoomChange,
+  });
+  const { scale, pageDisplayWidth, pageDisplayHeight, toPx, toEmu, viewport, viewportOf } = view;
+  /** 渲染器实测的形状框（XML 里没有显式几何的用它们兜底）。 */
   const [measured, setMeasured] = useState<Record<string, CanvasBox>>({});
   const [drag, setDrag] = useState<CanvasDragState | null>(null);
   /** 拖动中的实时几何（EMU）：只在拖的时候覆盖显示，松手才写回 XML。 */
   const [draft, setDraft] = useState<{ name: string; box: CanvasBox } | null>(null);
-
-  // 可用宽度（面板变窄 / 窗口缩放都要跟着重算，否则框会错位）
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const update = () => {
-      setAvailableWidth(Math.max(0, frame.clientWidth - PAGE_MARGIN_PX * 2));
-      setAvailableHeight(Math.max(0, frame.clientHeight - PAGE_MARGIN_PX * 2));
-    };
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(update);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
+  /** 旋转中的实时角度（度）：松手才写回 a:xfrm@rot。 */
+  const [rotateDraft, setRotateDraft] = useState<number | null>(null);
 
   // 画当前页（文档换了、换页、或**这一页被改过**就重画）
   useEffect(() => {
@@ -141,57 +136,6 @@ export function PptxSlideCanvas({
     setMeasured(measuredBoxesOf(page));
   }, [preview, pageIndex]);
 
-  /** Ctrl/⌘ + 滚轮（触控板捏合）＝ 缩放，且**以指针为中心**（PowerPoint 的手感）。 */
-  const pendingAnchor = useRef<{ fx: number; fy: number; px: number; py: number } | null>(null);
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      // 要拦掉"浏览器缩放"，监听必须是非 passive 的，所以用原生监听而不是 React 的 onWheel
-      event.preventDefault();
-      const rect = frame.getBoundingClientRect();
-      const px = event.clientX - rect.left;
-      const py = event.clientY - rect.top;
-      pendingAnchor.current = {
-        px,
-        py,
-        fx: (frame.scrollLeft + px) / Math.max(1, frame.scrollWidth),
-        fy: (frame.scrollTop + py) / Math.max(1, frame.scrollHeight),
-      };
-      onZoomChange((value) => Math.max(25, Math.min(400, value + (event.deltaY < 0 ? 10 : -10))));
-    };
-    frame.addEventListener("wheel", onWheel, { passive: false });
-    return () => frame.removeEventListener("wheel", onWheel);
-  }, [onZoomChange]);
-
-  // 缩放后把指针底下的那个点滚回原位，否则手感是"页面乱跑"
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    const pending = pendingAnchor.current;
-    if (!frame || !pending) return;
-    pendingAnchor.current = null;
-    frame.scrollLeft = pending.fx * frame.scrollWidth - pending.px;
-    frame.scrollTop = pending.fy * frame.scrollHeight - pending.py;
-  }, [zoom]);
-
-  /**
-   * **适应窗口**：同时按可用宽与可用高算缩放，取小的那个。
-   * PowerPoint 就是这样——旁边面板一开，页面整体缩小、**整页仍然看得见**，
-   * 而不是"按宽度铺满、底下被切掉"或者被面板盖住。
-   */
-  const fitScale = (() => {
-    if (preview.pageWidth <= 0 || preview.pageHeight <= 0) return 0;
-    const byWidth = availableWidth / preview.pageWidth;
-    const byHeight = availableHeight > 0 ? availableHeight / preview.pageHeight : byWidth;
-    return Math.min(byWidth, byHeight);
-  })();
-  const scale = (fitScale * zoom) / 100;
-  const pageDisplayWidth = Math.round((preview.pageWidth || 0) * scale);
-  const pageDisplayHeight = Math.round((preview.pageHeight || 0) * scale);
-  const toEmu = useCallback((px: number) => pxToEmu(px, scale), [scale]);
-  const toPx = useCallback((emu: number) => emuToPx(emu, scale), [scale]);
-
   /** 形状的显示几何：XML 显式几何优先，否则用渲染器量到的；都没有 = 不可拖。 */
   const boxOf = useCallback(
     (name: string): CanvasBox | null => {
@@ -204,6 +148,7 @@ export function PptxSlideCanvas({
           y: shape.bounds.y,
           width: shape.bounds.width,
           height: shape.bounds.height,
+          ...(shape.bounds.rotation === undefined ? {} : { rotation: shape.bounds.rotation }),
         };
       }
       return measured[name] ?? null;
@@ -255,6 +200,25 @@ export function PptxSlideCanvas({
     });
   };
 
+  /** 拉旋转手柄：以形状中心为轴（与拖动/缩放共用同一套 drag 状态与指针事件）。 */
+  const startRotate = (event: React.PointerEvent<HTMLSpanElement>) => {
+    if (!activeShape) return;
+    const box = boxOf(activeShape);
+    if (!box) return;
+    event.stopPropagation();
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDrag({
+      mode: "rotate",
+      corner: "se",
+      name: activeShape,
+      startX: event.clientX,
+      startY: event.clientY,
+      start: box,
+    });
+    setRotateDraft(box.rotation ?? 0);
+  };
+
   const startResize = (event: React.PointerEvent<HTMLSpanElement>, corner: CanvasCorner) => {
     if (!activeShape) return;
     const box = boxOf(activeShape);
@@ -274,6 +238,15 @@ export function PptxSlideCanvas({
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!drag) return;
+    if (drag.mode === "rotate") {
+      const layer = layerRef.current;
+      if (!layer) return;
+      const rect = layer.getBoundingClientRect();
+      setRotateDraft(
+        angleFromCenter(drag.start, viewport, event.clientX - rect.left, event.clientY - rect.top),
+      );
+      return;
+    }
     setDraft({
       name: drag.name,
       box: dragGeometry(
@@ -289,6 +262,14 @@ export function PptxSlideCanvas({
     const state = drag;
     setDrag(null);
     setDraft(null);
+    if (state.mode === "rotate") {
+      const rotation = rotateDraft ?? state.start.rotation ?? 0;
+      setRotateDraft(null);
+      // 没转过 1° 就别写（免得点一下也产生"改动"）
+      if (Math.abs(rotation - (state.start.rotation ?? 0)) < 1) return;
+      onCommitBounds(state.name, { rotation });
+      return;
+    }
     const dx = toEmu(event.clientX - state.startX);
     const dy = toEmu(event.clientY - state.startY);
     // 只是点了一下（没真的拖动）：不写回，也不制造一条"改动"
@@ -302,7 +283,6 @@ export function PptxSlideCanvas({
     ? (shapes.find((item) => item.name === editing.shape) ?? null)
     : null;
   const activeShapeKnown = activeShape ? shapes.some((item) => item.name === activeShape) : false;
-  const viewport = { width: pageDisplayWidth, height: pageDisplayHeight, scale };
   const handleSpotList = activeBox ? handleSpots(activeBox, viewport) : [];
   const offPage = activeBox ? isOffPage(activeBox, viewport) : false;
   const hint = activeShapeKnown
@@ -404,38 +384,19 @@ export function PptxSlideCanvas({
                 />
               ) : null}
               {activeBox && !editing ? (
-                <div
-                  data-pptx-canvas-selection={activeShape ?? ""}
-                  className="border-2 border-sky-400"
-                  style={{
-                    position: "absolute",
-                    left: toPx(activeBox.x),
-                    top: toPx(activeBox.y),
-                    width: toPx(activeBox.width),
-                    height: toPx(activeBox.height),
-                    cursor: drag?.mode === "move" ? "grabbing" : "grab",
-                  }}
+                <PptxSelectionOverlay
+                  box={activeBox}
+                  viewport={viewportOf(activeBox)}
+                  handles={handleSpotList}
+                  rotateDraft={rotateDraft}
+                  selectionName={activeShape ?? ""}
+                  toPx={toPx}
+                  moving={drag?.mode === "move"}
+                  canRotate
+                  onResizeStart={startResize}
+                  onRotateStart={startRotate}
                 />
               ) : null}
-              {/* 手柄与选框**同级**、都用页面坐标（挂在选框里的话，位置会被选框自身的 left/top 再加一遍） */}
-              {activeBox && !editing
-                ? handleSpotList.map(({ corner, left, top, cursor }) => (
-                    <span
-                      key={corner}
-                      data-pptx-canvas-handle={corner}
-                      className="rounded-full border border-sky-500 bg-white"
-                      style={{
-                        position: "absolute",
-                        width: 12,
-                        height: 12,
-                        cursor,
-                        left,
-                        top,
-                      }}
-                      onPointerDown={(event) => startResize(event, corner)}
-                    />
-                  ))
-                : null}
             </div>
           ) : null}
           {preview.error ? (
