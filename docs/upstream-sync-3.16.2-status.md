@@ -15,7 +15,8 @@
 | 整树规模  | 4579 个文件、+385,796 / −131,529 行                                                                                                                                                   |
 | 冲突面    | 183 个未合并路径，全部解决（详见下）                                                                                                                                                  |
 | 依赖      | `pnpm install` 通过（含上游新增 `@zcode/zcode-cua`、`build:cua` prepare、radix 补丁并入 `pnpm-workspace.yaml`）                                                                       |
-| typecheck | **合并净增 0 错误**；剩下 98 个全在 `packages/ui/src/im/**` 与 `WorkspaceSidebarFooter`，属分支既有红（IM 的 shared/service 契约尚未提交，实体在另一工作树）                          |
+| typecheck | **0 错误**（上游升级后先到"净增 0、剩 98 个 IM 半成品错误"，IM 剥离后为 0；详见 §三.1）                                                                                               |
+| lint      | `oxlint` **0 error**（328 warnings，属基线噪音）                                                                                                                                      |
 | 顺带修掉  | 分支既有的 8 个 desktop 缺失 import（企业登录视图、MCP/附件工具、`mkdir`）；feature-graph 测试基线改为裁剪图口径（75/95/0）；两处陈旧测试（商店自动刷新 import、server-cli 品牌断言） |
 
 ## 二、183 个未合并路径的处置口径
@@ -33,7 +34,7 @@
 
 ## 三、遗留（未在本分支处理，需产品/后续决定）
 
-1. **IM（消息）未闭环**：`packages/ui/src/im/**` 的 98 个 typecheck 错误是既有红 —— UI 组件已提交，但 `packages/shared/src/im.ts`、`packages/services/src/im/` 等契约仍是另一工作树里的未跟踪文件。合并未改变这一点。
+1. **IM（消息/频道）已按决定从本分支剥离**（提交 `dcc30bf1`）：这批 UI 组件是并行会话误提交进来的半成品，其契约从未提交（`packages/shared/src/im.ts`、`packages/services/src/im/`、`IImService`、`IPlatformService.setImBadgeCount`、`IServiceAccessor.imService` 全树都找不到），98 个 typecheck 错误全部来自它。已删除 `packages/ui/src/im/**`（37 文件）+ 8 个 IM 测试、拔除 15 个共享文件里的接线、移除仅 IM 使用的 127 个 i18n 键 ×2 语言；剥离后 `pnpm typecheck` 由 98 → **0**。**IM 的 UI 可从 `8ba8704a` 取回**，契约齐备后与 UI 一起单独提 PR；设计稿仍在 `specs/messaging-and-channels.md`。副作用：`sidePaneTabMatchesWorkspace` 的"空 workspaceKey 仍可见"不变式暂时没有用例钉住。
 2. **账号体系取舍**：`oauthService` 保持"退役桩"（不发网络登录），上游 3.16.2 的账号实现未收下，相关上游测试仍会红。
 3. **远控任务同步**：上游删掉 Root 层的 `webRemoteControlTaskSync*`；`useWebRemoteControlAuthSync` 与我方"已移除账号登录"的清理 effect 相抵（远控平台会长期报 signed-out）。企业身份若要覆盖手机端鉴权，需要在企业身份 Provider 接这条通道。
 4. **生成物**：`THIRD-PARTY-NOTICES.md` / `third-party/inventory.json` 取上游版，发布前需在 CI 重生成。
