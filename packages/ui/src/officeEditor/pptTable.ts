@@ -172,3 +172,191 @@ export function tableSizeOf(xml: string, tableName: string): { rows: number; col
 }
 
 export { P_NS };
+
+/** 表格里的某个单元格元素（`a:tr[row]/a:tc[col]`）。 */
+function cellElement(
+  document: Document,
+  tableName: string,
+  row: number,
+  col: number,
+): Element | null {
+  const frame = shapeByName(document, tableName);
+  if (!frame) return null;
+  return cellsOf(frame)[row]?.[col] ?? null;
+}
+
+/** 单元格的属性容器 `a:tcPr`（没有就补一个，位置按 OOXML 要求放在 txBody 之后）。 */
+function ensureCellProperties(document: Document, cell: Element): Element {
+  const existing = Array.from(cell.children).find(
+    (child) => child.namespaceURI === A_NS && child.localName === "tcPr",
+  );
+  if (existing) return existing;
+  const properties = document.createElementNS(A_NS, "a:tcPr");
+  cell.append(properties);
+  return properties;
+}
+
+export type CellDirection = "right" | "down";
+
+/**
+ * **合并单元格**：把光标这一格与它右/下邻的那一格并起来（`gridSpan`/`rowSpan` + 被覆盖格的
+ * `hMerge`/`vMerge`，与 PowerPoint 写出来的形态一致）。
+ *
+ * 界面只提供"向右合并 / 向下合并"，不提供任意矩形合并：我们没有"多选一片单元格"的交互，
+ * 与其猜用户的意图，不如给两个明确的方向。
+ */
+export function mergeCell(
+  xml: string,
+  tableName: string,
+  row: number,
+  col: number,
+  direction: CellDirection,
+): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const cell = cellElement(document, tableName, row, col);
+  if (!cell) return xml;
+  if (direction === "right") {
+    const neighbour = cellsOf(shapeByName(document, tableName) as Element)[row]?.[col + 1];
+    if (!neighbour) return xml;
+    const span =
+      (Number(cell.getAttribute("gridSpan") ?? 1) || 1) +
+      (Number(neighbour.getAttribute("gridSpan") ?? 1) || 1);
+    cell.setAttribute("gridSpan", String(span));
+    // 被并掉的那格：内容和标记都清掉，并标成"横向被合并"
+    neighbour.removeAttribute("gridSpan");
+    neighbour.removeAttribute("rowSpan");
+    neighbour.setAttribute("hMerge", "1");
+    const body = neighbour.getElementsByTagNameNS(A_NS, "txBody")[0];
+    if (body) body.replaceChildren(document.createElementNS(A_NS, "a:p"));
+    return writeBack(document);
+  }
+  const rows = cellsOf(shapeByName(document, tableName) as Element);
+  const below = rows[row + 1]?.[col];
+  if (!below) return xml;
+  const span =
+    (Number(cell.getAttribute("rowSpan") ?? 1) || 1) +
+    (Number(below.getAttribute("rowSpan") ?? 1) || 1);
+  cell.setAttribute("rowSpan", String(span));
+  below.removeAttribute("gridSpan");
+  below.removeAttribute("rowSpan");
+  below.setAttribute("vMerge", "1");
+  const body = below.getElementsByTagNameNS(A_NS, "txBody")[0];
+  if (body) body.replaceChildren(document.createElementNS(A_NS, "a:p"));
+  return writeBack(document);
+}
+
+/** **拆分单元格**：把这一格参与过的合并标记全部撤掉（含被它覆盖的那些格）。 */
+export function splitCell(xml: string, tableName: string, row: number, col: number): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const frame = shapeByName(document, tableName);
+  if (!frame) return xml;
+  const rows = cellsOf(frame);
+  const cell = rows[row]?.[col];
+  if (!cell) return xml;
+  const gridSpan = Number(cell.getAttribute("gridSpan") ?? 1) || 1;
+  const rowSpan = Number(cell.getAttribute("rowSpan") ?? 1) || 1;
+  for (let r = row; r < row + rowSpan; r += 1) {
+    for (let c = col; c < col + gridSpan; c += 1) {
+      const target = rows[r]?.[c];
+      if (!target) continue;
+      target.removeAttribute("gridSpan");
+      target.removeAttribute("rowSpan");
+      target.removeAttribute("hMerge");
+      target.removeAttribute("vMerge");
+    }
+  }
+  return writeBack(document);
+}
+
+/** **单元格底纹**（`a:tcPr/a:solidFill`）；传 null 表示去掉。 */
+export function setCellFill(
+  xml: string,
+  tableName: string,
+  row: number,
+  col: number,
+  color: string | null,
+): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const cell = cellElement(document, tableName, row, col);
+  if (!cell) return xml;
+  const properties = ensureCellProperties(document, cell);
+  for (const fill of Array.from(properties.getElementsByTagNameNS(A_NS, "solidFill")))
+    fill.remove();
+  if (color) {
+    const fill = document.createElementNS(A_NS, "a:solidFill");
+    const srgb = document.createElementNS(A_NS, "a:srgbClr");
+    srgb.setAttribute("val", color.replace(/^#/, "").toUpperCase());
+    fill.append(srgb);
+    properties.append(fill);
+  }
+  return writeBack(document);
+}
+
+/** **单元格边框**：四边一起给（`a:lnL/lnR/lnT/lnB`）；`on=false` 表示去掉。 */
+export function setCellBorder(
+  xml: string,
+  tableName: string,
+  row: number,
+  col: number,
+  options: { on: boolean; color?: string; width?: number },
+): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const cell = cellElement(document, tableName, row, col);
+  if (!cell) return xml;
+  const properties = ensureCellProperties(document, cell);
+  for (const name of ["lnL", "lnR", "lnT", "lnB"]) {
+    for (const line of Array.from(properties.getElementsByTagNameNS(A_NS, name))) line.remove();
+  }
+  if (options.on) {
+    for (const name of ["lnL", "lnR", "lnT", "lnB"]) {
+      const line = document.createElementNS(A_NS, name);
+      line.setAttribute("w", String(options.width ?? 12700));
+      line.setAttribute("cap", "flat");
+      line.setAttribute("cmpd", "sng");
+      line.setAttribute("algn", "ctr");
+      const fill = document.createElementNS(A_NS, "a:solidFill");
+      const srgb = document.createElementNS(A_NS, "a:srgbClr");
+      srgb.setAttribute("val", (options.color ?? "000000").replace(/^#/, "").toUpperCase());
+      fill.append(srgb);
+      line.append(fill);
+      // a:tcPr 的子元素顺序有讲究：四条线要排在 solidFill **之前**
+      properties.insertBefore(line, properties.firstChild);
+    }
+  }
+  return writeBack(document);
+}
+
+/** **表格样式开关**：首行突出 / 镶边行（`a:tblPr@firstRow|bandRow`，渲染器按它上底色）。 */
+export function setTableOptions(
+  xml: string,
+  tableName: string,
+  options: { firstRow?: boolean; bandRow?: boolean },
+): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const frame = shapeByName(document, tableName);
+  const table = frame?.getElementsByTagNameNS(A_NS, "tbl")[0];
+  const properties = table?.getElementsByTagNameNS(A_NS, "tblPr")[0];
+  if (!properties) return xml;
+  if (options.firstRow !== undefined)
+    properties.setAttribute("firstRow", options.firstRow ? "1" : "0");
+  if (options.bandRow !== undefined)
+    properties.setAttribute("bandRow", options.bandRow ? "1" : "0");
+  return writeBack(document);
+}
+
+/** 表格的样式开关现状（功能区按钮的选中态用它）。 */
+export function tableOptionsOf(
+  xml: string,
+  tableName: string,
+): { firstRow: boolean; bandRow: boolean } | null {
+  const document = parser().parseFromString(xml, "application/xml");
+  const frame = shapeByName(document, tableName);
+  const properties = frame
+    ?.getElementsByTagNameNS(A_NS, "tbl")[0]
+    ?.getElementsByTagNameNS(A_NS, "tblPr")[0];
+  if (!properties) return null;
+  return {
+    firstRow: properties.getAttribute("firstRow") === "1",
+    bandRow: properties.getAttribute("bandRow") === "1",
+  };
+}

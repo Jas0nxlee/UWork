@@ -36,6 +36,8 @@ export interface PptxRibbonApi {
   insertPicture: (dataUri: string) => void;
   /** 插入表格（行列；尺寸由编辑位按页面算）。 */
   insertTable: (rows: number, cols: number) => void;
+  /** 表格工具：行列增删 / 合并拆分 / 单元格底纹与边框 / 表格样式（按当前选中的单元格定位）。 */
+  tableOp: (command: string, args: unknown[]) => void;
   /**
    * **点击那一刻**从当前 XML 现读选中形状的格式。
    * 开关类命令（加粗/斜体/项目符号）必须用它——早先读的是渲染时捕获的 shape 对象，
@@ -155,6 +157,24 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
       api.insertPicture(dataUri);
       return;
     }
+
+    // —— 表格工具（当前选中单元格定位）——
+    case "pptxTableInsertRowAbove":
+    case "pptxTableInsertRowBelow":
+    case "pptxTableInsertColumnLeft":
+    case "pptxTableInsertColumnRight":
+    case "pptxTableDeleteRow":
+    case "pptxTableDeleteColumn":
+    case "pptxTableMergeRight":
+    case "pptxTableMergeDown":
+    case "pptxTableSplit":
+    case "pptxTableCellBorderOn":
+    case "pptxTableCellBorderOff":
+    case "pptxTableFirstRow":
+    case "pptxTableBandRow":
+    case "executeHighlight":
+      api.tableOp(command, args);
+      return;
 
     // —— 形状 ——
     case "pptxAddTextBox":

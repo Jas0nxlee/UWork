@@ -154,6 +154,14 @@ window.__pptx = {
   tableSizeOf: (xml, name) => window.app.tableSizeOf(xml, name),
   applyTableStructureEdit: (xml, name, row, col, op) =>
     window.app.applyTableStructureEdit(xml, name, row, col, op),
+  mergeCell: (xml, name, row, col, direction) =>
+    window.app.mergeCell(xml, name, row, col, direction),
+  splitCell: (xml, name, row, col) => window.app.splitCell(xml, name, row, col),
+  setCellFill: (xml, name, row, col, color) => window.app.setCellFill(xml, name, row, col, color),
+  setCellBorder: (xml, name, row, col, options) =>
+    window.app.setCellBorder(xml, name, row, col, options),
+  setTableOptions: (xml, name, options) => window.app.setTableOptions(xml, name, options),
+  tableOptionsOf: (xml, name) => window.app.tableOptionsOf(xml, name),
   // —— 表格插入（pptTableInsert.ts）——
   insertTable: (xml, input) => window.app.insertTable(xml, input),
   // —— 画布几何（pptCanvasGeometry.ts）——

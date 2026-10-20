@@ -8,7 +8,7 @@ import type { IFileService } from "@zcode/services";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openPptxDocumentForEdit } from "./pptOpen.js";
 import { savePptxDocument } from "./pptSave.js";
-import { patchPictureBytes, patchTableXml } from "./pptInsertActions.js";
+import { patchPictureBytes, useTableActions } from "./pptInsertActions.js";
 import { buildPreviewBytes, composeCurrentSlides, readSlidePart } from "./pptDeckCompose.js";
 import { readDeckSlides, readSlideText, type PptxSlide } from "./pptText.js";
 import {
@@ -299,18 +299,10 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       ),
     [patchSlideXml],
   );
-  /** 插表格：只改这一页 XML（不像图片要动包）→ 普通补丁通道。 */
-  const patchTable = useCallback(
-    (partName: string, rows: number, cols: number, w: number, h: number) =>
-      patchSlideXml(
-        partName,
-        (xml) => patchTableXml(xml, rows, cols, w, h),
-        `插入 ${rows}×${cols} 表格`,
-      ),
-    [patchSlideXml],
-  );
-
+  const { insertTableAction: patchTable, tableOpAction: patchTableOp } =
+    useTableActions(patchSlideXml);
   /** 插图片：媒体部件、rels、p:pic 都是包级手术 → deck 补丁（逐字节保真不变）。 */
+
   const insertPictureAction = useCallback(
     (partName: string, dataUri: string, pageWidth: number, pageHeight: number) =>
       applyDeckPatch(
@@ -446,6 +438,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     addSlideAction,
     insertPictureAction,
     patchTable,
+    patchTableOp,
     /** 调试三件套：预览重算次数/错误、当前喂给渲染器的字节、模型里某页的 XML。 */
     previewBuilds: () => previewBuildsRef.current,
     previewError: () => previewErrorRef.current,

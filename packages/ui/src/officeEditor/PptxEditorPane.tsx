@@ -20,10 +20,11 @@ import { PptxSlideCanvas } from "./PptxSlideCanvas.js";
 import { PptxSlideThumbnails } from "./PptxSlideThumbnails.js";
 import { installPptxPaneDebug } from "./pptxPaneDebug.js";
 import { PPTX_RIBBON_TABS } from "./pptxRibbonTabs.js";
-import { pptxRibbonStyle, runPptxRibbonCommand } from "./pptxRibbonRun.js";
+import { pptxRibbonStyle } from "./pptxRibbonRun.js";
 import { cellBlockIndexOf } from "./pptTable.js";
 import { shapeLines } from "./pptShapes.js";
 import { usePptxDocument } from "./usePptxDocument.js";
+import { usePptxRibbonRun } from "./usePptxRibbonRun.js";
 import { usePptxPreview } from "./usePptxPreview.js";
 
 export interface PptxEditorPaneProps {
@@ -58,6 +59,7 @@ export function PptxEditorPane({
     setShapeParagraph,
     moveShape,
     patchTable,
+    patchTableOp,
     duplicateShape,
     removeShape,
     addTextBox,
@@ -192,66 +194,31 @@ export function PptxEditorPane({
   );
 
   /** 功能区命令 → 编辑位已有的操作（命令清单在 pptxRibbonTabs.ts，两边一起改）。 */
-  const runRibbon = useStableCallback(
-    (command: string, args?: unknown[]) => {
-      const partName = slide?.partName ?? null;
-      runPptxRibbonCommand(command, args ?? [], {
-        partName,
-        shape,
-        slideIndex: activeSlide,
-        slideCount: slides?.length ?? 0,
-        addSlide: () => void addSlideAction(),
-        duplicateSlide: () => partName && void duplicateSlideAction(partName),
-        deleteSlide: () => partName && void deleteSlideAction(partName),
-        moveSlide: (to) => partName && void moveSlideAction(partName, to),
-        addTextBox: () => partName && addTextBox(partName),
-        duplicateShape: () => partName && shape && duplicateShape(partName, shape.name),
-        deleteShape: () => partName && shape && removeShape(partName, shape.name),
-        moveShape: (direction) => partName && shape && moveShape(partName, shape.name, direction),
-        setFormat: (format) => partName && shape && setShapeFormat(partName, shape.name, format),
-        // 开关类命令现读格式（见 pptxRibbonRun 的 runFormat 注释）
-        runFormat: () => {
-          const current = partName
-            ? shapesOf(partName).find((item) => item.name === shape?.name)
-            : null;
-          return current?.runFormat ?? {};
-        },
-        setParagraph: (format) =>
-          partName && shape && setShapeParagraph(partName, shape.name, format),
-        setZoom,
-        insertTable: (rows, cols) => {
-          if (!partName) return;
-          const size = previewFrame();
-          setStatus(`插入 ${rows} × ${cols} 表格…`);
-          patchTable(partName, rows, cols, size.width, size.height);
-        },
-        insertPicture: (dataUri) =>
-          partName &&
-          void insertPictureAction(partName, dataUri, previewFrame().width, previewFrame().height),
-        note: setStatus,
-      });
-    },
-    [
-      activeSlide,
-      addSlideAction,
-      addTextBox,
-      insertPictureAction,
-      patchTable,
-      preview,
-      deleteSlideAction,
-      duplicateShape,
-      duplicateSlideAction,
-      moveShape,
-      moveSlideAction,
-      removeShape,
-      setShapeFormat,
-      setShapeParagraph,
-      setStatus,
-      shape,
-      slide,
-      slides,
-    ],
-  );
+  // 功能区命令的落点整块在 usePptxRibbonRun 里（编辑位只有这一行）
+  const runRibbon = usePptxRibbonRun({
+    slide,
+    slides,
+    activeSlide,
+    shape,
+    previewFrame,
+    shapesOf,
+    activeCell,
+    setZoom,
+    setStatus,
+    addSlideAction,
+    duplicateSlideAction,
+    deleteSlideAction,
+    moveSlideAction,
+    addTextBox,
+    duplicateShape,
+    removeShape,
+    moveShape,
+    setShapeFormat,
+    setShapeParagraph,
+    patchTable,
+    patchTableOp,
+    insertPictureAction,
+  });
 
   /**
    * 形状（XML 里的 txBody）与文本框（readSlideText 的块）是两套编号，不该靠"顺序一样"来猜——
@@ -331,7 +298,13 @@ export function PptxEditorPane({
         onExit={onExit}
         confirmExit={() => !dirty || window.confirm("有未保存的修改，确定退出编辑吗？")}
       />
-      <OfficeRibbon style={pptxRibbonStyle(shape)} run={runRibbon} tabs={PPTX_RIBBON_TABS} />
+      <OfficeRibbon
+        style={pptxRibbonStyle(shape)}
+        run={runRibbon}
+        tabs={PPTX_RIBBON_TABS}
+        // 选中表格才出「表格」上下文标签（与 Word/WPS 的表格工具同一做法）
+        inTable={shape?.kind === "graphicFrame"}
+      />
       {writeBlocked ? (
         <div className="border-b border-border bg-surface px-3 py-3 text-xs">
           <div className="pb-1 font-medium">这份演示文稿现在不能应用内编辑</div>

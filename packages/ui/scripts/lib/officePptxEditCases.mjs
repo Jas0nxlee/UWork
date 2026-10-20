@@ -374,4 +374,83 @@ export async function runPptxEditCases({ page, check }) {
     cellOps.blockIndexOfLast === cellOps.total - 1,
     `"第 2 行第 2 列"定位到最后一个文本块（序号 ${cellOps.blockIndexOfLast} / 共 ${cellOps.total}）`,
   );
+
+  // ⑫ 表格的"内容面"：合并/拆分、底纹、边框、样式开关（都按 PowerPoint 写出来的形态）
+  const tableContent = await page.evaluate(() => {
+    const ns = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const pns = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    const start = window.__pptx.insertTable(
+      '<?xml version="1.0"?><p:sld xmlns:p="' +
+        pns +
+        '" xmlns:a="' +
+        ns +
+        '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sld>',
+      { rows: 2, cols: 3, pageWidth: 9144000, pageHeight: 6858000 },
+    );
+    const name = start.name;
+    const doc = (xml) => new DOMParser().parseFromString(xml, "application/xml");
+    const cells = (xml) => {
+      const frame = [...doc(xml).getElementsByTagNameNS(pns, "graphicFrame")].find(
+        (node) => node.getElementsByTagNameNS(pns, "cNvPr")[0]?.getAttribute("name") === name,
+      );
+      return [...(frame?.getElementsByTagNameNS(ns, "tr") ?? [])].map((row) =>
+        [...row.children]
+          .filter((child) => child.localName === "tc")
+          .map((cell) => ({
+            gridSpan: cell.getAttribute("gridSpan"),
+            rowSpan: cell.getAttribute("rowSpan"),
+            hMerge: cell.getAttribute("hMerge"),
+            vMerge: cell.getAttribute("vMerge"),
+            fill: cell.getElementsByTagNameNS(ns, "srgbClr")[0]?.getAttribute("val") ?? null,
+            borders: ["lnL", "lnR", "lnT", "lnB"].every(
+              (line) => cell.getElementsByTagNameNS(ns, line).length > 0,
+            ),
+          })),
+      );
+    };
+    const mergedRight = window.__pptx.mergeCell(start.xml, name, 0, 0, "right");
+    const mergedDown = window.__pptx.mergeCell(start.xml, name, 0, 0, "down");
+    const split = window.__pptx.splitCell(mergedRight, name, 0, 0);
+    const filled = window.__pptx.setCellFill(start.xml, name, 1, 2, "D93025");
+    const bordered = window.__pptx.setCellBorder(start.xml, name, 0, 1, {
+      on: true,
+      color: "1A73E8",
+    });
+    const firstRowOff = window.__pptx.setTableOptions(start.xml, name, { firstRow: false });
+    return {
+      base: window.__pptx.tableSizeOf(start.xml, name),
+      mergedRightCell: cells(mergedRight)[0][0],
+      mergedRightSibling: cells(mergedRight)[0][1],
+      mergedDownCell: cells(mergedDown)[0][0],
+      mergedDownBelow: cells(mergedDown)[1][0],
+      afterSplit: cells(split)[0].slice(0, 3),
+      fill: cells(filled)[1][2].fill,
+      border: cells(bordered)[0][1].borders,
+      optionsBefore: window.__pptx.tableOptionsOf(start.xml, name),
+      optionsAfter: window.__pptx.tableOptionsOf(firstRowOff, name),
+    };
+  });
+  check(
+    tableContent.mergedRightCell?.gridSpan === "2" &&
+      tableContent.mergedRightSibling?.hMerge === "1",
+    `向右合并：本格 gridSpan=2、右邻 hMerge=1（${JSON.stringify(tableContent.mergedRightCell)}）`,
+  );
+  check(
+    tableContent.mergedDownCell?.rowSpan === "2" && tableContent.mergedDownBelow?.vMerge === "1",
+    `向下合并：本格 rowSpan=2、下邻 vMerge=1（${JSON.stringify(tableContent.mergedDownBelow)}）`,
+  );
+  check(
+    tableContent.afterSplit?.every(
+      (cell) => !cell.gridSpan && !cell.rowSpan && !cell.hMerge && !cell.vMerge,
+    ),
+    `拆分把合并标记全撤掉（${JSON.stringify(tableContent.afterSplit)}）`,
+  );
+  check(
+    tableContent.fill === "D93025" && tableContent.border === true,
+    `底纹与边框落到单元格（底纹 ${tableContent.fill}／四边边框 ${tableContent.border}）`,
+  );
+  check(
+    tableContent.optionsBefore?.firstRow === true && tableContent.optionsAfter?.firstRow === false,
+    `表格样式开关（首行突出 ${tableContent.optionsBefore?.firstRow} → ${tableContent.optionsAfter?.firstRow}）`,
+  );
 }
