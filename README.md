@@ -8,7 +8,7 @@
 
 UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。当前版本预置 UCAS 模型供应商，支持自定义模型服务、助理 / 开发模式切换，以及可跳过的企业微信身份登录。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
 
-本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。
+本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。当前代码基线同步自上游 ZCode v3.16.2 快照（2026-10-19）。
 
 ## 当前功能
 
@@ -156,6 +156,8 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 ```
 
 产物默认写入 `dist/zcode/`。发行包命令仍为 `zcode`：无参数进入 TUI，`zcode --web` 启动 Web。构建本身不会安装或替换系统中的 CLI。查看参数可运行 `pnpm build:zcode --help`。
+
+CLI 的模型配置、非交互调用、工具与扩展、批量评测和轨迹记录见 [CLI 使用指南](apps/zcode-cli/docs/usage/README.md)。
 
 ## 数据与网络边界
 

@@ -1,6 +1,7 @@
 import type { Locale } from "@zcode/shared";
 import { memo, useCallback, useEffect, useState } from "react";
-import { DesktopCommandIds, TID_TASK_SETTINGS_BUTTON } from "@zcode/shared";
+import { DesktopCommandIds } from "@zcode/shared";
+import { TID_TASK_SETTINGS_BUTTON } from "@zcode/shared/test-ids";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
@@ -159,7 +160,11 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
             </Button>
           </DropdownMenuTrigger>
           {/* 菜单内容保持挂载，避免每次点击头像菜单都重建 footer 内部状态。*/}
-          <DropdownMenuContent align="start" className="w-max min-w-50" forceMount>
+          <DropdownMenuContent
+            align="start"
+            className="w-max min-w-50 max-w-[calc(100vw-2rem)]"
+            forceMount
+          >
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Globe className="size-4" />
@@ -230,9 +235,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             {/* 快捷键设置：缩放子菜单 label 读生效表，设置页改绑后即时跟随 */}
-            {/* 收口重复缩放子菜单时误留了语言之后的那份，导致菜单顺序变成
-                语言→缩放→主题；账户菜单分组顺序固定为 语言→主题→界面模式→缩放→用量→登录/登出，
-                这里把唯一一份（读生效表）挪回用量摘要之前，不要再补第二份缩放子菜单。 */}
             {isDesktop ? (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>

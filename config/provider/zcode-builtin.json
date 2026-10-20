@@ -1,5 +1,5 @@
 {
-  "revision": 32,
+  "revision": 33,
   "schemaVersion": 1,
   "config": {
     "modelConfigRules": {
@@ -261,65 +261,27 @@
         },
         {
           "modelMatch": "deepseek-v4-pro",
-          "apiTypeMatch": "openai-chat-completions",
-          "baseUrlMatch": "https://opencode\\.ai/zen/go/v1/?",
+          "apiTypeMatch": "openai-responses",
+          "baseUrlMatch": "https://api\\.deepseek\\.com(?:/.*)?",
           "config": {
             "properties": {
-              "contextWindow": 1000000,
-              "inputFormat": {
-                "supportsText": true,
-                "supportsImage": false,
-                "supportsVideo": false,
-                "supportsPdf": false,
-                "supportsAudio": false
-              },
-              "supportsJsonSchemaOutput": true,
-              "supportsNativeWebSearch": false
+              "supportsJsonSchemaOutput": true
             },
             "optionSpecs": {
               "reasoningLevel": {
-                "values": [
-                  "high",
-                  "max"
-                ],
-                "map": "{\"reasoning_effort\": reasoningLevel}"
-              },
-              "maxOutputTokens": {
-                "max": 384000,
-                "map": "{\"max_tokens\": maxOutputTokens}"
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
               }
             }
           }
         },
         {
-          "modelMatch": "deepseek-v4-flash",
-          "apiTypeMatch": "openai-chat-completions",
-          "baseUrlMatch": "https://opencode\\.ai/zen/go/v1/?",
+          "modelMatch": "deepseek-v4-flash(?:-vision-exp)?",
+          "baseUrlMatch": "https://api\\.deepseek\\.com(?:/.*)?",
+          "apiTypeMatch": ".*",
           "config": {
             "properties": {
-              "contextWindow": 1000000,
               "inputFormat": {
-                "supportsText": true,
-                "supportsImage": false,
-                "supportsVideo": false,
-                "supportsPdf": false,
-                "supportsAudio": false
-              },
-              "supportsJsonSchemaOutput": true,
-              "supportsNativeWebSearch": false
-            },
-            "optionSpecs": {
-              "reasoningLevel": {
-                "values": [
-                  "low",
-                  "high",
-                  "max"
-                ],
-                "map": "{\"reasoning_effort\": reasoningLevel}"
-              },
-              "maxOutputTokens": {
-                "max": 384000,
-                "map": "{\"max_tokens\": maxOutputTokens}"
+                "supportsImage": true
               }
             }
           }
@@ -809,25 +771,12 @@
         },
         {
           "modelMatch": ".*",
-          "baseUrlMatch": "https://api\\.z\\.ai/api/anthropic/?",
+          "apiTypeMatch": "anthropic-messages",
+          "baseUrlMatch": "https://zcode\\.z\\.ai/api/v1/off-peak/anthropic/?",
           "config": {
             "properties": {
-              "inputFormat": {
-                "supportsImage": true,
-                "supportsVideo": true
-              }
-            }
-          }
-        },
-        {
-          "modelMatch": ".*",
-          "baseUrlMatch": "https://zcode\\.z\\.ai/api/v1/zcode-plan/anthropic/?",
-          "config": {
-            "properties": {
-              "inputFormat": {
-                "supportsImage": true,
-                "supportsVideo": true
-              }
+              "supportsNativeWebSearch": false,
+              "supportsMidConversationSystem": true
             }
           }
         },
@@ -852,17 +801,6 @@
           }
         },
         {
-          "modelMatch": ".*",
-          "apiTypeMatch": "anthropic-messages",
-          "baseUrlMatch": "(?:https://api\\.deepseek\\.com/anthropic)",
-          "config": {
-            "properties": {
-              "supportsNativeWebSearch": true,
-              "supportsMidConversationSystem": true
-            }
-          }
-        },
-        {
           "modelMatch": ".*gpt-5\\.(?:6(?:-(?:sol|terra|luna))?|3-codex)(?:[.\\-:/\\[].*)?",
           "apiTypeMatch": "anthropic-messages",
           "baseUrlMatch": "https://openrouter\\.ai/api(?:/v1)?/?",
@@ -870,69 +808,6 @@
             "optionSpecs": {
               "reasoningLevel": {
                 "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
-              }
-            }
-          }
-        },
-        {
-          "modelMatch": ".*",
-          "apiTypeMatch": "anthropic-messages",
-          "baseUrlMatch": "https://api\\.z\\.ai/api/anthropic/?",
-          "config": {
-            "properties": {
-              "supportsNativeWebSearch": true,
-              "supportsMidConversationSystem": true
-            }
-          }
-        },
-        {
-          "modelMatch": ".*",
-          "apiTypeMatch": "anthropic-messages",
-          "baseUrlMatch": "https://zcode\\.z\\.ai/api/v1/zcode-plan/anthropic/?",
-          "config": {
-            "properties": {
-              "supportsNativeWebSearch": true,
-              "supportsMidConversationSystem": true
-            }
-          }
-        },
-        {
-          "modelMatch": ".*",
-          "apiTypeMatch": "anthropic-messages",
-          "baseUrlMatch": "https://zcode\\.z\\.ai/api/v1/off-peak/anthropic/?",
-          "config": {
-            "properties": {
-              "supportsNativeWebSearch": false,
-              "supportsMidConversationSystem": true
-            }
-          }
-        },
-        {
-          "modelMatch": "deepseek-v4-flash",
-          "apiTypeMatch": "openai-responses",
-          "baseUrlMatch": "https://api\\.deepseek\\.com(?:/.*)?",
-          "config": {
-            "properties": {
-              "supportsJsonSchemaOutput": true
-            },
-            "optionSpecs": {
-              "reasoningLevel": {
-                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
-              }
-            }
-          }
-        },
-        {
-          "modelMatch": "deepseek-v4-pro",
-          "apiTypeMatch": "openai-responses",
-          "baseUrlMatch": "https://api\\.deepseek\\.com(?:/.*)?",
-          "config": {
-            "properties": {
-              "supportsJsonSchemaOutput": true
-            },
-            "optionSpecs": {
-              "reasoningLevel": {
-                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
               }
             }
           }
@@ -948,18 +823,6 @@
             "optionSpecs": {
               "reasoningLevel": {
                 "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
-              }
-            }
-          }
-        },
-        {
-          "modelMatch": "deepseek-v4-flash(?:-vision-exp)?",
-          "baseUrlMatch": "https://api\\.deepseek\\.com(?:/.*)?",
-          "apiTypeMatch": ".*",
-          "config": {
-            "properties": {
-              "inputFormat": {
-                "supportsImage": true
               }
             }
           }
@@ -987,17 +850,6 @@
             }
           },
           "baseUrlMatch": "https://openrouter\\.ai/api(?:/v1)?/?"
-        },
-        {
-          "modelMatch": ".*deepseek-v4[.-]1-flash(?:[.\\-:/\\[].*)?",
-          "apiTypeMatch": ".*",
-          "baseUrlMatch": "https://openrouter\\.ai/api(?:/v1)?/?",
-          "config": {
-            "properties": {
-              "contextWindow": 1048576,
-              "supportsJsonSchemaOutput": true
-            }
-          }
         },
         {
           "modelMatch": ".*deepseek-v4[.-]1-flash(?:[.\\-:/\\[].*)?",
@@ -1044,16 +896,6 @@
               "inputFormat": {
                 "supportsVideo": false
               }
-            }
-          }
-        },
-        {
-          "modelMatch": ".*qwen3\\.7-(?:max|plus|flash)(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
-          "apiTypeMatch": "anthropic-messages",
-          "baseUrlMatch": "https://dashscope\\.aliyuncs\\.com/apps/anthropic/?",
-          "config": {
-            "properties": {
-              "supportsJsonSchemaOutput": true
             }
           }
         },
@@ -2905,12 +2747,310 @@
               }
             }
           }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.6.*",
+          "config": {
+            "properties": {
+              "contextWindow": 1050000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": false,
+                "supportsAudio": false,
+                "supportsPdf": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4.*",
+          "config": {
+            "properties": {
+              "contextWindow": 1050000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": false,
+                "supportsAudio": false,
+                "supportsPdf": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4-pro.*",
+          "config": {
+            "properties": {
+              "contextWindow": 1050000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": false,
+                "supportsAudio": false,
+                "supportsPdf": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "medium",
+                  "high",
+                  "xhigh"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4-mini.*",
+          "config": {
+            "properties": {
+              "contextWindow": 400000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": false,
+                "supportsAudio": false,
+                "supportsPdf": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4-nano.*",
+          "config": {
+            "properties": {
+              "contextWindow": 400000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": false,
+                "supportsAudio": false,
+                "supportsPdf": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.7-max.*",
+          "config": {
+            "properties": {
+              "inputFormat": {
+                "supportsImage": false,
+                "supportsVideo": false
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 131072
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.7-plus.*",
+          "config": {
+            "properties": {
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true
+              },
+              "supportsJsonSchemaOutput": true
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 131072
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.7-flash.*",
+          "config": {
+            "properties": {
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true
+              },
+              "supportsJsonSchemaOutput": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 131072
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.6-plus.*",
+          "config": {
+            "properties": {
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true
+              },
+              "supportsJsonSchemaOutput": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 65536
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.6-flash.*",
+          "config": {
+            "properties": {
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true
+              },
+              "supportsJsonSchemaOutput": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 65536
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-omni-flash.*",
+          "config": {
+            "properties": {
+              "contextWindow": 65536,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": true
+              },
+              "supportsJsonSchemaOutput": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 16384
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.6-(?:pro|flash).*",
+          "config": {
+            "properties": {
+              "contextWindow": 1000000,
+              "inputFormat": {
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": true
+              }
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": [
+                  "disabled",
+                  "enabled"
+                ]
+              },
+              "maxOutputTokens": {
+                "max": 131072
+              }
+            }
+          }
         }
       ],
       "builtinProviderModelRules": [],
       "modelApiRules": [
         {
-          "modelMatch": ".*claude-(?:opus-(?:4[.-]8|5)|(?:fable|mythos)-5(?:[.-]1)?)(?:[.\\-:/\\[].*)?",
+          "modelMatch": ".*claude-(?:opus-(?:4[.-]8|5)|(?:fable|mythos)-5(?:[.-]1)?).*",
           "apiTypeMatch": "anthropic-messages",
           "config": {
             "properties": {
@@ -2989,6 +3129,752 @@
                 ],
                 "map": "{\"reasoning_effort\": reasoningLevel}"
               }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-5.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*GLM-5\\.2.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"output_config\": {\n        \"effort\": reasoningLevel\n      }\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*GLM-5-Turbo.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-5\\.3.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": \"enabled\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-5\\.1.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-5\\.1-highspeed.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-5v-turbo.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.7.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.7-flashx.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.7-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.6(?!v).*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.5.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*glm-4\\.5-air.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.6.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.3-codex.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*claude-(?:fable|opus|sonnet)-5.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*grok-4\\.6.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k3.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k3.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*k3.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*k3.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*k3-256k.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*k3-256k.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.7-code.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"disabled\" ? \"disabled\" : \"enabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.7-code.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"disabled\" ? \"disabled\" : \"enabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.7-code.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : \"high\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.6.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.6.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.5.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*kimi-k2\\.5.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"output_config\": {\n        \"effort\": reasoningLevel\n      }\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"reasoning_effort\": reasoningLevel\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4-pro.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"output_config\": {\n        \"effort\": reasoningLevel\n      }\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4-pro.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"reasoning_effort\": reasoningLevel\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-(?:max|flash).*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": \"enabled\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-(?:max|flash).*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-(?:max|flash).*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.5-plus.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.5-plus.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.5-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.5-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen-plus.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen-plus.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3-vl-plus.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3-vl-plus.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.6-(?:pro|flash).*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.5.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.5.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.5-pro.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2\\.5-pro.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*mimo-v2-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-6-astra.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*claude-(?:fable|mythos)-5[.-]1.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"output_config\": {\n        \"effort\": reasoningLevel\n      }\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"reasoning_effort\": reasoningLevel\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*gpt-5\\.4.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4[.-]1-flash.*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"output_config\": {\n        \"effort\": reasoningLevel\n      }\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*deepseek-v4[.-]1-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "reasoningLevel == \"disabled\"\n  ? {\n      \"thinking\": {\n        \"type\": \"disabled\"\n      }\n    }\n  : {\n      \"thinking\": {\n        \"type\": \"enabled\"\n      },\n      \"reasoning_effort\": reasoningLevel\n    }"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.(?:7-(?:max|plus|flash)|6-(?:plus|flash)).*",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.(?:7-(?:max|plus|flash)|6-(?:plus|flash)).*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"enable_thinking\": reasoningLevel == \"enabled\"}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.(?:7-(?:max|plus|flash)|6-(?:plus|flash)).*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : \"high\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-omni-flash.*",
+          "apiTypeMatch": "openai-chat-completions",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*qwen3\\.8-omni-flash.*",
+          "apiTypeMatch": "openai-responses",
+          "config": {
+            "optionSpecs": {
+              "reasoningLevel": {
+                "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "modelMatch": ".*claude-(?:opus-(?:4[.-]8|5)|(?:fable|mythos)-5(?:[.-]1)?)(?:[.\\-:/\\[].*)?",
+          "apiTypeMatch": "anthropic-messages",
+          "config": {
+            "properties": {
+              "supportsMidConversationSystem": true
             }
           }
         },
@@ -4106,6 +4992,34 @@
           }
         },
         {
+          "modelId": "mimo-v2.6-pro",
+          "templateId": "xiaomi-mimo",
+          "config": {
+            "enabled": true
+          }
+        },
+        {
+          "modelId": "mimo-v2.6-flash",
+          "templateId": "xiaomi-mimo",
+          "config": {
+            "enabled": true
+          }
+        },
+        {
+          "modelId": "mimo-v2.6-pro",
+          "templateId": "xiaomi-mimo-token-plan",
+          "config": {
+            "enabled": true
+          }
+        },
+        {
+          "modelId": "mimo-v2.6-flash",
+          "templateId": "xiaomi-mimo-token-plan",
+          "config": {
+            "enabled": true
+          }
+        },
+        {
           "modelId": "mimo-v2.5-pro",
           "templateId": "xiaomi-mimo",
           "config": {
@@ -5056,22 +5970,6 @@
       "providerRules": [],
       "templateRules": [
         {
-          "templateId": "ucas",
-          "templateNameMap": {
-            "zh-CN": "ucas",
-            "en-US": "ucas"
-          },
-          "config": {
-            "access": {
-              "type": "api-key"
-            },
-            "api": {
-              "type": "openai-chat-completions",
-              "baseUrl": "https://llm.ucas.com.cn:15000/v1"
-            }
-          }
-        },
-        {
           "templateId": "moonshot-kimi",
           "templateNameMap": {
             "zh-CN": "Kimi",
@@ -5232,8 +6130,8 @@
         {
           "templateId": "xiaomi-mimo",
           "templateNameMap": {
-            "zh-CN": "Xiaomi MiMo",
-            "en-US": "Xiaomi MiMo"
+            "zh-CN": "Xiaomi MiMo API",
+            "en-US": "Xiaomi MiMo API"
           },
           "config": {
             "access": {
@@ -5245,8 +6143,35 @@
               "baseUrl": "https://api.xiaomimimo.com/anthropic"
             },
             "builtinModelIds": [
+              "mimo-v2.6-pro",
+              "mimo-v2.6-flash",
               "mimo-v2.5-pro",
               "mimo-v2.5"
+            ],
+            "logo": {
+              "type": "builtin",
+              "key": "xiaomi-mimo"
+            }
+          }
+        },
+        {
+          "templateId": "xiaomi-mimo-token-plan",
+          "templateNameMap": {
+            "zh-CN": "Xiaomi MiMo Token Plan",
+            "en-US": "Xiaomi MiMo Token Plan"
+          },
+          "config": {
+            "access": {
+              "type": "api-key",
+              "apiKeyManagementUrl": "https://platform.xiaomimimo.com/"
+            },
+            "api": {
+              "type": "anthropic-messages",
+              "baseUrl": "https://token-plan-cn.xiaomimimo.com/anthropic"
+            },
+            "builtinModelIds": [
+              "mimo-v2.6-pro",
+              "mimo-v2.6-flash"
             ],
             "logo": {
               "type": "builtin",
@@ -5626,6 +6551,22 @@
             "logo": {
               "type": "builtin",
               "key": "opencode"
+            }
+          }
+        },
+        {
+          "templateId": "ucas",
+          "templateNameMap": {
+            "zh-CN": "ucas",
+            "en-US": "ucas"
+          },
+          "config": {
+            "access": {
+              "type": "api-key"
+            },
+            "api": {
+              "type": "openai-chat-completions",
+              "baseUrl": "https://llm.ucas.com.cn:15000/v1"
             }
           }
         }

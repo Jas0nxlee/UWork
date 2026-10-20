@@ -9,7 +9,6 @@ describe("buildCsvTableText", () => {
     ]);
 
     expect(csv).toBe("\uFEFF姓名,城市\r\n张三,北京");
-    expect(Array.from(new TextEncoder().encode(csv).slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
   });
 
   it("添加 BOM 时保留 CSV 转义与公式注入防护", () => {

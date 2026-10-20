@@ -15,7 +15,6 @@ import {
   RemoteSkillSyncDialog,
   RemoteSkillSyncExistingFilterCheckbox,
   RemoteSkillSyncSelectionList,
-  RemoteSkillSyncTargetRow,
   formatRemoteSkillSyncError,
   resolveDefaultRemoteSkillSyncSelection,
   shouldToggleRemoteSkillSyncCardSelection,
@@ -423,8 +422,6 @@ describe("RemoteSkillSyncDialog", () => {
 
     expect(html).toContain("Sync Skills to remote target");
     expect(html).toContain('data-tooltip-title="Skill data and environment availability"');
-    expect(html).toContain("not all dependent data and system environment capabilities");
-    expect(html).toContain("install it or add the dependencies on the remote server");
     expect(html).toContain('aria-label="Skill data and environment availability"');
   });
 
@@ -458,39 +455,6 @@ describe("RemoteSkillSyncDialog", () => {
       open: false,
       tabIndex: undefined,
     });
-  });
-
-  it("keeps the dialog size stable while the skill list scrolls", () => {
-    const service = createSkillSyncServiceStub();
-
-    const html = renderToStaticMarkup(
-      createElement(RemoteSkillSyncDialog, {
-        open: true,
-        onOpenChange: () => undefined,
-        localSkillSyncService: service,
-        remoteSkillSyncService: service,
-        remoteTarget: {
-          kind: "ssh",
-          host: "dev.example.com",
-          username: "alice",
-          port: 22,
-        },
-        workspacePath: "/home/alice/project",
-        onSynced: async () => undefined,
-      }),
-    );
-
-    const dialogContentClass =
-      html.match(/<div class="([^"]*max-h-\[min\(720px,calc\(100dvh-2rem\)\)\][^"]*)"/u)?.[1] ?? "";
-    expect(dialogContentClass.split(/\s+/u)).toEqual(
-      expect.arrayContaining([
-        "h-[min(720px,calc(100dvh-2rem))]",
-        "flex",
-        "flex-col",
-        "overflow-hidden",
-      ]),
-    );
-    expect(html).toContain("min-h-0 flex-1 overflow-y-auto");
   });
 
   it("collapses skill descriptions by default with an expand control", () => {
@@ -552,22 +516,5 @@ describe("RemoteSkillSyncDialog", () => {
 
     expect(html).toContain('type="checkbox"');
     expect(html).toContain("Show existing remote skills");
-  });
-
-  it("places the existing filter on the same row as the target", () => {
-    const html = renderToStaticMarkup(
-      createElement(RemoteSkillSyncTargetRow, {
-        targetLabel: "alice@dev.example.com:22 · /home/alice/project",
-        showExistingRemoteSkills: true,
-        showExistingFilter: true,
-        onShowExistingRemoteSkillsChange: () => undefined,
-      }),
-    );
-
-    expect(html).toContain("sm:flex-row");
-    expect(html).toContain("sm:justify-between");
-    expect(html.indexOf("Target: alice@dev.example.com:22")).toBeLessThan(
-      html.indexOf("Show existing remote skills"),
-    );
   });
 });

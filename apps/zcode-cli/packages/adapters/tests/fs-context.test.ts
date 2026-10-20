@@ -122,34 +122,37 @@ describe("Node file and context adapters", () => {
     },
   );
 
-  it.skipIf(process.platform === "win32")("rejects atomic writes through symlink targets", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "zcode-fs-symlink-"));
-    const targetPath = join(dir, "target.txt");
-    const linkPath = join(dir, "link.txt");
-    const fs = createNodeFileSystemAdapter();
+  it.skipIf(process.platform === "win32")(
+    "rejects atomic writes through symlink targets",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "zcode-fs-symlink-"));
+      const targetPath = join(dir, "target.txt");
+      const linkPath = join(dir, "link.txt");
+      const fs = createNodeFileSystemAdapter();
 
-    try {
-      await writeFile(targetPath, "old", "utf8");
-      await symlink(targetPath, linkPath);
+      try {
+        await writeFile(targetPath, "old", "utf8");
+        await symlink(targetPath, linkPath);
 
-      await expect(
-        fs.writeTextFile({
-          path: linkPath,
-          content: "new",
-          atomic: true,
-        }),
-      ).rejects.toMatchObject({
-        code: "io_error",
-        message: `Refusing to write through symlink: ${linkPath}. Resolve the symlink and pass the real target path explicitly.`,
-      });
+        await expect(
+          fs.writeTextFile({
+            path: linkPath,
+            content: "new",
+            atomic: true,
+          }),
+        ).rejects.toMatchObject({
+          code: "io_error",
+          message: `Refusing to write through symlink: ${linkPath}. Resolve the symlink and pass the real target path explicitly.`,
+        });
 
-      expect(await readFile(targetPath, "utf8")).toBe("old");
-      expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
-      expect((await readdir(dir)).filter((entry) => entry.includes(".tmp."))).toEqual([]);
-    } finally {
-      await rm(dir, { force: true, recursive: true });
-    }
-  });
+        expect(await readFile(targetPath, "utf8")).toBe("old");
+        expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+        expect((await readdir(dir)).filter((entry) => entry.includes(".tmp."))).toEqual([]);
+      } finally {
+        await rm(dir, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("normalizes CRLF reads and preserves requested CRLF writes", async () => {
     const dir = await mkdtemp(join(tmpdir(), "zcode-fs-eol-"));
@@ -248,19 +251,17 @@ describe("Node file and context adapters", () => {
       const originalRead = fileHandlePrototype.read;
       await probe.close();
       let firstRead = true;
-      readSpy = vi.spyOn(fileHandlePrototype, "read").mockImplementation(
-        (async function (
-          this: typeof probe,
-          buffer: Buffer,
-          offset: number,
-          length: number,
-          position: number | null,
-        ) {
-          const readLength = firstRead ? Math.min(1, length) : length;
-          firstRead = false;
-          return originalRead.call(this, buffer, offset, readLength, position);
-        }) as never,
-      );
+      readSpy = vi.spyOn(fileHandlePrototype, "read").mockImplementation(async function (
+        this: typeof probe,
+        buffer: Buffer,
+        offset: number,
+        length: number,
+        position: number | null,
+      ) {
+        const readLength = firstRead ? Math.min(1, length) : length;
+        firstRead = false;
+        return originalRead.call(this, buffer, offset, readLength, position);
+      } as never);
 
       const read = await fs.readBinaryFile({ path, maxBytes: 3 });
 
@@ -629,14 +630,14 @@ describe("Node file and context adapters", () => {
         });
 
         expect(result.numMatches).toBe(1);
-        expect(result.entries.map((entry) => [entry.lineNumber, entry.text, entry.matched])).toEqual(
-          [
-            [1, "before", false],
-            [2, "foo", true],
-            [2, "foo", true],
-            [3, "after", false],
-          ],
-        );
+        expect(
+          result.entries.map((entry) => [entry.lineNumber, entry.text, entry.matched]),
+        ).toEqual([
+          [1, "before", false],
+          [2, "foo", true],
+          [2, "foo", true],
+          [3, "after", false],
+        ]);
       }
     } finally {
       await rm(dir, { force: true, recursive: true });
@@ -740,12 +741,12 @@ describe("Node file and context adapters", () => {
         });
 
         expect(result.numMatches).toBe(2);
-        expect(result.entries.map((entry) => [entry.lineNumber, entry.text, entry.matched])).toEqual(
-          [
-            [1, "", true],
-            [2, "", true],
-          ],
-        );
+        expect(
+          result.entries.map((entry) => [entry.lineNumber, entry.text, entry.matched]),
+        ).toEqual([
+          [1, "", true],
+          [2, "", true],
+        ]);
       }
     } finally {
       await rm(dir, { force: true, recursive: true });
@@ -1016,7 +1017,6 @@ describe("Node file and context adapters", () => {
 
     try {
       if (!(await hasGitCli())) {
-        expect(true).toBe(true);
         return;
       }
 
@@ -1063,7 +1063,6 @@ describe("Node file and context adapters", () => {
 
     try {
       if (!(await hasGitCli())) {
-        expect(true).toBe(true);
         return;
       }
 
@@ -1095,7 +1094,6 @@ describe("Node file and context adapters", () => {
 
     try {
       if (!(await hasGitCli())) {
-        expect(true).toBe(true);
         return;
       }
 
@@ -1129,7 +1127,6 @@ describe("Node file and context adapters", () => {
 
     try {
       if (!(await hasGitCli())) {
-        expect(true).toBe(true);
         return;
       }
 
@@ -1158,7 +1155,6 @@ describe("Node file and context adapters", () => {
 
     try {
       if (!(await hasGitCli())) {
-        expect(true).toBe(true);
         return;
       }
 

@@ -4,7 +4,7 @@ import {
   claimMarketplaceAutoRefresh,
   resetMarketplaceAutoRefreshForTests,
   shouldAutoRefreshMarketplace,
-} from "@/settings/officialMarketplaceAutoRefresh.js";
+} from "@/settings/marketplaceAutoRefresh.js";
 
 const NOW = Date.parse("2026-09-08T12:00:00.000Z");
 const minutesAgo = (minutes: number): string => new Date(NOW - minutes * 60_000).toISOString();

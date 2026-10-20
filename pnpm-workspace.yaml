@@ -47,6 +47,7 @@ overrides:
   ws@8.18.0: ^8.21.0
   ws@^8: ^8.21.0
 patchedDependencies:
+  "@radix-ui/react-collapsible@1.1.12": patches/@radix-ui__react-collapsible@1.1.12.patch
   "@ai-sdk/anthropic@3.0.81": patches/@ai-sdk__anthropic@3.0.81.patch
   "@ai-sdk/openai-compatible@2.0.60": patches/@ai-sdk__openai-compatible@2.0.60.patch
   "@arms/rum-electron@0.0.3": patches/@arms__rum-electron@0.0.3.patch

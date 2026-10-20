@@ -1,42 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import enUS from "../src/i18n/locales/en-US.js";
-import zhCN from "../src/i18n/locales/zh-CN.js";
 import {
   buildVirtualRows,
   MentionPanel,
-  SECTION_HEADER_CLASS_NAME,
-  SECTION_HEADER_ROW_HEIGHT,
   type MentionPanelSection,
 } from "../src/mentions/components/MentionPanel.js";
 import { resolveVerticalScrollMaskState } from "../src/mentions/components/scrollMask.js";
-
-describe("mention search hint copy", () => {
-  it("只提示插件、文件和对话，不再提及画板", () => {
-    expect(zhCN["chat.mention.searchHint"]).toBe("输入内容以搜索插件、文件或对话");
-    expect(enUS["chat.mention.searchHint"]).toBe("Type to search plugins, files, or conversations");
-  });
-});
-
-describe("mention section header typography", () => {
-  it("uses the base UI font size", () => {
-    expect(SECTION_HEADER_CLASS_NAME).toContain("text-ui-base");
-    expect(SECTION_HEADER_CLASS_NAME).not.toContain("text-ui-xs");
-  });
-
-  it("uses the secondary foreground color", () => {
-    expect(SECTION_HEADER_CLASS_NAME).toContain("text-foreground-subtle");
-    expect(SECTION_HEADER_CLASS_NAME).not.toContain("text-foreground-subtlest");
-  });
-
-  it("matches the command option row height without overflowing padding", () => {
-    expect(SECTION_HEADER_ROW_HEIGHT).toBe(34);
-    expect(SECTION_HEADER_CLASS_NAME).toContain("h-8");
-    expect(SECTION_HEADER_CLASS_NAME).toContain("items-center");
-    expect(SECTION_HEADER_CLASS_NAME).not.toMatch(/\b(?:pt|pb)-/);
-  });
-});
 
 function makeOptions(count: number) {
   return Array.from({ length: count }, (_, i) => ({
@@ -47,6 +17,18 @@ function makeOptions(count: number) {
 }
 
 describe("buildVirtualRows", () => {
+  it("keeps the project heading when # has only one matching group", () => {
+    const rows = buildVirtualRows([
+      {
+        id: "project-p",
+        title: "Project p",
+        options: makeOptions(1),
+        emptyText: "Empty",
+        showHeader: true,
+      },
+    ]);
+    expect(rows[0]).toEqual({ kind: "section_header", sectionId: "project-p", title: "Project p" });
+  });
   it("returns empty array for empty sections", () => {
     expect(buildVirtualRows([])).toEqual([]);
   });

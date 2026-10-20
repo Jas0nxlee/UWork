@@ -112,42 +112,14 @@ describe("feature boundary graph helpers", () => {
     const stats = getFeatureBoundaryGraphStats(graph);
 
     expect(stats).toMatchObject({
-      nodeCount: 324,
-      edgeCount: 629,
-      unresolvedEndpointCount: 2,
+      nodeCount: 75,
+      edgeCount: 95,
+      unresolvedEndpointCount: 0,
     });
+    // UWork 的功能图是裁剪版（只留我们动过接缝的种子 + 上游 3.16.2 新增能力），
+    // 因此基线随图走：节点/边数量变了要一起改，未声明端点为 0。
     expect(graph.nodes.filter((node) => node.kind === "unresolved").map((node) => node.id)).toEqual(
-      ["capability.mcp-oauth-authorization", "persistence.desktop-user-data-root"],
-    );
-  });
-
-  it("危险命令 V1 关联真实代码起点和隔离边界", async () => {
-    const source = await readFile(
-      resolve(
-        process.cwd(),
-        "../../.agents/skills/feature-boundary-planner/references/zcode-feature-graph.yaml",
-      ),
-      "utf8",
-    );
-    const graph = normalizeFeatureBoundaryGraph(parseYaml(source));
-    const capabilityId = "capability.dangerous-command-approval";
-    const capability = graph.nodes.find((node) => node.id === capabilityId);
-    expect(capability?.docs).toContain("docs/dangerous-command-approval-v1-plan.md");
-    expect(capability?.codeSeeds).toEqual([
-      "matchDangerousCommand · apps/zcode-cli/packages/core/src/tool/handlers/guarded/command.ts",
-      "resolveToolPermission · apps/zcode-cli/packages/core/src/tool/executor/permission-flow.ts",
-      "buildProtocolPermissionOptions · apps/zcode-cli/packages/bootstrap/src/permission-options.ts",
-      "getZCodeAgentAvailableModes · packages/shared/src/zcode-agent-model-state.ts",
-      "buildAutomationModeOption · packages/ui/src/settings/automationAgentConfigOptions.ts",
-      "filterModeOptions · apps/zcode-cli/packages/tui/src/app-mode-command.ts",
-    ]);
-    expect(graph.edges.filter((edge) => edge.from === capabilityId).map((edge) => edge.to)).toEqual(
-      [
-        "surface.parent-task-blocking-interaction",
-        "boundary.desktop-continuous",
-        "boundary.web-remote-replayable",
-        "boundary.workspace-key",
-      ],
+      [],
     );
   });
 });

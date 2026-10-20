@@ -24,6 +24,7 @@
 - 开源导出树的工作区与锁文件不同于闭源，其声明与 inventory 由导出流程在开源依赖树上重新生成，不沿用闭源声明。
 - npm 补丁列表唯一读取根 `pnpm-workspace.yaml` 的 `patchedDependencies`；根 manifest 仍参与新鲜度哈希，但不提供第二份补丁策略。每份实际配置的补丁须同时进入 `inventory.patches`、`inventory.inputs` 和通知中的修改包列表；补丁原文变化后显式校验失败。
 - 缺少完整原文的精确版本包，只能补充该版本 npm registry 元数据绑定的 gitHead 或经核验的官方 tag/commit 原文。记录 registry 版本、源码 revision、包目录与许可快照 SHA-256；不得用另一版本的材料记录替代，不改变生产版本来避开门禁。相同原文字节可按 SHA-256 共用快照，版本来源证据仍分别保留。
+- 文档查看器随包分发的 `@fontsource/noto-sans-sc@5.3.1` 单独按精确包名、版本与 `OFL-1.1` 许可登记；其他字体、版本或许可仍阻断。构建原样复制字体分片，并将随包版权及完整许可写入插件 `THIRD_PARTY_NOTICES.txt`。该记录不将 OFL 加入通用宽松许可名单，也不关闭其他材料缺口。
 
 ## 开发、构建与校验边界
 
@@ -74,4 +75,3 @@ sequenceDiagram
 2. 独立 Server staging 的组件归档分别包含 npm、Node 与搜索工具声明，工具声明缺失时 staging 失败。
 3. 执行 `node scripts/licenses.mjs check`，如实记录在当前依赖树上的结果；不以更新哈希代替重新生成与审核。
 4. 最终安装包未实际构建时，不声称完成全平台安装包审计。
-5. `node --test scripts/test/generate-third-party-notices.test.mjs`：生成器消费 workspace 中的补丁记录并哈希实际补丁文件；旧 manifest 的并行策略不生效，修改补丁后原 inventory 被新鲜度校验拒绝。

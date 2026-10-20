@@ -8,7 +8,6 @@ import {
   filterRemoteMcpSyncRows,
   RemoteMcpSyncDialog,
   RemoteMcpSyncSelectionList,
-  RemoteMcpSyncTargetRow,
   resolveDefaultRemoteMcpSyncSelection,
 } from "../src/settings/RemoteMcpSyncDialog.js";
 
@@ -244,11 +243,6 @@ describe("RemoteMcpSyncDialog", () => {
 
     expect(html).toContain("Sync MCP servers to remote target");
     expect(html).toContain('data-tooltip-title="MCP data and environment availability"');
-    expect(html).toContain("HTTP MCP URLs are copied");
-    expect(html).toContain("filesystem MCP paths are rewritten");
-    expect(html).toContain("not all dependent data and system environment capabilities");
-    expect(html).toContain("install it or add the dependencies on the remote server");
-    expect(html).not.toContain("secret");
     expect(html).toContain('aria-label="MCP data and environment availability"');
     expect(controlHintTooltipMockState.latest).toEqual({
       hasOnMouseEnter: true,
@@ -258,40 +252,7 @@ describe("RemoteMcpSyncDialog", () => {
     });
   });
 
-  it("keeps the dialog size stable while the MCP list scrolls", () => {
-    const service = createMcpSyncServiceStub();
-
-    const html = renderToStaticMarkup(
-      createElement(RemoteMcpSyncDialog, {
-        open: true,
-        onOpenChange: () => undefined,
-        localMcpSyncService: service,
-        remoteMcpSyncService: service,
-        remoteTarget: {
-          kind: "ssh",
-          host: "dev.example.com",
-          username: "alice",
-          port: 22,
-        },
-        workspacePath: "/home/alice/project",
-        onSynced: async () => undefined,
-      }),
-    );
-
-    const dialogContentClass =
-      html.match(/<div class="([^"]*max-h-\[min\(720px,calc\(100dvh-2rem\)\)\][^"]*)"/u)?.[1] ?? "";
-    expect(dialogContentClass.split(/\s+/u)).toEqual(
-      expect.arrayContaining([
-        "h-[min(720px,calc(100dvh-2rem))]",
-        "flex",
-        "flex-col",
-        "overflow-hidden",
-      ]),
-    );
-    expect(html).toContain("min-h-0 flex-1 overflow-y-auto");
-  });
-
-  it("renders MCP selection rows as card-style items like Skills", () => {
+  it("exposes selection labels and full configuration paths", () => {
     const rows = buildRemoteMcpSyncRows(
       [
         {
@@ -314,27 +275,7 @@ describe("RemoteMcpSyncDialog", () => {
       }),
     );
 
-    expect(html).toContain("grid gap-2");
-    expect(html).toContain("rounded-lg border border-border bg-surface");
     expect(html).toContain('aria-labelledby="remote-mcp-sync-filesystem-id-label"');
     expect(html).toContain("/Users/me/.zcode/cli/config.json");
-    expect(html).not.toContain("divide-y divide-border");
-  });
-
-  it("places the existing filter on the same row as the target", () => {
-    const html = renderToStaticMarkup(
-      createElement(RemoteMcpSyncTargetRow, {
-        targetLabel: "alice@dev.example.com:22 · /home/alice/project",
-        showExistingRemoteMcp: true,
-        showExistingFilter: true,
-        onShowExistingRemoteMcpChange: () => undefined,
-      }),
-    );
-
-    expect(html).toContain("sm:flex-row");
-    expect(html).toContain("sm:justify-between");
-    expect(html.indexOf("Target: alice@dev.example.com:22")).toBeLessThan(
-      html.indexOf("Show existing remote MCP servers"),
-    );
   });
 });

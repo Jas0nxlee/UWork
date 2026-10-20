@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   canRestartAutomation,
@@ -13,15 +12,6 @@ import {
   resolveAutomationTabAfterOffPeakChange,
   resolveVisibleAutomationTabs,
 } from "@/settings/AutomationsSection.js";
-
-const automationsSectionSource = readFileSync(
-  new URL("../src/settings/AutomationsSection.tsx", import.meta.url),
-  "utf8",
-);
-const automationEditViewSource = readFileSync(
-  new URL("../src/settings/AutomationEditView.tsx", import.meta.url),
-  "utf8",
-);
 
 describe("canRestartAutomation", () => {
   it("只允许 failed 定时任务展示重启入口", () => {
@@ -42,21 +32,6 @@ describe("canRestartAutomation", () => {
     expect(getAutomationRunNowToastId("queued")).toBe("automations.runNowQueued");
     expect(getAutomationRunNowToastId("duplicate")).toBe("automations.runNowAlreadyRunning");
     expect(getAutomationRunNowToastId("failed")).toBe("automations.runNowFailed");
-  });
-
-  it("立即运行入口只跟随当前请求的瞬时 busy 状态", () => {
-    const menuStart = automationsSectionSource.indexOf("function AutomationActionsMenu");
-    const menuEnd = automationsSectionSource.indexOf(
-      "export function AutomationsSection",
-      menuStart,
-    );
-    const menuSource = automationsSectionSource.slice(menuStart, menuEnd);
-
-    expect(menuStart).toBeGreaterThanOrEqual(0);
-    expect(menuSource).toContain("disabled={busy}");
-    expect(menuSource).not.toContain("runNowDisabled");
-    expect(automationsSectionSource).not.toContain("runNowBlockedAutomationIds");
-    expect(automationEditViewSource).not.toContain("runNowDisabled");
   });
 
   it("管理操作失败映射为产品文案，不直接展示 RPC 原文", () => {

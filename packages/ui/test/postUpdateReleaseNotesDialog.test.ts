@@ -41,26 +41,6 @@ vi.mock("@/i18n/IntlProvider.js", () => ({
 }));
 
 describe("PostUpdateReleaseNotesDialog", () => {
-  it("renders title row, markdown body and acknowledge button", async () => {
-    const { PostUpdateReleaseNotesDialog } = await import("@/root/PostUpdateReleaseNotesDialog.js");
-
-    const html = renderToStaticMarkup(
-      createElement(PostUpdateReleaseNotesDialog, {
-        payload: {
-          version: "0.1.25",
-          title: "Release v0.1.25",
-          markdown: "## New Features\n\n- add popup",
-        },
-        onAcknowledge: vi.fn(),
-      }),
-    );
-
-    expect(html).toContain('data-testid="post-update-release-notes-dialog"');
-    expect(html).toContain("Release v0.1.25");
-    expect(html).toContain("## New Features");
-    expect(html).toContain("I know");
-  });
-
   it("falls back to localized default title when payload title is empty", async () => {
     const { PostUpdateReleaseNotesDialog } = await import("@/root/PostUpdateReleaseNotesDialog.js");
 

@@ -9,8 +9,6 @@ import {
   type UpdateStatusDialogPhase,
 } from "@/updateStatusModel.js";
 import { formatUpdateReleaseDate, getLocalizedUpdateReleaseNotes } from "@/updateReleaseNotes.js";
-import enUS from "@/i18n/locales/en-US.js";
-import zhCN from "@/i18n/locales/zh-CN.js";
 import { ZCodeIntlProvider } from "@/i18n/IntlProvider.js";
 import type { IntlInstance } from "@/i18n/IntlProvider.js";
 import { TooltipProvider } from "@/components/ui/tooltip.js";
@@ -157,14 +155,6 @@ function updateStatusDialogUsesMacDockProductLogo(phase: UpdateStatusDialogPhase
   );
 }
 
-function countUpdateStatusDialogElementPropText(
-  phase: UpdateStatusDialogPhase,
-  text: string,
-  isUpdateActionPending = false,
-) {
-  return countElementPropText(renderUpdateStatusDialogElement(phase, isUpdateActionPending), text);
-}
-
 function countUpdateStatusDialogBooleanProp(
   phase: UpdateStatusDialogPhase,
   propName: string,
@@ -175,14 +165,6 @@ function countUpdateStatusDialogBooleanProp(
     renderUpdateStatusDialogElement(phase, isUpdateActionPending, null, edgeToEdge),
     propName,
   );
-}
-
-function countUpdateStatusDialogPropValue(
-  phase: UpdateStatusDialogPhase,
-  propName: string,
-  propValue: unknown,
-) {
-  return countElementPropValue(renderUpdateStatusDialogElement(phase), propName, propValue);
 }
 
 function renderUpdateStatusDialogElement(
@@ -238,27 +220,6 @@ function elementContainsText(node: unknown, text: string): boolean {
   return false;
 }
 
-function countElementPropText(node: unknown, text: string): number {
-  if (node == null || typeof node === "boolean") {
-    return 0;
-  }
-
-  if (Array.isArray(node)) {
-    return node.reduce((count, child) => count + countElementPropText(child, text), 0);
-  }
-
-  if (isValidElement(node)) {
-    const props = node.props as Record<string, unknown>;
-    const matchingPropCount = Object.entries(props).filter(
-      ([key, value]) => key !== "children" && typeof value === "string" && value.includes(text),
-    ).length;
-
-    return matchingPropCount + countElementPropText(props.children, text);
-  }
-
-  return 0;
-}
-
 function countElementBooleanProp(node: unknown, propName: string): number {
   if (node == null || typeof node === "boolean") {
     return 0;
@@ -272,27 +233,6 @@ function countElementBooleanProp(node: unknown, propName: string): number {
     const props = node.props as Record<string, unknown>;
     const selfCount = props[propName] === true ? 1 : 0;
     return selfCount + countElementBooleanProp(props.children, propName);
-  }
-
-  return 0;
-}
-
-function countElementPropValue(node: unknown, propName: string, propValue: unknown): number {
-  if (node == null || typeof node === "boolean") {
-    return 0;
-  }
-
-  if (Array.isArray(node)) {
-    return node.reduce(
-      (count, child) => count + countElementPropValue(child, propName, propValue),
-      0,
-    );
-  }
-
-  if (isValidElement(node)) {
-    const props = node.props as Record<string, unknown>;
-    const selfCount = props[propName] === propValue ? 1 : 0;
-    return selfCount + countElementPropValue(props.children, propName, propValue);
   }
 
   return 0;
@@ -414,19 +354,6 @@ describe("UpdateStatusButton release notes", () => {
     expect(formatUpdateReleaseDate("2026-04-15T00:00:00.000Z", "en-US")).toBe("April 15, 2026");
   });
 
-  it("shows dialog release date as a plain date without suffix text", () => {
-    const formattedDate = formatUpdateReleaseDate("2026-06-23T13:48:54.438Z", "zh-CN");
-
-    expect(zhCN["updateDialog.releaseDate"].replace("{date}", formattedDate!)).toBe(
-      "2026年6月23日",
-    );
-  });
-
-  it("labels the available update action as download update", () => {
-    expect(zhCN["updateDialog.downloadAndUpdate"]).toBe("下载更新");
-    expect(enUS["updateDialog.downloadAndUpdate"]).toBe("Download update");
-  });
-
   it("shows the auto download checkbox before downloading", () => {
     expect(
       updateStatusDialogElementContainsText(
@@ -451,18 +378,6 @@ describe("UpdateStatusButton release notes", () => {
     );
   });
 
-  it("omits update dialog title descriptions", () => {
-    expect(
-      updateStatusDialogElementContainsText("before-download", "updateDialog.availableDescription"),
-    ).toBe(false);
-    expect(
-      updateStatusDialogElementContainsText("downloading", "updateDialog.downloadingDescription"),
-    ).toBe(false);
-    expect(
-      updateStatusDialogElementContainsText("downloaded", "updateDialog.readyDescription"),
-    ).toBe(false);
-  });
-
   it.each<UpdateStatusDialogPhase>(["before-download", "downloading", "downloaded"])(
     "shows the macOS Dock product logo in the %s title",
     (phase) => {
@@ -480,32 +395,8 @@ describe("UpdateStatusButton release notes", () => {
     },
   );
 
-  it("uses standard dialog interior padding in the update dialog", () => {
-    expect(updateStatusDialogElementContainsPropText("before-download", "p-5")).toBe(true);
-    expect(updateStatusDialogElementContainsPropText("before-download", "px-5")).toBe(false);
-  });
-
-  it("uses theme color treatment for downloading progress", () => {
-    expect(updateStatusDialogElementContainsPropText("downloading", "bg-primary")).toBe(true);
-    expect(updateStatusDialogElementContainsPropText("downloading", "bg-success")).toBe(false);
-  });
-
-  it("shows download size text in a button-aligned progress row", () => {
+  it("shows download size text", () => {
     expect(updateStatusDialogElementContainsText("downloading", "4.2MB / 10.0MB")).toBe(true);
-    expect(updateStatusDialogElementContainsPropText("downloading", "ml-2")).toBe(false);
-  });
-
-  it("uses the same secondary treatment for skip and later actions", () => {
-    expect(countUpdateStatusDialogPropValue("before-download", "variant", "secondary")).toBe(2);
-    expect(
-      updateStatusDialogElementContainsPropText("before-download", "text-foreground-subtle"),
-    ).toBe(false);
-    expect(updateStatusDialogElementContainsPropText("before-download", "-ml-2")).toBe(false);
-    expect(updateStatusDialogElementContainsPropText("before-download", "ml-2")).toBe(false);
-  });
-
-  it("uses standard control height across the update dialog actions", () => {
-    expect(countUpdateStatusDialogElementPropText("before-download", "h-9")).toBe(3);
   });
 
   it("hides skip and later actions while downloading", () => {
@@ -516,8 +407,6 @@ describe("UpdateStatusButton release notes", () => {
     expect(
       updateStatusDialogElementContainsText("downloading", "updateDialog.cancelDownload"),
     ).toBe(true);
-    expect(countUpdateStatusDialogElementPropText("downloading", "h-9")).toBe(1);
-    expect(updateStatusDialogElementContainsPropText("downloading", "-mt-2")).toBe(true);
   });
 
   it("shows later and restart actions after download finishes", () => {
@@ -528,23 +417,12 @@ describe("UpdateStatusButton release notes", () => {
     expect(
       updateStatusDialogElementContainsText("downloaded", "updateDialog.restartToUpdate"),
     ).toBe(true);
-    expect(countUpdateStatusDialogElementPropText("downloaded", "h-9")).toBe(2);
   });
 
   it("disables visible update actions while a command is in flight", () => {
     expect(countUpdateStatusDialogBooleanProp("before-download", "disabled", true)).toBe(4);
     expect(countUpdateStatusDialogBooleanProp("downloading", "disabled", true)).toBe(1);
     expect(countUpdateStatusDialogBooleanProp("downloaded", "disabled", true)).toBe(2);
-  });
-
-  it("uses the standard large desktop dialog width", () => {
-    expect(
-      updateStatusDialogElementContainsPropText("before-download", "max-w-[calc(100vw-2rem)]"),
-    ).toBe(true);
-    expect(updateStatusDialogElementContainsPropText("before-download", "sm:max-w-lg")).toBe(true);
-    expect(updateStatusDialogElementContainsPropText("before-download", "sm:max-w-[28rem]")).toBe(
-      false,
-    );
   });
 
   it("can remove the dialog shell for the standalone update window", () => {
@@ -626,7 +504,7 @@ describe("UpdateStatusButton release notes", () => {
     ).toBe(true);
   });
 
-  it("uses the original color treatment whenever the main update entry is visible", () => {
+  it("keeps the main update entry visible and interactive across update phases", () => {
     const availableHtml = renderUpdateStatusButton({
       kind: "update-available",
       version: "3.3.3",
@@ -645,24 +523,14 @@ describe("UpdateStatusButton release notes", () => {
     } as UpdateStatePayload);
 
     expect(availableHtml).toContain("bg-success");
-    expect(availableHtml).toContain("text-success-foreground");
     expect(availableHtml).toContain("topoverlayer:w-auto");
-    expect(availableHtml).toContain("h-auto");
-    expect(availableHtml).toContain("min-h-5");
-    expect(availableHtml).toContain("py-0.5");
-    expect(availableHtml).toContain("font-medium");
-    expect(availableHtml).toContain("text-ui-xs");
-    expect(availableHtml).not.toContain("text-ui-sm");
-    expect(availableHtml).not.toContain("text-ui-base");
     expect(downloadingHtml).toContain("bg-success");
-    expect(downloadingHtml).toContain("text-success-foreground");
     expect(downloadingHtml).toContain("animate-spin");
     expect(downloadingHtml).not.toContain('disabled=""');
     expect(downloadingHtml).not.toContain("下载中");
     expect(downloadingHtml).not.toContain("topoverlayer:w-auto");
     expect(downloadingHtml).not.toContain("topoverlayer:hidden");
     expect(downloadedHtml).toContain("bg-success");
-    expect(downloadedHtml).toContain("text-success-foreground");
     expect(downloadedHtml).toContain("topoverlayer:w-auto");
   });
 

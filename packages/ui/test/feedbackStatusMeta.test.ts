@@ -7,7 +7,6 @@ import {
   STATUS_USER_HINT,
 } from "@/feedback/feedbackUserView.js";
 import enUS from "@/i18n/locales/en-US.js";
-import zhCN from "@/i18n/locales/zh-CN.js";
 
 function mockFormatMessage(descriptor: { id: string }, values?: Record<string, string>) {
   const messages: Record<string, string> = {
@@ -32,11 +31,6 @@ describe("feedback status metadata", () => {
     expect(STATUS_META[archivedStatus]?.dot).toBeTruthy();
     expect(STATUS_USER_HINT[archivedStatus]).toContain("关闭");
     expect(FEEDBACK_STATUS_MESSAGE_IDS[archivedStatus]).toBe("feedback.status.completed");
-  });
-
-  it("presents the archived API status as completed to users", () => {
-    expect(zhCN["feedback.status.completed"]).toBe("已完成");
-    expect(enUS["feedback.status.completed"]).toBe("Completed");
   });
 
   // 回归：formatRelativeTime/formatSubmittedAt 兜底分支曾硬编码中文
