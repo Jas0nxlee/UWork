@@ -1,7 +1,12 @@
 # 上游 3.16.2 合并状态（2026-10-20）
 
-分支 `chore/upstream-3.16.2-sync`（worktree `UWork-merge-3.16`），基于 `ea8b7888` + 上游 `zcode/main` = `3c5b2276`。
-提交：`e20c4d88`（合并）+ `3d3e15e8`（锁文件重算与格式化）。上游这次**不打 tag**（3.16.1 = `0a1fc56d`），`apps/zcode-cli` 0.16.9 → 0.17.0。
+分支 `chore/upstream-3.16.2-sync`（worktree `UWork-merge-3.16`），已推送到 `ModestXin/UWork`，PR 走 `uwork` 基线评审。
+提交：`e20c4d88`（合并上游 3.16.2）+ `3d3e15e8`（锁文件重算与格式化）+ `ae783cda`（本状态文档）+ `96bee81d`（并入 uwork 基线）。
+上游这次**不打 tag**（3.16.1 = `0a1fc56d`、3.16.2 = `3c5b2276`），`apps/zcode-cli` 0.16.9 → 0.17.0。
+
+## 零、并入 uwork 基线（2026-10-20 追加）
+
+`uwork` 在 PR #5 之后已走到 **UWork 3.16.6**，中间叠了六个版本的修复（内置登录配置与原生回调归属、企业身份会话守卫、subagent 配置按 home 隔离、非回环 HTTP 鉴权、CLI 日志保留、Windows Gen UI 资产字节、UCAS 暗色品牌等）。本次把它并进本分支（59 个文件、+2552/−715），8 处冲突按「uwork 是发布线 + 3.16.2 是新结构」解决：`.gitattributes` 与 `server/src/http.ts` 的 import 取并集、`desktopMainIpcRemote` 取 uwork 的注释与 import 并保留 3.16.2 的三个 helper、三处测试取 uwork 侧、`hostRemoteWorkspaceServices` 取我方新结构、`v4ConversationDraftEmptyStateLogo.test.ts` 接受删除。合并后 `pnpm typecheck` 仍为 98 个既有 IM 错误（净增 0）。
 
 ## 一、规模与结果
 
