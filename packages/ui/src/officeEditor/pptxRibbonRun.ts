@@ -175,6 +175,8 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
     case "pptxTableCellAlignLeft":
     case "pptxTableCellAlignCenter":
     case "pptxTableCellAlignRight":
+    case "pptxTableGridOn":
+    case "pptxTableGridOff":
     case "pptxTableCellBorderOn":
     case "pptxTableCellBorderOff":
     case "pptxTableFirstRow":

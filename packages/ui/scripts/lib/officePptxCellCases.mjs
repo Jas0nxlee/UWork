@@ -206,6 +206,70 @@ export async function runPptxCellCases({ page, check }) {
     `「对齐方式」两个方向都落到 XML（垂直 a:tcPr@anchor=${aligned.anchor} 水平段落 algn=${aligned.align}）`,
   );
 
+  // ⑤b 画布上**看得见网格线**：插进来的表，渲染出来的 td 计算边框宽度必须 > 0
+  //     （用户口径："表格没有边框？"——XML 里有 a:lnL 不等于画得出来，必须看渲染结果。
+  //      注意页上还有 fixture 那张**本来就没边框**的表，所以按"哪张表整张都有线"来判，别数第一格）
+  const grid = await page.evaluate(() => {
+    const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+    const names = window.__pptxPane.shapeNames().filter((name) => name.startsWith("表格 "));
+    const name = names[names.length - 1] ?? null;
+    const tables = [...document.querySelectorAll("[data-pptx-canvas-host] table")].map((table) => {
+      const cells = [...table.querySelectorAll("td")];
+      const edges = (cell) =>
+        ["Top", "Right", "Bottom", "Left"].every(
+          (side) => Number.parseFloat(getComputedStyle(cell)[`border${side}Width`]) > 0,
+        );
+      return { cells: cells.length, gridded: cells.filter(edges).length };
+    });
+    return { name, on: name ? window.__pptx.tableGridOn(xml, name) : false, tables };
+  });
+  check(
+    grid.on && grid.tables.some((table) => table.cells > 0 && table.cells === table.gridded),
+    `画布上的表格真的画出了网格线（XML 有网格=${grid.on}；各表 [格数/带框格数] ${grid.tables
+      .map((t) => `${t.cells}/${t.gridded}`)
+      .join("、")}）`,
+  );
+  // ⑤c 右栏的「表格设置 → 网格线」开关（窄面板下功能区那一组会收进二级菜单，
+  //     用户实际会从右栏点）：能开、能关，并且整张表跟着变
+  const paneGrid = await page.evaluate(async () => {
+    // 回到 fixture 那张表（它自带没有边框），确认开关默认是关的
+    document.querySelector('[data-pptx-shape="表格 1"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const box = document.querySelector("input[data-pptx-table-grid]");
+    if (!box) return { present: false };
+    const initialState = box.checked;
+    box.click();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+    const start = xml.indexOf("<a:tbl");
+    const slice = xml.slice(start, xml.indexOf("</a:tbl>", start));
+    const size = window.__pptx.tableSizeOf(xml, "表格 1") ?? { rows: 0, cols: 0 };
+    const afterOn = {
+      checked: document.querySelector("input[data-pptx-table-grid]")?.checked ?? null,
+      lines: (slice.match(/<a:ln[LRTB][ >]/g) ?? []).length,
+      // 每格四边：这张表几格就该有几 × 4 条线
+      expected: size.rows * size.cols * 4,
+      grid: window.__pptx.tableGridOn(xml, "表格 1"),
+    };
+    document.querySelector("input[data-pptx-table-grid]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const xml2 = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+    const start2 = xml2.indexOf("<a:tbl");
+    const off = !/<a:ln[LRTB][ >]/.test(xml2.slice(start2, xml2.indexOf("</a:tbl>", start2)));
+    return { present: true, initialState, afterOn, off };
+  });
+  check(
+    paneGrid.present &&
+      paneGrid.initialState === false &&
+      paneGrid.afterOn.checked === true &&
+      paneGrid.afterOn.grid &&
+      paneGrid.afterOn.lines === paneGrid.afterOn.expected &&
+      paneGrid.off,
+    `右栏「表格设置」的网格线开关能开关整张表（初始 ${paneGrid.initialState} → 开：${paneGrid.afterOn.lines}/${paneGrid.afterOn.expected} 条线、开关态 ${
+      paneGrid.afterOn.checked
+    } → 关掉 ${paneGrid.off}）`,
+  );
+
   // ⑥ **改了非文字的东西也要能保存**（真机实测的 bug：合并一片单元格 + 写备注之后点保存，
   //    被"没有检测到文字改动，未写盘"挡掉——用户改了却没写盘）。
   //    这里点的是面板里的「保存到文件」，断言"真的调了写盘，而且写进去的字节里有合并标记"。

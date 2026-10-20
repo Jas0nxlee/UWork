@@ -266,12 +266,16 @@ export async function runPptxRibbonCases({ page, check }) {
       await new Promise((resolve) => setTimeout(resolve, 700));
       return true;
     };
+    /** 只看**这一张表**里的线：整页搜会把页上另一张表（插进来那张自带网格）的线也算进来。 */
     const read = () => {
       const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+      const start = xml.indexOf("<a:tbl");
+      const end = xml.indexOf("</a:tbl>", start);
+      const slice = start < 0 || end < 0 ? "" : xml.slice(start, end);
       return {
         size: window.__pptx.tableSizeOf(xml, "表格 1"),
         options: window.__pptx.tableOptionsOf(xml, "表格 1"),
-        hasBorder: /<a:lnL[ >]/.test(xml),
+        hasBorder: /<a:lnL[ >]/.test(slice),
       };
     };
     const before = read();
@@ -310,7 +314,7 @@ export async function runPptxRibbonCases({ page, check }) {
   );
   check(
     tableToolRun.bordered && !tableToolRun.borderBefore && tableToolRun.borderAfter,
-    "表格工具：给单元格加四边边框（XML 里出现 a:lnL）",
+    `表格工具：给单元格加四边边框（点到按钮=${tableToolRun.bordered}｜之前有线=${tableToolRun.borderBefore}｜之后有线=${tableToolRun.borderAfter}）`,
   );
   check(
     tableToolRun.styled && tableToolRun.styleAfter === !tableToolRun.styleBefore,

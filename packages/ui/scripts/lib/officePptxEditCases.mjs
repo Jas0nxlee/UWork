@@ -529,6 +529,68 @@ export async function runPptxEditCases({ page, check }) {
     `合并后的这一页写得回、校验过、渲染器仍认得（${rectRun.mergedText}）`,
   );
 
+  // ⑭b 网格线：插入的表自带四边线；整表"套用/去掉网格"是开关（用户："表格没有边框？"）
+  const gridRun = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const xml0 = deck.sourceXml.get(part) ?? "";
+    const inserted = window.__pptx.insertTable(xml0, {
+      rows: 2,
+      cols: 2,
+      pageWidth: 9144000,
+      pageHeight: 6858000,
+    });
+    const name = inserted.name;
+    const cellSides = ["lnL", "lnR", "lnT", "lnB"];
+    // 只数表格里的线：序列化后开标签可能带命名空间（`<a:tbl xmlns:…>`），所以用正则找起点
+    const countLines = (xml) => {
+      // 用**最后一张**表：这一页原本就有一张 fixture 的表（它没有线），插进来的在它后面
+      const start = xml.lastIndexOf("<a:tbl");
+      const end = xml.indexOf("</a:tbl>", start);
+      const table = start < 0 || end < 0 ? "" : xml.slice(start, end);
+      return Object.fromEntries(
+        cellSides.map((side) => [
+          side,
+          (table.match(new RegExp(`<a:${side}[ >]`, "g")) ?? []).length,
+        ]),
+      );
+    };
+    const insertedLines = countLines(inserted.xml);
+    const on = window.__pptx.tableGridOn(inserted.xml, name);
+    const off = window.__pptx.setTableGrid(inserted.xml, name, false);
+    const offLines = countLines(off);
+    const backOn = window.__pptx.setTableGrid(off, name, true);
+    // 写回 + 渲染：带网格的表在**画布上真的看得见线**（下面界面断言用挂载后的计算样式再验一次）
+    const current = new Map(deck.sourceXml);
+    current.set(part, backOn);
+    const written = await window.__pptx.write({ source: bytes, baseline: deck.sourceXml, current });
+    const validation = await window.__pptx.validate(written.bytes, bytes, {
+      editedSlides: written.changedSlides,
+    });
+    return {
+      name,
+      insertedLines,
+      on,
+      offLines,
+      reOn: window.__pptx.tableGridOn(backOn, name),
+      cells: 4,
+      validation: validation.ok,
+      rendered: (await window.__pptx.render(written.bytes)).slides,
+    };
+  });
+  check(
+    gridRun.insertedLines.lnL === 4 &&
+      gridRun.insertedLines.lnT === 4 &&
+      gridRun.on &&
+      gridRun.cells === 4,
+    `插入的表格自带网格线（4 格 × 四边：lnL ${gridRun.insertedLines.lnL}／lnT ${gridRun.insertedLines.lnT}）`,
+  );
+  check(
+    !gridRun.offLines.lnL && gridRun.reOn && gridRun.validation && gridRun.rendered === 2,
+    `整表网格是开关（去掉后 0 条线，再套回 ${gridRun.reOn}；产物仍合法、渲染 ${gridRun.rendered} 页）`,
+  );
+
   // ⑬ 讲稿备注：读已有的、改它、给没有备注的页新建一个（部件 + rel + Content_Types）
   const notesRun = await page.evaluate(async () => {
     const { bytes } = await window.__pptx.fixture();

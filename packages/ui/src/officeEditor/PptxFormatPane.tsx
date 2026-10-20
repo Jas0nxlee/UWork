@@ -32,6 +32,10 @@ export interface PptxFormatPaneProps {
   onAddTextBox: () => void;
   registerBlockRef: (index: number, element: HTMLTextAreaElement | null) => void;
   onChangeBlock: (index: number, lines: string[]) => void;
+  /** 表格的网格线现状（选中表格时才有意义）。 */
+  tableGrid?: boolean;
+  /** 开/关整张表的网格线。 */
+  onTableGrid?: (on: boolean) => void;
   /** 这一页的讲稿备注（没有备注部件时 text 为空、hasNotes=false）。 */
   notes: { text: string[]; hasNotes: boolean };
   onNotesChange: (lines: string[]) => void;
@@ -54,6 +58,8 @@ export function PptxFormatPane({
   onAddTextBox,
   registerBlockRef,
   onChangeBlock,
+  tableGrid = false,
+  onTableGrid,
   notes,
   onNotesChange,
 }: PptxFormatPaneProps) {
@@ -99,6 +105,22 @@ export function PptxFormatPane({
               {shape.kind === "pic"
                 ? "这是一张图片：可以改位置、大小、层级，或复制/删除；图片的裁剪、亮度、替换还没做。"
                 : "这是一个表格：在画布上点格子（按住拖可选中一片），顶部的「表格」标签里做增删行列、合并、对齐、底纹边框；格子里的文字在下面的「文本」里改。"}
+            </div>
+          ) : null}
+          {shape.kind === "graphicFrame" && onTableGrid ? (
+            <div className="border-b border-border px-3 py-2" data-pptx-table-settings>
+              <label className="flex items-center gap-2 text-[11px]">
+                <input
+                  type="checkbox"
+                  data-pptx-table-grid
+                  checked={tableGrid}
+                  onChange={(event) => onTableGrid(event.target.checked)}
+                />
+                网格线
+                <span className="text-foreground-subtlest">
+                  {tableGrid ? "整张表已有边框" : "整张表没有边框"}
+                </span>
+              </label>
             </div>
           ) : null}
           <ShapeInspector

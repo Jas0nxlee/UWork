@@ -188,6 +188,8 @@ window.__pptx = {
   setCellAlign: (xml, table, row, col, align) =>
     window.app.setCellAlign(xml, table, row, col, align),
   cellFormatOf: (xml, table, row, col) => window.app.cellFormatOf(xml, table, row, col),
+  setTableGrid: (xml, table, on, options) => window.app.setTableGrid(xml, table, on, options),
+  tableGridOn: (xml, table) => window.app.tableGridOn(xml, table),
   // —— 表格（pptTable.ts）——
   cellBlockIndexOf: (xml, table, row, col) => window.app.cellBlockIndexOf(xml, table, row, col),
   isTableShape: (xml, name) => window.app.isTableShape(xml, name),

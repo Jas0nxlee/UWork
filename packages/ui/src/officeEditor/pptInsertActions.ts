@@ -15,7 +15,13 @@ import {
   splitCell,
   tableOptionsOf,
 } from "./pptTable.js";
-import { setCellAlign, setCellAnchor, setCellBorder, setCellFill } from "./pptTableCellFormat.js";
+import {
+  setCellAlign,
+  setCellAnchor,
+  setCellBorder,
+  setCellFill,
+  setTableGrid,
+} from "./pptTableCellFormat.js";
 
 /** 插表格：只动这一页的 XML。 */
 export function patchTableXml(
@@ -49,6 +55,8 @@ export const TABLE_COMMAND_LABEL: Record<string, string> = {
   pptxTableMergeRight: "向右合并",
   pptxTableMergeDown: "向下合并",
   pptxTableSplit: "拆分单元格",
+  pptxTableGridOn: "套用网格线",
+  pptxTableGridOff: "去掉网格线",
   pptxTableCellBorderOn: "加边框",
   pptxTableCellBorderOff: "去边框",
   pptxTableFirstRow: "切换首行突出",
@@ -109,6 +117,10 @@ export function applyTableCommand(
       return splitCell(xml, table, row, col);
     case "executeHighlight":
       return setCellFill(xml, table, row, col, colour);
+    case "pptxTableGridOn":
+      return setTableGrid(xml, table, true, { color: "000000", width: 12700 });
+    case "pptxTableGridOff":
+      return setTableGrid(xml, table, false);
     case "pptxTableCellBorderOn":
       return setCellBorder(xml, table, row, col, { on: true, color: "000000", width: 12700 });
     case "pptxTableCellBorderOff":

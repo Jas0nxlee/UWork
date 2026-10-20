@@ -21,6 +21,7 @@ import { PptxSlideThumbnails } from "./PptxSlideThumbnails.js";
 import { installPptxPaneDebug } from "./pptxPaneDebug.js";
 import { PPTX_RIBBON_TABS } from "./pptxRibbonTabs.js";
 import { pptxRibbonStyle } from "./pptxRibbonRun.js";
+import { tableGridOn } from "./pptTableCellFormat.js";
 import { cellBlockIndexOf } from "./pptTable.js";
 import { shapeLines } from "./pptShapes.js";
 import { usePptxDocument } from "./usePptxDocument.js";
@@ -134,6 +135,14 @@ export function PptxEditorPane({
   );
   const shape = shapes.find((item) => item.name === activeShape) ?? null;
   /** 当前页的讲稿备注（读的是内存里的备注 XML，改过就跟着 revision 重算）。 */
+  /** 表格网格线现状（右栏那个开关的状态；从当前 XML 现读，revision 触发重算）。 */
+  const tableGrid = useMemo(() => {
+    if (!slide || shape?.kind !== "graphicFrame") return false;
+    const xml = modelXml(slide.partName);
+    return xml ? tableGridOn(xml, shape.name) : false;
+    // modelXml 读的是内存映射，靠 revision 触发重算
+  }, [modelXml, revision, shape, slide]);
+
   const notes = useMemo(
     () => (slide ? notesOf(slide.partName) : { text: [], hasNotes: false }),
     // notesOf 读的是内存映射（不是 React state）：靠 revision 触发重算
@@ -438,6 +447,8 @@ export function PptxEditorPane({
                 setActiveShape(null);
               }}
               onAddTextBox={() => slide && addTextBox(slide.partName)}
+              tableGrid={tableGrid}
+              onTableGrid={(on) => runRibbon(on ? "pptxTableGridOn" : "pptxTableGridOff")}
               notes={notes}
               onNotesChange={(lines) => {
                 if (slide) void saveNotes(slide.partName, lines);

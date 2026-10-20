@@ -80,7 +80,12 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
       },
       {
         label: "表格样式",
+        essential: true,
         items: [
+          button("套用网格", "给整张表画上边框（每格四边）", "pptxTableGridOn", {
+            icon: "BorderAll24Regular",
+          }),
+          button("去网格", "去掉整张表的边框", "pptxTableGridOff"),
           button("首行突出", "首行加粗/上底色（开关）", "pptxTableFirstRow", {
             icon: "TextBold24Regular",
           }),
