@@ -21,6 +21,7 @@ import { PptxSlideThumbnails } from "./PptxSlideThumbnails.js";
 import { installPptxPaneDebug } from "./pptxPaneDebug.js";
 import { PPTX_RIBBON_TABS } from "./pptxRibbonTabs.js";
 import { pptxRibbonStyle, runPptxRibbonCommand } from "./pptxRibbonRun.js";
+import { cellBlockIndexOf } from "./pptTable.js";
 import { shapeLines } from "./pptShapes.js";
 import { usePptxDocument } from "./usePptxDocument.js";
 import { usePptxPreview } from "./usePptxPreview.js";
@@ -79,34 +80,29 @@ export function PptxEditorPane({
    * （用户口径）。选中形状时自动弹出，点 ✕ 收起。
    */
   const [formatPane, setFormatPane] = useState(false);
-  /** 编辑区（缩略图 + 画布 + 窗格那一行）的宽度：太窄时窗格改成浮层，别把画布挤没。 */
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const [rowWidth, setRowWidth] = useState(0);
   /**
    * 面板**占布局**、不浮层盖住画布：PowerPoint 是"面板一开，页面自动缩小、整页仍看得见"
    * （用户口径）。所以这里不再按宽度切成浮层，画布那边改成"适应窗口"缩放。
    */
   const paneFloating = false;
-  void rowWidth;
   /** 缩略图面板也能收起：窄的时候把它让给画布。 */
   const [thumbsOpen, setThumbsOpen] = useState(true);
   /** 一份文件只解析一次的预览文档：画布与左栏缩略图共用。 */
   const preview = usePptxPreview(rawPreviewBytes);
-  /** 就地改字：正在编辑哪个形状、草稿文本（双击形状进入，⌘↵/点别处提交，Esc 放弃）。 */
-  const [editing, setEditing] = useState<{ shape: string; text: string } | null>(null);
+  /** 就地改字：正在编辑哪个形状（或表格的哪一格）、草稿文本。 */
+  const [editing, setEditing] = useState<{
+    shape: string;
+    text: string;
+    cell?: { row: number; col: number };
+  } | null>(null);
+  /** 画布上选中的单元格（表格名 + 行列，0 基）：表格工具的行列操作按它定位。 */
+  const [activeCell, setActiveCell] = useState<{
+    table: string;
+    row: number;
+    col: number;
+  } | null>(null);
   /** 文本框的 DOM 引用：画布双击"就地改字"要能把焦点移到对应的文本框上。 */
   const blockRefs = useRef(new Map<number, HTMLTextAreaElement>());
-
-  useEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    const update = () => setRowWidth(row.clientWidth);
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(update);
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     setActiveSlide(0);
@@ -132,6 +128,29 @@ export function PptxEditorPane({
     if (element) blockRefs.current.set(index, element);
     else blockRefs.current.delete(index);
   }, []);
+
+  /** 双击表格的某一格 → 就地改这一格的文字（内容取自"单元格 → 文本块序号"那条映射）。 */
+  /** 单元格 → 整页里的文本块序号（表格改字两处都靠它）。 */
+  const cellIndexAt = useCallback(
+    (table: string, row: number, col: number) => {
+      const partName = slide?.partName;
+      const xml = partName ? modelXml(partName) : null;
+      return xml ? cellBlockIndexOf(xml, table, row, col) : null;
+    },
+    [modelXml, slide],
+  );
+
+  const beginCellEdit = useCallback(
+    (table: string, row: number, col: number) => {
+      const index = cellIndexAt(table, row, col);
+      const lines =
+        index === null ? [] : (slide?.blocks.find((b) => b.index === index)?.lines ?? []);
+      setActiveShape(table);
+      setActiveCell({ table, row, col });
+      setEditing({ shape: table, text: lines.join("\n"), cell: { row, col } });
+    },
+    [cellIndexAt, slide],
+  );
 
   /**
    * 画布上双击某个形状 → 把焦点移到它的文字块。
@@ -268,10 +287,12 @@ export function PptxEditorPane({
   /** 提交就地改字：走的是同一条文本补丁（保存时仍然只写回改过的那几页）。 */
   const commitTextEdit = useCallback(() => {
     if (!editing) return;
-    const index = blockIndexOfShape(editing.shape);
+    const index = editing.cell
+      ? cellIndexAt(editing.shape, editing.cell.row, editing.cell.col)
+      : blockIndexOfShape(editing.shape);
     if (index !== null && slide) setBlockLines(slide.partName, index, editing.text.split("\n"));
     setEditing(null);
-  }, [blockIndexOfShape, editing, setBlockLines, slide]);
+  }, [blockIndexOfShape, cellIndexAt, editing, setBlockLines, slide]);
 
   // 与 Excel/Word 编辑位同款：把"看状态"的小口子挂到 globalThis，真机排查与自动化都用它
   useEffect(
@@ -327,7 +348,7 @@ export function PptxEditorPane({
           正在打开演示文稿…
         </div>
       ) : (
-        <div ref={rowRef} className="relative flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           {thumbsOpen ? (
             <PptxSlideThumbnails
               slides={slides}
@@ -375,6 +396,9 @@ export function PptxEditorPane({
                 onSelect={setActiveShape}
                 onCommitBounds={(name, bounds) => setShapeBounds(slide.partName, name, bounds)}
                 onRequestText={beginTextEdit}
+                onSelectCell={(table, row, col) => setActiveCell({ table, row, col })}
+                onEditCell={beginCellEdit}
+                activeCell={activeCell}
                 renderKey={revision}
                 editing={editing}
                 onEditingText={(text) =>

@@ -27,10 +27,11 @@ import {
   type CanvasCorner,
   type CanvasDragState,
 } from "./pptCanvasGeometry.js";
+import { canvasHint } from "./pptCanvasHint.js";
 import { PptxCanvasZoomBar } from "./PptxCanvasZoomBar.js";
-import { PptxSelectionOverlay } from "./PptxSelectionOverlay.js";
+import { useCanvasCells } from "./useCanvasCells.js";
+import { PptxCanvasOverlays } from "./PptxCanvasOverlays.js";
 import { useCanvasViewport } from "./useCanvasViewport.js";
-import { PptxTextEditor } from "./PptxTextEditor.js";
 import type { PresentationPageElement } from "@/presentation/types.js";
 import type { PptxShape } from "./pptShapes.js";
 import type { PptxPreviewState } from "./usePptxPreview.js";
@@ -52,6 +53,13 @@ export interface PptxSlideCanvasProps {
   ) => void;
   /** 双击：希望就地改这个形状的文字（编辑位负责把焦点移到编辑层）。 */
   onRequestText?: (name: string) => void;
+  /** 点中了表格的某一格（表格名 / 行 / 列，0 基）。 */
+  onSelectCell?: (table: string, row: number, col: number) => void;
+  /** 双击某一格：就地改这一格的文字。 */
+  onEditCell?: (table: string, row: number, col: number) => void;
+  /** 当前选中的单元格（由编辑位持有）。 */
+  activeCell?: { table: string; row: number; col: number } | null;
+
   /**
    * 改动版本号（编辑位每次改 XML 都会 +1）：只靠"预览字节变了"来触发重画不够可靠——
    * 真机实测：删掉图片后形状列表已经没了，画布上那张图还在（等几秒也不消失），
@@ -63,8 +71,8 @@ export interface PptxSlideCanvasProps {
   onZoomChange: (updater: (value: number) => number) => void;
   /** 打开右侧「设置形状格式」窗格（窗格默认收起，免得把画布挤窄）。 */
   onOpenFormatPane: () => void;
-  /** 就地改字（双击形状进入）：null 表示不在编辑。 */
-  editing: { shape: string; text: string } | null;
+  /** 就地改字（双击形状/单元格进入）：null 表示不在编辑；`cell` 有值表示改的是表格某一格。 */
+  editing: { shape: string; text: string; cell?: { row: number; col: number } } | null;
   onEditingText: (text: string) => void;
   onEditingCommit: () => void;
   onEditingCancel: () => void;
@@ -79,6 +87,9 @@ export function PptxSlideCanvas({
   onSelect,
   onCommitBounds,
   onRequestText,
+  onSelectCell,
+  onEditCell,
+  activeCell,
   renderKey,
   zoom,
   onZoomChange,
@@ -99,10 +110,18 @@ export function PptxSlideCanvas({
     onZoomChange,
   });
   const { scale, pageDisplayWidth, pageDisplayHeight, toPx, toEmu, viewport, viewportOf } = view;
-  /** 渲染器实测的形状框（XML 里没有显式几何的用它们兜底）。 */
+  /** 渲染器实测的形状框（XML 里没有显式几何的用它兜底）。 */
   const [measured, setMeasured] = useState<Record<string, CanvasBox>>({});
+  const { hitCell, boxOfCell } = useCanvasCells({
+    preview,
+    pageIndex,
+    shapes,
+    layerRef,
+    scale,
+    toPx,
+  });
   const [drag, setDrag] = useState<CanvasDragState | null>(null);
-  /** 拖动中的实时几何（EMU）：只在拖的时候覆盖显示，松手才写回 XML。 */
+  /** 拖动中的实时几何（EMU）：只在拖动时覆盖显示，松手才写回。 */
   const [draft, setDraft] = useState<{ name: string; box: CanvasBox } | null>(null);
   /** 旋转中的实时角度（度）：松手才写回 a:xfrm@rot。 */
   const [rotateDraft, setRotateDraft] = useState<number | null>(null);
@@ -183,6 +202,15 @@ export function PptxSlideCanvas({
     if (event.button !== 0) return;
     // 正在就地改字：点画布＝先提交（编辑层的 blur 会接管），不要顺手拖动
     if (editing) return;
+    const cell = hitCell(event.clientX, event.clientY);
+    if (cell) {
+      // 表格里点到单元格：选中这张表并记住单元格——**不进入拖动**（PowerPoint 里点格子是编辑文字，
+      // 拖表格要拖边框）；拖边框/拉手柄那条路不受影响。
+      onSelect(cell.table);
+      onSelectCell?.(cell.table, cell.row, cell.col);
+      event.stopPropagation();
+      return;
+    }
     const name = hitTest(event.clientX, event.clientY);
     onSelect(name);
     if (!name) return;
@@ -283,16 +311,10 @@ export function PptxSlideCanvas({
     ? (shapes.find((item) => item.name === editing.shape) ?? null)
     : null;
   const activeShapeKnown = activeShape ? shapes.some((item) => item.name === activeShape) : false;
+  const activeCellBox = boxOfCell(activeCell);
   const handleSpotList = activeBox ? handleSpots(activeBox, viewport) : [];
   const offPage = activeBox ? isOffPage(activeBox, viewport) : false;
-  const hint = activeShapeKnown
-    ? activeBox
-      ? offPage
-        ? `「${activeShape}」整块在页面外：拉页边的手柄拖回来，或在右侧窗格里改 X/Y`
-        : `已选中「${activeShape}」 · ${Math.round(activeBox.width / 3600) / 100} × ${Math.round(activeBox.height / 3600) / 100} 厘米`
-      : `「${activeShape}」的位置大小继承自版式，先在右侧窗格里填一次，之后就能在画布上拖`
-    : "点形状选中，拖动移动，拉四角缩放";
-
+  const hint = canvasHint({ activeShape, activeBox, known: activeShapeKnown, offPage });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -366,42 +388,46 @@ export function PptxSlideCanvas({
               onPointerCancel={onPointerUp}
               onDoubleClick={(event) => {
                 if (editing) return;
+                const cell = hitCell(event.clientX, event.clientY);
+                if (cell) {
+                  onSelect(cell.table);
+                  onEditCell?.(cell.table, cell.row, cell.col);
+                  return;
+                }
                 const name = hitTest(event.clientX, event.clientY);
                 if (name && onRequestText) onRequestText(name);
               }}
             >
-              {/* 就地改字：编辑层盖在形状位置上，字号/对齐/颜色按这个形状现有的格式算 */}
-              {editing && activeBox ? (
-                <PptxTextEditor
-                  box={activeBox}
-                  scale={scale}
-                  format={shapeOfEditing?.runFormat ?? {}}
-                  align={shapeOfEditing?.textBodies[0]?.[0]?.align}
-                  value={editing.text}
-                  onChange={onEditingText}
-                  onCommit={onEditingCommit}
-                  onCancel={onEditingCancel}
-                />
-              ) : null}
-              {activeBox && !editing ? (
-                <PptxSelectionOverlay
-                  box={activeBox}
-                  viewport={viewportOf(activeBox)}
-                  handles={handleSpotList}
-                  rotateDraft={rotateDraft}
-                  selectionName={activeShape ?? ""}
-                  toPx={toPx}
-                  moving={drag?.mode === "move"}
-                  canRotate
-                  onResizeStart={startResize}
-                  onRotateStart={startRotate}
-                />
-              ) : null}
+              <PptxCanvasOverlays
+                activeShape={activeShape}
+                activeBox={activeBox}
+                handleSpots={handleSpotList}
+                viewport={viewportOf(activeBox ?? { x: 0, y: 0, width: 0, height: 0 })}
+                rotateDraft={rotateDraft}
+                toPx={toPx}
+                moving={drag?.mode === "move"}
+                onResizeStart={startResize}
+                onRotateStart={startRotate}
+                activeCellBox={activeCellBox}
+                editing={editing !== null}
+                editingBox={
+                  editing?.cell
+                    ? (boxOfCell({ table: editing.shape, ...editing.cell })?.box ?? null)
+                    : null
+                }
+                editingText={editing?.text ?? ""}
+                editingFormat={shapeOfEditing?.runFormat ?? {}}
+                editingAlign={shapeOfEditing?.textBodies[0]?.[0]?.align}
+                scale={scale}
+                onEditingText={onEditingText}
+                onEditingCommit={onEditingCommit}
+                onEditingCancel={onEditingCancel}
+              />
             </div>
           ) : null}
           {preview.error ? (
             <div
-              className="flex items-center justify-center px-4 text-center text-[11px] text-foreground-subtle"
+              className="absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] text-foreground-subtle"
               style={{ position: "absolute", inset: 0 }}
             >
               这一页渲染不出来（{preview.error.slice(0, 60)}）——仍可以用右侧窗格与形状列表改。

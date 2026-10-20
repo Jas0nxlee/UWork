@@ -268,4 +268,110 @@ export async function runPptxEditCases({ page, check }) {
     tableInsert.blocks === 13,
     `写回后这一页读得出 12 个单元格 + 原文本框共 13 块（可继续逐格编辑）（${tableInsert.blocks}）`,
   );
+
+  // ⑪ 单元格级读写：按"表格名 + 行列"定位文本块；增删行列时 p:xfrm 的尺寸跟着变
+  const cellOps = await page.evaluate(() => {
+    const ns = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const size = (xml, name) => window.__pptx.tableSizeOf(xml, name);
+    const ext = (xml, name) => {
+      const document = new DOMParser().parseFromString(xml, "application/xml");
+      const frames = [
+        ...document.getElementsByTagNameNS(
+          "http://schemas.openxmlformats.org/presentationml/2006/main",
+          "graphicFrame",
+        ),
+      ];
+      const frame = frames.find(
+        (node) =>
+          node
+            .getElementsByTagNameNS(
+              "http://schemas.openxmlformats.org/presentationml/2006/main",
+              "cNvPr",
+            )[0]
+            ?.getAttribute("name") === name,
+      );
+      const e = frame?.getElementsByTagNameNS(ns, "ext")[0];
+      return e ? { cx: Number(e.getAttribute("cx")), cy: Number(e.getAttribute("cy")) } : null;
+    };
+    const build = () =>
+      window.__pptx.insertTable(
+        '<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="' +
+          ns +
+          '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sld>',
+        { rows: 2, cols: 2, pageWidth: 9144000, pageHeight: 6858000 },
+      );
+    const start = build();
+    const name = start.name;
+    const before = ext(start.xml, name);
+    const insertedRow = window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, {
+      kind: "insertRowBelow",
+    });
+    const insertedCol = window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, {
+      kind: "insertColumnRight",
+    });
+    const deletedRow = window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, {
+      kind: "deleteRow",
+    });
+    const deletedCol = window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, {
+      kind: "deleteColumn",
+    });
+    const lastRow = window.__pptx.applyTableStructureEdit(
+      window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, { kind: "deleteRow" }),
+      name,
+      0,
+      0,
+      { kind: "deleteRow" },
+    );
+    const lastCol = window.__pptx.applyTableStructureEdit(
+      window.__pptx.applyTableStructureEdit(start.xml, name, 0, 0, { kind: "deleteColumn" }),
+      name,
+      0,
+      0,
+      { kind: "deleteColumn" },
+    );
+    // 单元格 → 整页文本块序号：第 2 行第 2 列（0 基）应是最后一个 txBody
+    const blockIndexOfLast = window.__pptx.cellBlockIndexOf(start.xml, name, 1, 1);
+    const total = new DOMParser()
+      .parseFromString(start.xml, "application/xml")
+      .getElementsByTagNameNS("*", "txBody").length;
+    return {
+      name,
+      isTable: window.__pptx.isTableShape(start.xml, name),
+      base: size(start.xml, name),
+      insertedRow: size(insertedRow, name),
+      insertedCol: size(insertedCol, name),
+      deletedRow: size(deletedRow, name),
+      deletedCol: size(deletedCol, name),
+      lastRow: size(lastRow, name),
+      lastCol: size(lastCol, name),
+      growRow: ext(insertedRow, name),
+      growCol: ext(insertedCol, name),
+      before,
+      blockIndexOfLast,
+      total,
+    };
+  });
+  check(
+    cellOps.isTable && cellOps.base?.rows === 2 && cellOps.base?.cols === 2,
+    `认得表格并读出行列（${cellOps.name} = ${cellOps.base?.rows}×${cellOps.base?.cols}）`,
+  );
+  check(
+    cellOps.insertedRow?.rows === 3 &&
+      cellOps.insertedCol?.cols === 3 &&
+      cellOps.deletedRow?.rows === 1 &&
+      cellOps.deletedCol?.cols === 1,
+    `增删行列都对（加行 ${cellOps.insertedRow?.rows}、加列 ${cellOps.insertedCol?.cols}、删行 ${cellOps.deletedRow?.rows}、删列 ${cellOps.deletedCol?.cols}）`,
+  );
+  check(
+    cellOps.lastRow?.rows === 1 && cellOps.lastCol?.cols === 1,
+    `删到只剩 1 行/1 列就不再删（${cellOps.lastRow?.rows}×${cellOps.lastCol?.cols}）`,
+  );
+  check(
+    cellOps.growRow?.cy > cellOps.before?.cy && cellOps.growCol?.cx > cellOps.before?.cx,
+    `加一行/一列时 p:xfrm 的尺寸跟着长（${cellOps.before?.cx}×${cellOps.before?.cy} → 行 ${cellOps.growRow?.cx}×${cellOps.growRow?.cy}、列 ${cellOps.growCol?.cx}×${cellOps.growCol?.cy}）`,
+  );
+  check(
+    cellOps.blockIndexOfLast === cellOps.total - 1,
+    `"第 2 行第 2 列"定位到最后一个文本块（序号 ${cellOps.blockIndexOfLast} / 共 ${cellOps.total}）`,
+  );
 }

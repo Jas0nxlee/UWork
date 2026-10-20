@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { PPTX_PAGE, bundlePptxEntry } from "./lib/officePptxPage.mjs";
 import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
+import { runPptxCellCases } from "./lib/officePptxCellCases.mjs";
 import { runPptxHandleCases } from "./lib/officePptxHandleCases.mjs";
 import { runPptxPanelCases } from "./lib/officePptxPanelCases.mjs";
 import { runPptxPicturePipelineCases } from "./lib/officePptxPicturePipelineCases.mjs";
@@ -50,6 +51,7 @@ async function main() {
           "pptShapes.ts",
           "pptSlides.ts",
           "pptPicture.ts",
+          "pptTable.ts",
           "pptTableInsert.ts",
           "pptxValidate.ts",
           "usePptxDocument.ts",
@@ -359,6 +361,7 @@ async function main() {
   await runPptxRibbonCases({ page, check });
   await runPptxPanelCases({ page, check });
   await runPptxHandleCases({ page, check });
+  await runPptxCellCases({ page, check });
   await runPptxPicturePipelineCases({
     page,
     check,

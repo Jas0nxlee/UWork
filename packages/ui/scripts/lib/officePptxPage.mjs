@@ -148,6 +148,12 @@ window.__pptx = {
     }
     return 'data:image/png;base64,' + btoa(binary);
   },
+  // —— 表格（pptTable.ts）——
+  cellBlockIndexOf: (xml, table, row, col) => window.app.cellBlockIndexOf(xml, table, row, col),
+  isTableShape: (xml, name) => window.app.isTableShape(xml, name),
+  tableSizeOf: (xml, name) => window.app.tableSizeOf(xml, name),
+  applyTableStructureEdit: (xml, name, row, col, op) =>
+    window.app.applyTableStructureEdit(xml, name, row, col, op),
   // —— 表格插入（pptTableInsert.ts）——
   insertTable: (xml, input) => window.app.insertTable(xml, input),
   // —— 画布几何（pptCanvasGeometry.ts）——
