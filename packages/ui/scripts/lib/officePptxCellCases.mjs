@@ -67,22 +67,23 @@ export async function runPptxCellCases({ page, check }) {
   await page.keyboard.type("格子里改的字");
   await page.keyboard.press("Meta+Enter");
   await wait(900);
-  const committed = await page.evaluate(() => {
-    const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
-    const blocks = [...document.querySelectorAll("[data-pptx-block]")].map((node) => node.value);
+  const committed = await page.evaluate(async () => {
+    // 文字是"草稿"，要读**合成后的预览字节**（`modelXml` 是部件原文）
+    const bytes = window.__pptxPane.previewBytes();
+    const zip = bytes ? await window.JSZip.loadAsync(bytes.slice(0)) : null;
+    const xml = zip ? ((await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "") : "";
     return {
       editorGone: !document.querySelector("[data-pptx-text-editor]"),
-      cellIndex: window.__pptx.cellBlockIndexOf(xml, "表格 1", 0, 0),
-      blocks,
-      size: window.__pptx.tableSizeOf(xml, "表格 1"),
+      inXml: xml.includes("格子里改的字"),
+      size: window.__pptx.tableSizeOf(xml, "表格 1") ?? null ?? { rows: null, cols: null },
     };
   });
   check(
     committed.editorGone &&
-      committed.blocks.some((value) => String(value).includes("格子里改的字")) &&
+      committed.inXml &&
       committed.size?.rows === 1 &&
       committed.size?.cols === 1,
-    `提交后这一格的字变了、表格结构没变（1×1；块 ${JSON.stringify(committed.blocks).slice(0, 48)}）`,
+    `提交后这一格的字变了、表格结构没变（1×1；合成后的这一页里有改的字=${committed.inXml}）`,
   );
 
   // ⑤ 在表格里**拖出一片**单元格（PowerPoint 的多选手势）→ 功能区「合并单元格」并成一片
@@ -204,6 +205,41 @@ export async function runPptxCellCases({ page, check }) {
   check(
     aligned.vertical && aligned.horizontal && aligned.anchor && aligned.align,
     `「对齐方式」两个方向都落到 XML（垂直 a:tcPr@anchor=${aligned.anchor} 水平段落 algn=${aligned.align}）`,
+  );
+
+  // ⑤a2 表格**能拖动**：抓"边框带"（表边往里几像素）拖 → 整张表跟着走、大小不变；
+  //      在格子中间拖 → 选一片单元格、**不动几何**（真机反馈过"表格无法拖动"）
+  const beforeDrag = await page.evaluate(() => {
+    const canvas = window.__pptxPane.canvas();
+    return { box: window.__pptxPane.shapeBox("表格 10"), scale: canvas.scale, layer: canvas.layer };
+  });
+  // 左边界往里 2px（在边框带里；带宽 = min(6, 格子尺寸/3)）
+  const grabPoint = {
+    x: beforeDrag.layer.left + (beforeDrag.box.x / 9525) * beforeDrag.scale + 2,
+    y:
+      beforeDrag.layer.top +
+      ((beforeDrag.box.y + beforeDrag.box.height / 2) / 9525) * beforeDrag.scale,
+  };
+  await page.mouse.move(grabPoint.x, grabPoint.y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.move(grabPoint.x + 40, grabPoint.y + 16, { steps: 8 });
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  const afterDrag = await page.evaluate(() => ({
+    box: window.__pptxPane.shapeBox("表格 10"),
+    selected: window.__pptxPane.canvas()?.selected ?? null,
+    cells: document.querySelectorAll("[data-pptx-canvas-cell]").length,
+  }));
+  const movedDx = afterDrag.box.x - beforeDrag.box.x;
+  check(
+    Math.abs(movedDx - (40 / beforeDrag.scale) * 9525) < (4 / beforeDrag.scale) * 9525 &&
+      afterDrag.box.width === beforeDrag.box.width &&
+      afterDrag.box.height === beforeDrag.box.height,
+    `抓表格**边框**能拖动整张表（Δx=${Math.round(movedDx)} EMU，应约 ${Math.round((40 / beforeDrag.scale) * 9525)}；大小不变 ${
+      afterDrag.box.width === beforeDrag.box.width
+    }）`,
   );
 
   // ⑤b 画布上**看得见网格线**：插进来的表，渲染出来的 td 计算边框宽度必须 > 0

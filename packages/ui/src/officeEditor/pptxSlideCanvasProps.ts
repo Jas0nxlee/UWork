@@ -42,8 +42,10 @@ export interface PptxSlideCanvasProps {
   /** 缩放百分比（100 = 适应宽度）：由编辑位持有，功能区「视图」也要改它。 */
   zoom: number;
   onZoomChange: (updater: (value: number) => number) => void;
-  /** 打开右侧「设置形状格式」窗格（窗格默认收起，免得把画布挤窄）。 */
+  /** 打开右侧「设置形状格式」窗格（窗格**不自动弹**，只有这里/右键菜单/功能区会开）。 */
   onOpenFormatPane: () => void;
+  /** 画布右键菜单里的形状操作（复制/删除/层级）：动作落在编辑位，画布只报告意图。 */
+  onContextAction?: (action: string, shape: string) => void;
   /** 就地改字（双击形状/单元格进入）：null 表示不在编辑；`cell` 有值表示改的是表格某一格。 */
   editing: { shape: string; text: string; cell?: { row: number; col: number } } | null;
   onEditingText: (text: string) => void;

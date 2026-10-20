@@ -122,10 +122,8 @@ export function PptxEditorPane({
     setCellRange(null);
   }, [path]);
 
-  // 选中形状就自动把「设置形状格式」窗格打开（PowerPoint 里选中对象右边的窗格也是这个意思）
-  useEffect(() => {
-    if (activeShape) setFormatPane(true);
-  }, [activeShape]);
+  // 注意：选中形状**不自动**打开右栏。真机反馈："只要弹出，主编辑界面就太小了"，
+  // 改成显式动作才开——画布右键菜单、顶部的「设置形状格式」按钮（都在下面接线）。
 
   const slide = slides?.[activeSlide];
   const shapes = useMemo(
@@ -228,6 +226,7 @@ export function PptxEditorPane({
     shapesOf,
     cellRange,
     setZoom,
+    toggleFormatPane: (open) => setFormatPane((current) => open ?? !current),
     setStatus,
     addSlideAction,
     duplicateSlideAction,
@@ -416,6 +415,16 @@ export function PptxEditorPane({
                 zoom={zoom}
                 onZoomChange={setZoom}
                 onOpenFormatPane={() => setFormatPane(true)}
+                onContextAction={(action, name) => {
+                  if (!slide) return;
+                  if (action === "duplicate") duplicateShape(slide.partName, name);
+                  if (action === "delete") {
+                    removeShape(slide.partName, name);
+                    setActiveShape(null);
+                  }
+                  if (action === "move-up") moveShape(slide.partName, name, "up");
+                  if (action === "move-down") moveShape(slide.partName, name, "down");
+                }}
               />
             </div>
           ) : null}

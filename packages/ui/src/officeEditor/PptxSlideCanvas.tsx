@@ -14,21 +14,21 @@
  * **点选名单以本页 XML 为准**：渲染器还会画从版式/母版继承来的形状，它们不在本页 XML 里、
  * 改了也写不回去，所以不进名单——宁可点不到，不能"拖了半天没反应"。
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import {
-  angleFromCenter,
-  dragGeometry,
   EMU_PER_PX,
   handleSpots,
   isOffPage,
   PAGE_MARGIN_PX,
   type CanvasBox,
-  type CanvasCorner,
-  type CanvasDragState,
 } from "./pptCanvasGeometry.js";
 import { canvasHint } from "./pptCanvasHint.js";
 import { PptxCanvasZoomBar } from "./PptxCanvasZoomBar.js";
+import { PptxCanvasContextMenu } from "./PptxCanvasContextMenu.js";
 import { useCanvasCells } from "./useCanvasCells.js";
+import { useCanvasContextMenu } from "./useCanvasContextMenu.js";
+import { useCanvasDrag } from "./useCanvasDrag.js";
+import { useCanvasHitTest } from "./useCanvasHitTest.js";
 import { PptxCanvasOverlays } from "./PptxCanvasOverlays.js";
 import { useCanvasViewport } from "./useCanvasViewport.js";
 import { usePptxPageRender } from "./usePptxPageRender.js";
@@ -51,6 +51,7 @@ export function PptxSlideCanvas({
   zoom,
   onZoomChange,
   onOpenFormatPane,
+  onContextAction,
   editing,
   onEditingText,
   onEditingCommit,
@@ -76,24 +77,15 @@ export function PptxSlideCanvas({
     scale,
     toPx,
   });
-  const [drag, setDrag] = useState<CanvasDragState | null>(null);
-  /**
-   * 在表格里拖选一片时的表格名（**同步的 ref，不是 state**）。
-   *
-   * 为什么不能用 state：按下之后紧跟着的 `pointermove` 可能**早于 React 提交**（真机快速拖动实测：
-   * 拖了半张表，只有第一格被选中——两次 move 都在 state 落地前到达，处理器看到 drag=null 就丢了）。
-   * 单元格拖选不需要重渲染（选区在编辑位那层），所以直接用 ref 最稳。
-   */
-  const cellDragRef = useRef<string | null>(null);
-  /** 拖动中的实时几何（EMU）：只在拖动时覆盖显示，松手才写回。 */
-  const [draft, setDraft] = useState<{ name: string; box: CanvasBox } | null>(null);
-  /** 旋转中的实时角度（度）：松手才写回 a:xfrm@rot。 */
-  const [rotateDraft, setRotateDraft] = useState<number | null>(null);
+
+  /** 拖动中的实时几何（state + ref 双份，见 useCanvasDrag 的注释）。 */
+  const draftRef = useRef<{ name: string; box: CanvasBox } | null>(null);
 
   /** 形状的显示几何：XML 显式几何优先，否则用渲染器量到的；都没有 = 不可拖。 */
   const boxOf = useCallback(
     (name: string): CanvasBox | null => {
-      if (draft?.name === name) return draft.box;
+      const live = draftRef.current;
+      if (live?.name === name) return live.box;
       const shape = shapes.find((item) => item.name === name);
       if (!shape) return null;
       if (shape.bounds.explicit) {
@@ -107,147 +99,8 @@ export function PptxSlideCanvas({
       }
       return measured[name] ?? null;
     },
-    [draft, measured, shapes],
+    [measured, shapes],
   );
-
-  /** 命中测试：从上层往下找（渲染器给的顺序就是 z 序）。坐标用**交互层**算，容器滚动也不跑偏。 */
-  const hitTest = useCallback(
-    (clientX: number, clientY: number): string | null => {
-      const layer = layerRef.current;
-      if (!layer || scale <= 0) return null;
-      const rect = layer.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      for (const shape of [...shapes].reverse()) {
-        const box = boxOf(shape.name);
-        if (!box) continue;
-        const left = toPx(box.x);
-        const top = toPx(box.y);
-        const width = toPx(box.width);
-        const height = toPx(box.height);
-        if (width <= 2 || height <= 2) continue;
-        if (x >= left && x <= left + width && y >= top && y <= top + height) return shape.name;
-      }
-      return null;
-    },
-    [boxOf, scale, shapes, toPx],
-  );
-
-  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    // 正在就地改字：点画布＝先提交（编辑层的 blur 会接管），不要顺手拖动
-    if (editing) return;
-    const cell = hitCell(event.clientX, event.clientY);
-    if (cell) {
-      // 表格里点到单元格：选中这张表并记住这一格。**拖表格仍然要拖边框**（点格子=选格子/选一片，
-      // 与 PowerPoint 一致：按住从一格拖到另一格是选一片单元格，不是把表格拽走）。
-      onSelect(cell.table);
-      onSelectCell?.(cell.table, cell.row, cell.col);
-      cellDragRef.current = cell.table;
-      event.stopPropagation();
-      return;
-    }
-    const name = hitTest(event.clientX, event.clientY);
-    onSelect(name);
-    if (!name) return;
-    const box = boxOf(name);
-    if (!box) return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-    setDrag({
-      mode: "move",
-      corner: "se",
-      name,
-      startX: event.clientX,
-      startY: event.clientY,
-      start: box,
-    });
-  };
-
-  /** 拉旋转手柄：以形状中心为轴（与拖动/缩放共用同一套 drag 状态与指针事件）。 */
-  const startRotate = (event: React.PointerEvent<HTMLSpanElement>) => {
-    if (!activeShape) return;
-    const box = boxOf(activeShape);
-    if (!box) return;
-    event.stopPropagation();
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setDrag({
-      mode: "rotate",
-      corner: "se",
-      name: activeShape,
-      startX: event.clientX,
-      startY: event.clientY,
-      start: box,
-    });
-    setRotateDraft(box.rotation ?? 0);
-  };
-
-  const startResize = (event: React.PointerEvent<HTMLSpanElement>, corner: CanvasCorner) => {
-    if (!activeShape) return;
-    const box = boxOf(activeShape);
-    if (!box) return;
-    event.stopPropagation();
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setDrag({
-      mode: "resize",
-      corner,
-      name: activeShape,
-      startX: event.clientX,
-      startY: event.clientY,
-      start: box,
-    });
-  };
-
-  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    // 表格里拖选：先看 ref（第一下就接得住），与形状拖动互不影响
-    if (cellDragRef.current) {
-      const cell = hitCell(event.clientX, event.clientY);
-      if (cell && cell.table === cellDragRef.current)
-        onExtendCell?.(cell.table, cell.row, cell.col);
-      return;
-    }
-    if (!drag) return;
-    if (drag.mode === "rotate") {
-      const layer = layerRef.current;
-      if (!layer) return;
-      const rect = layer.getBoundingClientRect();
-      setRotateDraft(
-        angleFromCenter(drag.start, viewport, event.clientX - rect.left, event.clientY - rect.top),
-      );
-      return;
-    }
-    setDraft({
-      name: drag.name,
-      box: dragGeometry(
-        drag,
-        toEmu(event.clientX - drag.startX),
-        toEmu(event.clientY - drag.startY),
-      ),
-    });
-  };
-
-  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    cellDragRef.current = null;
-    if (!drag) return;
-    const state = drag;
-    setDrag(null);
-    setDraft(null);
-    if (state.mode === "rotate") {
-      const rotation = rotateDraft ?? state.start.rotation ?? 0;
-      setRotateDraft(null);
-      // 没转过 1° 就别写（免得点一下也产生"改动"）
-      if (Math.abs(rotation - (state.start.rotation ?? 0)) < 1) return;
-      onCommitBounds(state.name, { rotation });
-      return;
-    }
-    const dx = toEmu(event.clientX - state.startX);
-    const dy = toEmu(event.clientY - state.startY);
-    // 只是点了一下（没真的拖动）：不写回，也不制造一条"改动"
-    if (Math.abs(dx) < 1000 && Math.abs(dy) < 1000) return;
-    onCommitBounds(state.name, dragGeometry(state, dx, dy));
-  };
 
   const activeBox = activeShape ? boxOf(activeShape) : null;
   /** 正在编辑的形状（拿它的格式去渲染编辑层）。 */
@@ -255,6 +108,33 @@ export function PptxSlideCanvas({
     ? (shapes.find((item) => item.name === editing.shape) ?? null)
     : null;
   const activeShapeKnown = activeShape ? shapes.some((item) => item.name === activeShape) : false;
+  const { hitTest, onTableEdge } = useCanvasHitTest({ layerRef, shapes, boxOf, scale, toPx });
+  const { menu, setMenu, onContextMenu } = useCanvasContextMenu({ frameRef, hitTest, onSelect });
+  const { drag, rotateDraft, onPointerDown, onPointerMove, onPointerUp, startRotate, startResize } =
+    useCanvasDrag({
+      layerRef,
+      scale,
+      viewport,
+      toPx,
+      toEmu,
+      activeShape,
+      editing: editing !== null,
+      boxOf,
+      hitTest,
+      hitCell,
+      onTableEdge,
+      onSelect,
+      onSelectCell,
+      onExtendCell,
+      onCommitBounds,
+      draftRef,
+    });
+  // 菜单自己吃掉指针：点画布任意处先把手菜单收起来
+  const onLayerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    setMenu(null);
+    onPointerDown(event);
+  };
+
   // 选区框：编辑某一格时只画那一格；否则画整片选区（1×1 就是原来那一格）
   const editingCellBox = editing?.cell
     ? boxOfCell({ table: editing.shape, ...editing.cell })
@@ -332,10 +212,11 @@ export function PptxSlideCanvas({
               className="cursor-default"
               style={{ position: "absolute", inset: 0 }}
               data-pptx-canvas-layer
-              onPointerDown={onPointerDown}
+              onPointerDown={onLayerPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
+              onContextMenu={onContextMenu}
               onDoubleClick={(event) => {
                 if (editing) return;
                 const cell = hitCell(event.clientX, event.clientY);
@@ -375,6 +256,17 @@ export function PptxSlideCanvas({
               />
             </div>
           ) : null}
+          <PptxCanvasContextMenu
+            menu={menu}
+            inTable={
+              (shapes.find((item) => item.name === menu?.name)?.kind ?? "") === "graphicFrame"
+            }
+            onClose={() => setMenu(null)}
+            onOpenFormatPane={onOpenFormatPane}
+            onDuplicate={() => menu && onContextAction?.("duplicate", menu.name)}
+            onDelete={() => menu && onContextAction?.("delete", menu.name)}
+            onMoveZ={(direction) => menu && onContextAction?.(`move-${direction}`, menu.name)}
+          />
           {preview.error ? (
             <div
               className="absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] text-foreground-subtle"

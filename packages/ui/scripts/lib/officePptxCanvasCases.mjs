@@ -244,15 +244,19 @@ export async function runPptxCanvasCases({ page, check }) {
   });
   await page.mouse.click(emptyPoint.x, emptyPoint.y);
   await page.waitForTimeout(700);
-  const committed = await page.evaluate(() => {
+  const committed = await page.evaluate(async () => {
     const editor = Boolean(document.querySelector("[data-pptx-text-editor]"));
-    const blocks = [...document.querySelectorAll("[data-pptx-block]")].map((node) => node.value);
+    // 读**预览字节**：文字编辑是"草稿"，合成进这一页才看得到（`modelXml` 是部件原文，不含草稿）；
+    // 也别读窗格里的 textarea——窗格不自动弹了，`data-pptx-block` 可能根本不在页上。
+    const bytes = window.__pptxPane.previewBytes();
+    const zip = bytes ? await window.JSZip.loadAsync(bytes.slice(0)) : null;
+    const xml = zip ? ((await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "") : "";
     const status = document.querySelector("[data-office-toolbar]")?.textContent?.slice(-46) ?? "";
-    return { editor, blocks, status };
+    return { editor, done: xml.includes("改过的标题"), status };
   });
   check(
-    !committed.editor && committed.blocks.some((text) => String(text).includes("改过的标题")),
-    `点到别处＝提交，文字进了这一页（${JSON.stringify(committed.blocks).slice(0, 60)}｜${committed.status}）`,
+    !committed.editor && committed.done,
+    `点到别处＝提交，文字进了这一页（合成后的这一页里有=${committed.done}｜${committed.status}）`,
   );
   void beforeText;
 

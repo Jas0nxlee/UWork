@@ -217,6 +217,18 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
     label: "视图",
     groups: [
       {
+        label: "窗格",
+        essential: true,
+        items: [
+          button(
+            "设置形状格式",
+            "开/关右侧「设置形状格式」窗格（也可以右键画布上的对象）",
+            "pptxToggleFormatPane",
+            { icon: "TaskListSquareLtr24Regular" },
+          ),
+        ],
+      },
+      {
         label: "缩放",
         items: [
           button("放大", "放大画布", "pptxZoomIn", { icon: "ZoomIn24Regular" }),

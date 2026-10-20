@@ -36,6 +36,8 @@ export interface PptxRibbonApi {
   insertPicture: (dataUri: string) => void;
   /** 插入表格（行列；尺寸由编辑位按页面算）。 */
   insertTable: (rows: number, cols: number) => void;
+  /** 开/关右侧「设置形状格式」窗格（**不自动弹**，这里与右键菜单是显式入口）。 */
+  toggleFormatPane: (open?: boolean) => void;
   /** 表格工具：行列增删 / 合并拆分 / 单元格底纹与边框 / 表格样式（按当前选中的单元格定位）。 */
   tableOp: (command: string, args: unknown[]) => void;
   /**
@@ -206,6 +208,11 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
       return;
 
     // —— 视图 ——
+    case "pptxToggleFormatPane": {
+      // 不带参数＝切换；带 true/false＝明确开或关
+      api.toggleFormatPane(typeof args[0] === "boolean" ? args[0] : undefined);
+      return;
+    }
     case "pptxZoomIn":
       api.setZoom((value) => Math.min(400, value + 25));
       return;

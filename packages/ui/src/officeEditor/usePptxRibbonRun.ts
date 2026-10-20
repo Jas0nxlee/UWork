@@ -24,6 +24,7 @@ export interface PptxRibbonRunInput {
     col1: number;
   } | null;
   setZoom: (updater: (value: number) => number) => void;
+  toggleFormatPane: (open?: boolean) => void;
   setStatus: (message: string) => void;
   addSlideAction: () => void;
   duplicateSlideAction: (partName: string) => void;
@@ -79,6 +80,7 @@ export function usePptxRibbonRun(input: PptxRibbonRunInput) {
         setParagraph: (format) =>
           partName && shape && input.setShapeParagraph(partName, shape.name, format),
         setZoom: input.setZoom,
+        toggleFormatPane: input.toggleFormatPane,
         tableOp: (op, opArgs) => {
           if (!partName || shape?.kind !== "graphicFrame") {
             input.setStatus("先在画布上点进表格的某一格，再用表格工具");

@@ -36,7 +36,7 @@ export async function runPptxPanelCases({ page, check }) {
   const initial = await read();
   check(!initial.taskPane, "右侧设置窗格默认收起（把画布让出来）");
 
-  // ② 在画布上点中形状 → 窗格自动打开；点 ✕ → 收起
+  // ①b 点中形状**不再自动弹出**（真机反馈："只要弹出，主编辑界面就太小了"）
   const point = await page.evaluate(() => {
     const api = window.__pptxPane;
     const box = api.shapeBox("标题 1");
@@ -49,7 +49,50 @@ export async function runPptxPanelCases({ page, check }) {
   });
   await page.mouse.click(point.x, point.y);
   await page.waitForTimeout(400);
-  const opened = await read();
+  const afterSelect = await read();
+  check(
+    afterSelect.taskPane === false,
+    `点中形状只选中、不自动弹窗格（窗格开着=${afterSelect.taskPane}）`,
+  );
+
+  // ①c 显式开：顶部的「设置形状格式」（功能区）→ 中间的 ✕ 收起；再过一遍底部那个按钮
+  const openedByRibbon = await page.evaluate(async () => {
+    // 先确认命令本身通（按钮找不到时能区分"命令没接上"与"按钮点不到"）
+    const before = Boolean(document.querySelector("[data-pptx-task-pane]"));
+    window.__pptxPane.runCommand("pptxToggleFormatPane");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const afterCommand = Boolean(document.querySelector("[data-pptx-task-pane]"));
+    if (afterCommand) {
+      // 命令开了就关回来，后面的按钮断言从"关着"开始
+      window.__pptxPane.runCommand("pptxToggleFormatPane");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    window.__pptxToggleProbe = { before, afterCommand };
+    const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
+      (node) => (node.textContent ?? "").trim() === "视图",
+    );
+    tab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const find = () =>
+      [...document.querySelectorAll("button")].find((item) =>
+        (item.getAttribute("title") ?? "").startsWith("开/关右侧"),
+      );
+    let node = find();
+    if (!node) {
+      // 面板窄 → 这一组会收进「»」菜单（它自己的 toggle 语义：连点两次能回到打开状态）
+      for (let attempt = 0; attempt < 2 && !node; attempt += 1) {
+        document.querySelector("[data-office-ribbon-more]")?.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        node = find();
+      }
+    }
+    if (!node) return false;
+    node.click();
+    return true;
+  });
+  await page.waitForTimeout(500);
+  const afterRibbon = await read();
+  const probe = await page.evaluate(() => window.__pptxToggleProbe ?? null);
   const closedByButton = await page.evaluate(() => {
     const close = document.querySelector("[data-pptx-close-format]");
     if (!close) return false;
@@ -59,8 +102,48 @@ export async function runPptxPanelCases({ page, check }) {
   await page.waitForTimeout(300);
   const closed = await read();
   check(
-    opened.taskPane && closedByButton && !closed.taskPane,
-    `选中形状自动弹出、点 ✕ 收起（弹出 ${opened.taskPane} → 收起 ${!closed.taskPane}）`,
+    openedByRibbon && afterRibbon.taskPane && closedByButton && !closed.taskPane,
+    `功能区「设置形状格式」能开、✕ 能收（命令：${JSON.stringify(probe)}｜开 ${afterRibbon.taskPane} → 收 ${!closed.taskPane}）`,
+  );
+
+  // ①d 右键画布上的对象 → 菜单里能开窗格、也能复制/删除（不用再为这些动作开窗格）
+  const byRightClick = await page.evaluate(async () => {
+    const api = window.__pptxPane;
+    const box = api.shapeBox("标题 1");
+    const canvas = api.canvas();
+    const layer = canvas.layer;
+    const x = layer.left + ((box.x + box.width / 2) / 9525) * canvas.scale;
+    const y = layer.top + ((box.y + box.height / 2) / 9525) * canvas.scale;
+    const target = document.elementFromPoint(x, y);
+    if (!target) return { ok: false, why: "没有元素" };
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, clientX: x, clientY: y, button: 2 }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const menu = document.querySelector("[data-pptx-canvas-menu]");
+    const items = menu
+      ? [...menu.querySelectorAll("[data-pptx-canvas-menu-item]")].map((node) =>
+          node.getAttribute("data-pptx-canvas-menu-item"),
+        )
+      : [];
+    const formatItem = menu?.querySelector('[data-pptx-canvas-menu-item="format"]');
+    formatItem?.click();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      ok: true,
+      items,
+      paneOpen: Boolean(document.querySelector("[data-pptx-task-pane]")),
+      menuGone: !document.querySelector("[data-pptx-canvas-menu]"),
+    };
+  });
+  check(
+    byRightClick.ok &&
+      byRightClick.items.includes("format") &&
+      byRightClick.items.includes("duplicate") &&
+      byRightClick.items.includes("delete") &&
+      byRightClick.paneOpen &&
+      byRightClick.menuGone,
+    `右键菜单能开窗格与形状操作（项 ${JSON.stringify(byRightClick.items)}，点完窗格=${byRightClick.paneOpen}、菜单收起=${byRightClick.menuGone}）`,
   );
 
   // ②b 打开窗格后**整页仍然可见**（缩放跟着可用区域走）。
@@ -245,8 +328,14 @@ export async function runPptxNotesPanelCases({ page, check }) {
     }
   });
 
-  // ① 选中形状 → 窗格里有备注框，内容是这一页已有的备注
+  // ① 选中形状 + **显式**开窗格（不再自动弹）→ 有备注框，内容是这一页已有的备注
   await clickShapeLive("标题 1");
+  await page.evaluate(() => {
+    if (!document.querySelector("[data-pptx-task-pane]")) {
+      document.querySelector("[data-pptx-open-format]")?.click();
+    }
+  });
+  await page.waitForTimeout(500);
   const opened = await readNotes();
   check(
     opened.present && opened.value === "讲稿备注" && opened.hint === "已保存进这一页",
