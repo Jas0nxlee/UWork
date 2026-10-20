@@ -104,8 +104,6 @@ export interface ProjectSidebarProps {
   onOpenRemoteWorkspace?: AppProps["onOpenRemoteWorkspace"];
   webRemoteControlWorkspaceSwitcher?: import("@/root/types.js").WebRemoteControlWorkspaceSwitcherApi;
   theme: Theme;
-  /** 打开 IM 侧边面板；未提供时页脚不渲染消息入口（Host 没注册 IM 服务时就是这种情形）。 */
-  onOpenMessages?: () => void;
   onConnectRemote: (
     options: RemoteTarget,
     requestId?: string,

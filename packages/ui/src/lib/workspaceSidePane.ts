@@ -513,26 +513,6 @@ export interface OpenScopedPlanDetailSideTabRequest extends OpenPlanDetailSideTa
   remoteSessionId?: string;
 }
 
-export interface MessagesSidePaneTab {
-  id: string;
-  type: "messages";
-  ownerTaskId?: string | null;
-  openedAt?: number;
-  workspaceKey: string;
-  workspacePath: string;
-  workspaceIdentity?: string;
-  remoteSessionId?: string;
-  /** 打开面板时定位到的会话；为空则显示会话列表。 */
-  conversationId?: string;
-}
-
-export interface OpenMessagesSidePaneRequest {
-  workspacePath: string;
-  workspaceIdentity?: string;
-  remoteSessionId?: string;
-  conversationId?: string;
-}
-
 export interface OpenSelectionSideChatRequest {
   workspacePath: string;
   workspaceIdentity?: string;
@@ -601,7 +581,6 @@ export type WorkspaceSidePaneTab =
   | SubagentDirectorySidePaneTab
   | SelectionSideChatPaneTab
   | PlanDetailSidePaneTab
-  | MessagesSidePaneTab
   | PluginUiSidePaneTab
   | WorkflowRunSidePaneTab
   | WorkflowRunDirectorySidePaneTab
@@ -1153,7 +1132,7 @@ function sidePaneTabMatchesWorkspace(
   activeWorkspaceKey: string | null,
 ): boolean {
   const tabKey = normalizeSidePaneWorkspaceKey(tab.workspaceKey);
-  // 没打开项目时打开的全局 tab（IM 就是这样）必须保持可见，否则用户点了入口什么都不出现。
+  // 没打开项目时打开的全局 tab 必须保持可见，否则用户点了入口什么都不出现。
   return tabKey == null || tabKey === normalizeSidePaneWorkspaceKey(activeWorkspaceKey);
 }
 
@@ -1200,9 +1179,6 @@ export function isSidePaneTabVisibleInScope(
     case "developer-tools":
     case "plugin-market":
     case "treemapping":
-      return true;
-    // IM 是应用级的（所有会话共享同一个消息面板），不随某个会话生灭。
-    case "messages":
       return true;
     case "browser-use":
       return tab.sessionId === scope.ownerTaskId;
@@ -2011,37 +1987,6 @@ export function getActiveSelectionSideChatTab(
     active.parentSessionId === scope.parentSessionId
     ? active
     : null;
-}
-
-/**
- * IM 面板是应用级的：id 只由 workspaceKey 决定，不带会话维度，
- * 所以重复点入口是「聚焦已有的那一个」而不是开出一排 tab。
- */
-export function createMessagesSidePaneTab(
-  options: OpenMessagesSidePaneRequest & { workspaceKey: string },
-): MessagesSidePaneTab {
-  return {
-    id: ["messages", encodeSidePaneTabIdPart(options.workspaceKey)].join(":"),
-    type: "messages",
-    openedAt: Date.now(),
-    workspaceKey: options.workspaceKey,
-    workspacePath: options.workspacePath,
-    ...(options.workspaceIdentity ? { workspaceIdentity: options.workspaceIdentity } : {}),
-    ...(options.remoteSessionId ? { remoteSessionId: options.remoteSessionId } : {}),
-    ...(options.conversationId ? { conversationId: options.conversationId } : {}),
-  };
-}
-
-export function openMessagesSidePane(
-  current: WorkspaceSidePaneState | null,
-  options: OpenMessagesSidePaneRequest & { workspaceKey: string },
-): WorkspaceSidePaneState {
-  const nextTab = createMessagesSidePaneTab(options);
-  const existing = current?.tabs.find(
-    (tab): tab is MessagesSidePaneTab => tab.type === "messages" && tab.id === nextTab.id,
-  );
-  // 已打开时用最新请求覆盖（例如从某条消息入口进来要定位到具体会话），但保留 id 与归属。
-  return activateSidePaneTab(current, existing ? { ...existing, ...nextTab } : nextTab);
 }
 
 export function openPlanDetailSidePane(

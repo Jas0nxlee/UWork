@@ -13,7 +13,6 @@ import {
   FileDiffIcon,
   MapIcon,
   MessageSquareTextIcon,
-  MessagesSquareIcon,
   ListTreeIcon,
   PlugIcon,
   NotepadTextIcon,
@@ -306,9 +305,6 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
   if (tab.type === "selection-side-chat") {
     return <MessageSquareTextIcon className="size-3.5" />;
   }
-  if (tab.type === "messages") {
-    return <MessagesSquareIcon className="size-3.5" />;
-  }
   if (tab.type === "subagent-session") {
     return <BotIcon className="size-3.5" />;
   }
@@ -523,9 +519,6 @@ export function getSidePaneTabTitle(
   if (tab.type === "selection-side-chat") {
     return `${formatMessage({ id: "sidePane.selectionChat" })} ${tab.ordinal}`;
   }
-  if (tab.type === "messages") {
-    return formatMessage({ id: "im.title" });
-  }
   if (tab.type === "subagent-session") {
     return tab.title?.trim() || formatMessage({ id: "sidePane.subagent" });
   }
@@ -584,7 +577,7 @@ export function getSidePaneTabTitle(
   if (tab.type === "file-manager")
     return tab.source?.title || formatMessage({ id: "fileManager.title" });
   // 兜底必须防御：无 source 字段的新 tab 类型走到这里会读 undefined.title 崩溃
-  // （browser-use 与 messages 都踩过），认不出的类型给中性标题而不是崩掉整棵面板。
+  // （browser-use 就踩过），认不出的类型给中性标题而不是崩掉整棵面板。
   if ("source" in tab && tab.source) {
     return tab.source.title || formatMessage({ id: "codeViewer.title" });
   }
