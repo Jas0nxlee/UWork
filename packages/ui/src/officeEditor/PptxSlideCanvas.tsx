@@ -14,11 +14,10 @@
  * **点选名单以本页 XML 为准**：渲染器还会画从版式/母版继承来的形状，它们不在本页 XML 里、
  * 改了也写不回去，所以不进名单——宁可点不到，不能"拖了半天没反应"。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   angleFromCenter,
   dragGeometry,
-  measuredBoxesOf,
   EMU_PER_PX,
   handleSpots,
   isOffPage,
@@ -32,51 +31,8 @@ import { PptxCanvasZoomBar } from "./PptxCanvasZoomBar.js";
 import { useCanvasCells } from "./useCanvasCells.js";
 import { PptxCanvasOverlays } from "./PptxCanvasOverlays.js";
 import { useCanvasViewport } from "./useCanvasViewport.js";
-import type { PresentationPageElement } from "@/presentation/types.js";
-import type { PptxShape } from "./pptShapes.js";
-import type { PptxPreviewState } from "./usePptxPreview.js";
-
-export interface PptxSlideCanvasProps {
-  /** 共享的预览文档（一份文件只解析一次）。 */
-  preview: PptxPreviewState;
-  /** 渲染器页序号（编辑位用 `preview.pageIndexOf` 从部件名换出来）。 */
-  pageIndex: number;
-  /** 这一页的部件名（换页时用来重挂渲染面）。 */
-  partName: string;
-  /** 从 XML 读出的形状：**点选名单**以它为准。 */
-  shapes: PptxShape[];
-  activeShape: string | null;
-  onSelect: (name: string | null) => void;
-  onCommitBounds: (
-    name: string,
-    bounds: { x?: number; y?: number; width?: number; height?: number; rotation?: number },
-  ) => void;
-  /** 双击：希望就地改这个形状的文字（编辑位负责把焦点移到编辑层）。 */
-  onRequestText?: (name: string) => void;
-  /** 点中了表格的某一格（表格名 / 行 / 列，0 基）。 */
-  onSelectCell?: (table: string, row: number, col: number) => void;
-  /** 双击某一格：就地改这一格的文字。 */
-  onEditCell?: (table: string, row: number, col: number) => void;
-  /** 当前选中的单元格（由编辑位持有）。 */
-  activeCell?: { table: string; row: number; col: number } | null;
-
-  /**
-   * 改动版本号（编辑位每次改 XML 都会 +1）：只靠"预览字节变了"来触发重画不够可靠——
-   * 真机实测：删掉图片后形状列表已经没了，画布上那张图还在（等几秒也不消失），
-   * 而关闭面板之类的布局变化才把它刷掉。这个 key 保证**每次改动都重画一次**。
-   */
-  renderKey: number;
-  /** 缩放百分比（100 = 适应宽度）：由编辑位持有，功能区「视图」也要改它。 */
-  zoom: number;
-  onZoomChange: (updater: (value: number) => number) => void;
-  /** 打开右侧「设置形状格式」窗格（窗格默认收起，免得把画布挤窄）。 */
-  onOpenFormatPane: () => void;
-  /** 就地改字（双击形状/单元格进入）：null 表示不在编辑；`cell` 有值表示改的是表格某一格。 */
-  editing: { shape: string; text: string; cell?: { row: number; col: number } } | null;
-  onEditingText: (text: string) => void;
-  onEditingCommit: () => void;
-  onEditingCancel: () => void;
-}
+import { usePptxPageRender } from "./usePptxPageRender.js";
+import type { PptxSlideCanvasProps } from "./pptxSlideCanvasProps.js";
 
 export function PptxSlideCanvas({
   preview,
@@ -89,7 +45,8 @@ export function PptxSlideCanvas({
   onRequestText,
   onSelectCell,
   onEditCell,
-  activeCell,
+  cellRange,
+  onExtendCell,
   renderKey,
   zoom,
   onZoomChange,
@@ -101,7 +58,6 @@ export function PptxSlideCanvas({
 }: PptxSlideCanvasProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
-  const hostRef = useRef<HTMLDivElement | null>(null);
   const view = useCanvasViewport({
     frameRef,
     pageWidth: preview.pageWidth,
@@ -110,9 +66,9 @@ export function PptxSlideCanvas({
     onZoomChange,
   });
   const { scale, pageDisplayWidth, pageDisplayHeight, toPx, toEmu, viewport, viewportOf } = view;
-  /** 渲染器实测的形状框（XML 里没有显式几何的用它兜底）。 */
-  const [measured, setMeasured] = useState<Record<string, CanvasBox>>({});
-  const { hitCell, boxOfCell } = useCanvasCells({
+  // 画当前页 + 量出渲染器实测的形状框（都在这个 hook 里，见它的注释）
+  const { hostRef, measured } = usePptxPageRender({ preview, pageIndex, partName, renderKey });
+  const { hitCell, boxOfCell, boxesOfRange } = useCanvasCells({
     preview,
     pageIndex,
     shapes,
@@ -121,39 +77,18 @@ export function PptxSlideCanvas({
     toPx,
   });
   const [drag, setDrag] = useState<CanvasDragState | null>(null);
+  /**
+   * 在表格里拖选一片时的表格名（**同步的 ref，不是 state**）。
+   *
+   * 为什么不能用 state：按下之后紧跟着的 `pointermove` 可能**早于 React 提交**（真机快速拖动实测：
+   * 拖了半张表，只有第一格被选中——两次 move 都在 state 落地前到达，处理器看到 drag=null 就丢了）。
+   * 单元格拖选不需要重渲染（选区在编辑位那层），所以直接用 ref 最稳。
+   */
+  const cellDragRef = useRef<string | null>(null);
   /** 拖动中的实时几何（EMU）：只在拖动时覆盖显示，松手才写回。 */
   const [draft, setDraft] = useState<{ name: string; box: CanvasBox } | null>(null);
   /** 旋转中的实时角度（度）：松手才写回 a:xfrm@rot。 */
   const [rotateDraft, setRotateDraft] = useState<number | null>(null);
-
-  // 画当前页（文档换了、换页、或**这一页被改过**就重画）
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    host.replaceChildren();
-    const handle = preview.renderPage(pageIndex, host);
-    if (!handle) return;
-    return () => {
-      try {
-        handle.dispose();
-      } catch {
-        // 文档已换掉：handle 失效属正常
-      }
-      host.replaceChildren();
-    };
-  }, [preview, pageIndex, partName, renderKey]);
-
-  // 渲染器实测的每个形状框（XML 里没有显式几何的用它兜底）
-  useEffect(() => {
-    let page: readonly PresentationPageElement[] = [];
-    try {
-      page = preview.document?.getPageElements(pageIndex) ?? [];
-    } catch {
-      // 文档正在被换掉（改动后重算预览）：这一帧先不给兜底几何，下一帧就好了
-      page = [];
-    }
-    setMeasured(measuredBoxesOf(page));
-  }, [preview, pageIndex]);
 
   /** 形状的显示几何：XML 显式几何优先，否则用渲染器量到的；都没有 = 不可拖。 */
   const boxOf = useCallback(
@@ -204,10 +139,11 @@ export function PptxSlideCanvas({
     if (editing) return;
     const cell = hitCell(event.clientX, event.clientY);
     if (cell) {
-      // 表格里点到单元格：选中这张表并记住单元格——**不进入拖动**（PowerPoint 里点格子是编辑文字，
-      // 拖表格要拖边框）；拖边框/拉手柄那条路不受影响。
+      // 表格里点到单元格：选中这张表并记住这一格。**拖表格仍然要拖边框**（点格子=选格子/选一片，
+      // 与 PowerPoint 一致：按住从一格拖到另一格是选一片单元格，不是把表格拽走）。
       onSelect(cell.table);
       onSelectCell?.(cell.table, cell.row, cell.col);
+      cellDragRef.current = cell.table;
       event.stopPropagation();
       return;
     }
@@ -265,6 +201,13 @@ export function PptxSlideCanvas({
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    // 表格里拖选：先看 ref（第一下就接得住），与形状拖动互不影响
+    if (cellDragRef.current) {
+      const cell = hitCell(event.clientX, event.clientY);
+      if (cell && cell.table === cellDragRef.current)
+        onExtendCell?.(cell.table, cell.row, cell.col);
+      return;
+    }
     if (!drag) return;
     if (drag.mode === "rotate") {
       const layer = layerRef.current;
@@ -286,6 +229,7 @@ export function PptxSlideCanvas({
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    cellDragRef.current = null;
     if (!drag) return;
     const state = drag;
     setDrag(null);
@@ -311,7 +255,13 @@ export function PptxSlideCanvas({
     ? (shapes.find((item) => item.name === editing.shape) ?? null)
     : null;
   const activeShapeKnown = activeShape ? shapes.some((item) => item.name === activeShape) : false;
-  const activeCellBox = boxOfCell(activeCell);
+  // 选区框：编辑某一格时只画那一格；否则画整片选区（1×1 就是原来那一格）
+  const editingCellBox = editing?.cell
+    ? boxOfCell({ table: editing.shape, ...editing.cell })
+    : null;
+  const cellBoxes = editingCellBox
+    ? [{ ...editingCellBox, anchor: true }]
+    : boxesOfRange(cellRange ?? null);
   const handleSpotList = activeBox ? handleSpots(activeBox, viewport) : [];
   const offPage = activeBox ? isOffPage(activeBox, viewport) : false;
   const hint = canvasHint({ activeShape, activeBox, known: activeShapeKnown, offPage });
@@ -408,7 +358,7 @@ export function PptxSlideCanvas({
                 moving={drag?.mode === "move"}
                 onResizeStart={startResize}
                 onRotateStart={startRotate}
-                activeCellBox={activeCellBox}
+                cellBoxes={cellBoxes}
                 editing={editing !== null}
                 editingBox={
                   editing?.cell

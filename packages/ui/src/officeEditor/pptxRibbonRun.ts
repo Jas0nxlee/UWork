@@ -165,9 +165,16 @@ export function runPptxRibbonCommand(command: string, args: unknown[], api: Pptx
     case "pptxTableInsertColumnRight":
     case "pptxTableDeleteRow":
     case "pptxTableDeleteColumn":
+    case "pptxTableMergeRange":
     case "pptxTableMergeRight":
     case "pptxTableMergeDown":
     case "pptxTableSplit":
+    case "pptxTableCellAnchorTop":
+    case "pptxTableCellAnchorMiddle":
+    case "pptxTableCellAnchorBottom":
+    case "pptxTableCellAlignLeft":
+    case "pptxTableCellAlignCenter":
+    case "pptxTableCellAlignRight":
     case "pptxTableCellBorderOn":
     case "pptxTableCellBorderOff":
     case "pptxTableFirstRow":

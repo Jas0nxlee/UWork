@@ -60,6 +60,8 @@ export function PptxEditorPane({
     moveShape,
     patchTable,
     patchTableOp,
+    notesOf,
+    saveNotes,
     duplicateShape,
     removeShape,
     addTextBox,
@@ -97,11 +99,16 @@ export function PptxEditorPane({
     text: string;
     cell?: { row: number; col: number };
   } | null>(null);
-  /** 画布上选中的单元格（表格名 + 行列，0 基）：表格工具的行列操作按它定位。 */
-  const [activeCell, setActiveCell] = useState<{
+  /**
+   * 画布上选中的**一片**单元格（表格名 + 两个角，0 基）：表格工具按它定位。
+   * 单选一格就是 (row0,col0) === (row1,col1)；在表格里按住拖能选一片（PowerPoint 的手势）。
+   */
+  const [cellRange, setCellRange] = useState<{
     table: string;
-    row: number;
-    col: number;
+    row0: number;
+    col0: number;
+    row1: number;
+    col1: number;
   } | null>(null);
   /** 文本框的 DOM 引用：画布双击"就地改字"要能把焦点移到对应的文本框上。 */
   const blockRefs = useRef(new Map<number, HTMLTextAreaElement>());
@@ -111,6 +118,7 @@ export function PptxEditorPane({
     setActiveShape(null);
     setFormatPane(false);
     setEditing(null);
+    setCellRange(null);
   }, [path]);
 
   // 选中形状就自动把「设置形状格式」窗格打开（PowerPoint 里选中对象右边的窗格也是这个意思）
@@ -125,6 +133,12 @@ export function PptxEditorPane({
     [shapesOf, slide, revision],
   );
   const shape = shapes.find((item) => item.name === activeShape) ?? null;
+  /** 当前页的讲稿备注（读的是内存里的备注 XML，改过就跟着 revision 重算）。 */
+  const notes = useMemo(
+    () => (slide ? notesOf(slide.partName) : { text: [], hasNotes: false }),
+    // notesOf 读的是内存映射（不是 React state）：靠 revision 触发重算
+    [notesOf, revision, slide],
+  );
 
   const registerRef = useCallback((index: number, element: HTMLTextAreaElement | null) => {
     if (element) blockRefs.current.set(index, element);
@@ -148,7 +162,8 @@ export function PptxEditorPane({
       const lines =
         index === null ? [] : (slide?.blocks.find((b) => b.index === index)?.lines ?? []);
       setActiveShape(table);
-      setActiveCell({ table, row, col });
+      // 双击进编辑：选区收成这一格（拖动选一片之后双击某格，编辑的就是这一格）
+      setCellRange({ table, row0: row, col0: col, row1: row, col1: col });
       setEditing({ shape: table, text: lines.join("\n"), cell: { row, col } });
     },
     [cellIndexAt, slide],
@@ -202,7 +217,7 @@ export function PptxEditorPane({
     shape,
     previewFrame,
     shapesOf,
-    activeCell,
+    cellRange,
     setZoom,
     setStatus,
     addSlideAction,
@@ -273,11 +288,12 @@ export function PptxEditorPane({
         },
         previewBuilds,
         previewError,
-        runCommand: (command: string) => runRibbon(command, []),
+        runCommand: (command: string, args?: unknown[]) => runRibbon(command, args ?? []),
+        notes: () => notes,
         previewBytes: () => (rawPreviewBytes ? rawPreviewBytes.slice(0) : null),
         modelXml,
       }),
-    [activeSlide, previewBuilds, previewError, runRibbon, shapesOf, slides],
+    [activeSlide, notes, previewBuilds, previewError, runRibbon, shapesOf, slides],
   );
 
   const totalBlocks = useMemo(
@@ -369,9 +385,18 @@ export function PptxEditorPane({
                 onSelect={setActiveShape}
                 onCommitBounds={(name, bounds) => setShapeBounds(slide.partName, name, bounds)}
                 onRequestText={beginTextEdit}
-                onSelectCell={(table, row, col) => setActiveCell({ table, row, col })}
+                onSelectCell={(table, row, col) =>
+                  setCellRange({ table, row0: row, col0: col, row1: row, col1: col })
+                }
+                onExtendCell={(table, row, col) =>
+                  setCellRange((current) =>
+                    current && current.table === table
+                      ? { ...current, row1: row, col1: col }
+                      : current,
+                  )
+                }
+                cellRange={cellRange}
                 onEditCell={beginCellEdit}
-                activeCell={activeCell}
                 renderKey={revision}
                 editing={editing}
                 onEditingText={(text) =>
@@ -413,6 +438,10 @@ export function PptxEditorPane({
                 setActiveShape(null);
               }}
               onAddTextBox={() => slide && addTextBox(slide.partName)}
+              notes={notes}
+              onNotesChange={(lines) => {
+                if (slide) void saveNotes(slide.partName, lines);
+              }}
               registerBlockRef={registerRef}
               onChangeBlock={(index, lines) => slide && setBlockLines(slide.partName, index, lines)}
             />

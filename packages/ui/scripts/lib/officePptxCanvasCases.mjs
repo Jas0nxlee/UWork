@@ -41,10 +41,6 @@ export async function runPptxCanvasCases({ page, check }) {
   // ① 点形状 → 选中（选框 + 四个手柄）
   const titleBox = await readBox("标题 1");
   const layer = (await readCanvas())?.layer;
-  const center = (box) => ({
-    x: layer.left + ((box.x + box.width / 2) / EMU_PER_PX) * mounted.scale,
-    y: layer.top + ((box.y + box.height / 2) / EMU_PER_PX) * mounted.scale,
-  });
   /** 取点在每次点击前重取画布矩形：界面会滚动（比如双击把焦点给了文本框），旧矩形会失效。 */
   const centerLive = async (box) => {
     const c = await readCanvas();
@@ -53,7 +49,7 @@ export async function runPptxCanvasCases({ page, check }) {
       y: c.layer.top + ((box.y + box.height / 2) / EMU_PER_PX) * c.scale,
     };
   };
-  const titlePoint = center(titleBox);
+  const titlePoint = await centerLive(titleBox);
   await page.mouse.click(titlePoint.x, titlePoint.y);
   await page.waitForTimeout(200);
   const selected = await readCanvas();
@@ -68,9 +64,10 @@ export async function runPptxCanvasCases({ page, check }) {
   });
   const dragX = 60;
   const dragY = 24;
-  await page.mouse.move(titlePoint.x, titlePoint.y);
+  const dragFrom = await centerLive(await readBox("标题 1"));
+  await page.mouse.move(dragFrom.x, dragFrom.y);
   await page.mouse.down();
-  await page.mouse.move(titlePoint.x + dragX, titlePoint.y + dragY, { steps: 6 });
+  await page.mouse.move(dragFrom.x + dragX, dragFrom.y + dragY, { steps: 6 });
   await page.mouse.up();
   await page.waitForTimeout(500);
   const movedBox = await readBox("标题 1");
@@ -124,8 +121,9 @@ export async function runPptxCanvasCases({ page, check }) {
 
   // ④ 点空白处 → 取消选择。空白处取"页面右上角"：形状都在左半与中部，
   // 而画布比视口高时页面底部会落在视口外（鼠标事件发不出去，断言会假失败——踩过）
-  const emptyX = layer.left + layer.width * 0.82;
-  const emptyY = layer.top + layer.height * 0.12;
+  const liveLayer = (await readCanvas())?.layer ?? layer;
+  const emptyX = liveLayer.left + liveLayer.width * 0.82;
+  const emptyY = liveLayer.top + liveLayer.height * 0.12;
   const inViewport = await page.evaluate(
     ([x, y]) => x > 0 && y > 0 && x < innerWidth && y < innerHeight,
     [emptyX, emptyY],
@@ -153,7 +151,7 @@ export async function runPptxCanvasCases({ page, check }) {
   );
 
   // ⑤ 双击形状 → **在页面上就地改字**（编辑层出现在形状的位置上，字号按形状的格式算）
-  const titleAgain = center(resized);
+  const titleAgain = await centerLive(resized);
   await page.mouse.dblclick(titleAgain.x, titleAgain.y);
   await page.waitForTimeout(400);
   const editing = await page.evaluate(() => {
@@ -214,7 +212,8 @@ export async function runPptxCanvasCases({ page, check }) {
     const part = window.__pptxPane.slideCount ? document.querySelector("[data-pptx-block]") : null;
     return part?.value ?? null;
   });
-  const againPoint = center(resized);
+  // 现读几何再双击：前面几步改过位置/大小，用旧框会点空（点空了就变成拖动/选择别的）
+  const againPoint = await centerLive(await readBox("标题 1"));
   await page.mouse.dblclick(againPoint.x, againPoint.y);
   await page.waitForTimeout(400);
   const diagOpen = await page.evaluate(() => ({
@@ -274,7 +273,8 @@ export async function runPptxCanvasCases({ page, check }) {
   await page.waitForTimeout(250);
   // 上一步双击把焦点给了文本框，可能顺带滚动了；重新点选一次再拖
   const beforeOff = await readBox("标题 1");
-  await page.mouse.click((await centerLive(beforeOff)).x, (await centerLive(beforeOff)).y);
+  const beforeOffPoint = await centerLive(beforeOff);
+  await page.mouse.click(beforeOffPoint.x, beforeOffPoint.y);
   await page.waitForTimeout(250);
   const offPoint = await centerLive(await readBox("标题 1"));
   const dragDiag = { before: await readBox("标题 1"), offPoint, canvas: await readCanvas() };

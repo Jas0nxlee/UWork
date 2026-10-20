@@ -9,8 +9,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { openPptxDocumentForEdit } from "./pptOpen.js";
 import { savePptxDocument } from "./pptSave.js";
 import { patchPictureBytes, useTableActions } from "./pptInsertActions.js";
-import { buildPreviewBytes, composeCurrentSlides, readSlidePart } from "./pptDeckCompose.js";
-import { readDeckSlides, readSlideText, type PptxSlide } from "./pptText.js";
+import { buildPreviewBytes, composeCurrentSlides } from "./pptDeckCompose.js";
+import { readDeckSlides, type PptxSlide } from "./pptText.js";
+import { usePptxNotes } from "./usePptxNotes.js";
+import { usePptxSlides } from "./usePptxSlides.js";
 import {
   deleteShape as applyDeleteShape,
   duplicateShape as applyDuplicateShape,
@@ -24,7 +26,7 @@ import {
   type ShapeBounds,
   type ShapeRunFormat,
 } from "./pptShapes.js";
-import { addSlide, deleteSlide, duplicateSlide, moveSlide, readSlideOrder } from "./pptSlides.js";
+import { readSlideOrder } from "./pptSlides.js";
 
 /** 应用内编辑的体积上限（pptx 是压缩包，60 MB 的 deck 解出来通常十几倍）。 */
 export const MAX_EDITABLE_PPTX_BYTES = 60 * 1024 * 1024;
@@ -61,8 +63,20 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
   const baselineXmlRef = useRef<Map<string, string>>(new Map());
   /** 当前每张幻灯片的 XML（形状/幻灯片改动都落在这里，保存时与基线比对）。 */
   const currentXmlRef = useRef<Map<string, string>>(new Map());
+  /** 幻灯片 → 备注部件名（打开时解析一次；新建备注后补上）。 */
+  const notesPartRef = useRef<Map<string, string>>(new Map());
+  /** 备注部件的当前 XML（未保存的改动也在这里）。 */
+  const currentNotesRef = useRef<Map<string, string>>(new Map());
   /** 用户改过的文本块：key → 当前行数组。 */
   const editsRef = useRef<Map<PptxEditKey, string[]>>(new Map());
+  /**
+   * **结构性改动**（几何/表格/备注/图片/页）有没有发生。
+   *
+   * 为什么必须单独记：`editsRef` 只记"文字编辑"（两侧 textarea 那一张表），而合并单元格、拖动形状、
+   * 写备注这些都不经过它。真机实测：合并了一片单元格 + 写了备注，点「保存到文件」被"没有检测到文字
+   * 改动，未写盘"挡掉——**用户改了却没写盘**，是最不能接受的一类 bug。
+   */
+  const structuralRef = useRef(false);
 
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
@@ -71,12 +85,19 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     onDirtyChangeRef.current?.(value);
   }, []);
 
+  /** 标记"有非文字改动"（子 hook 都通过 markDirty 走这里）。 */
+  const markDirty = useCallback(() => {
+    structuralRef.current = true;
+    setDirty(true);
+  }, [setDirty]);
+
   const loadDocument = useCallback(async () => {
     setReady(false);
     setStatus("正在打开演示文稿…");
     setSlides(null);
     setDirty(false);
     editsRef.current = new Map();
+    structuralRef.current = false;
     try {
       const opened = await openPptxDocumentForEdit({
         maxBytes: MAX_EDITABLE_PPTX_BYTES,
@@ -99,6 +120,10 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       currentXmlRef.current = new Map(deck.sourceXml);
       // 放映顺序以 presentation.xml 的 sldIdLst 为准（文件名顺序可能与放映顺序不一致）
       const order = await readSlideOrder(raw);
+      await collectNotes(
+        raw,
+        order.entries.map((entry) => entry.partName),
+      );
       const ordered = order.entries
         .map((entry, index) => {
           const slide = deck.slides.find((item) => item.partName === entry.partName);
@@ -169,60 +194,44 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       }
       currentXmlRef.current.set(partName, after);
       setRevision((value) => value + 1);
-      setDirty(true);
+      markDirty();
       setStatus(`${label}（保存时只写回这一页）`);
       void refreshPreview();
     },
-    [refreshPreview, setDirty, setStatus],
+    [markDirty, refreshPreview, setStatus],
   );
 
-  /** 幻灯片级操作：直接对整份文件做补丁，然后把新的部件内容读回来。 */
-  const applyDeckPatch = useCallback(
-    async (patch: (source: ArrayBuffer) => Promise<ArrayBuffer>, label: string) => {
-      const source = sourceRef.current;
-      if (!source || busy) return;
-      setBusy(true);
-      try {
-        // 补丁**之前**各页的 XML：下面要用它判断"这次补丁改了哪几页"
-        const previous = await readSlideOrder(source);
-        const next = await patch(source.slice(0));
-        const order = await readSlideOrder(next);
-        const parts = new Map<string, string>();
-        for (const entry of order.entries) {
-          parts.set(entry.partName, await readSlidePart(next, entry.partName));
-        }
-        const slides: PptxSlide[] = [];
-        for (const [index, entry] of order.entries.entries()) {
-          const xml = parts.get(entry.partName) ?? "";
-          slides.push({ partName: entry.partName, number: index + 1, blocks: readSlideText(xml) });
-        }
-        // 幻灯片增删之后，"基线"要跟着走：新增的页以它当前内容为基线（等于新页就是新写的），
-        // 否则保存时会把它当成"用户改过"从而多写一遍。
-        // 基线要跟着补丁前移：**新增的页**以当前内容为基线；**被补丁改过的页**也要前移，
-        // 否则 (source, baseline) 两边不一致——source 已经是改后的、baseline 还是改前的，
-        // 之后一次"改回原样"的编辑会被差分当成"没变"而跳过写回，zip 里就留住了补丁版本
-        // （真机踩过：插了图片再删掉，画布上那张图还在）。
-        const nextBaseline = new Map(baselineXmlRef.current);
-        for (const [name, xml] of parts) {
-          const before = previous.parts.get(name);
-          if (before === undefined || before !== xml) nextBaseline.set(name, xml);
-        }
-        baselineXmlRef.current = nextBaseline;
-        currentXmlRef.current = parts;
-        sourceRef.current = next;
-        setSlides(slides);
-        setRevision((value) => value + 1);
-        setDirty(true);
-        setStatus(`${label}（${slides.length} 页）· 点「保存到文件」写回`);
-        void refreshPreview();
-      } catch (error) {
-        setStatus(`${label}失败：${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, readSlideText, refreshPreview, setBusy, setDirty, setStatus],
-  );
+  const { collectNotes, notesOf, saveNotes } = usePptxNotes({
+    sourceRef,
+    notesPartRef,
+    notesXmlRef: currentNotesRef,
+    busy,
+    setBusy,
+    bumpRevision: () => setRevision((value) => value + 1),
+    markDirty,
+    setStatus,
+    refreshPreview: () => void refreshPreview(),
+  });
+
+  const {
+    applyDeckPatch,
+    addSlideAction,
+    duplicateSlideAction,
+    deleteSlideAction,
+    moveSlideAction,
+  } = usePptxSlides({
+    sourceRef,
+    baselineRef: baselineXmlRef,
+    currentRef: currentXmlRef,
+    busy,
+    setBusy,
+    setSlides,
+    bumpRevision: () => setRevision((value) => value + 1),
+    markDirty,
+    setStatus,
+    refreshPreview: () => void refreshPreview(),
+    recollectNotes: collectNotes,
+  });
 
   /** 改形状几何。 */
   const setShapeBounds = useCallback(
@@ -312,26 +321,6 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     [applyDeckPatch],
   );
 
-  const addSlideAction = useCallback(
-    () => applyDeckPatch((source) => addSlide({ source }), "新建幻灯片"),
-    [applyDeckPatch],
-  );
-  const duplicateSlideAction = useCallback(
-    (partName: string) =>
-      applyDeckPatch((source) => duplicateSlide({ source, partName }), "复制幻灯片"),
-    [applyDeckPatch],
-  );
-  const deleteSlideAction = useCallback(
-    (partName: string) =>
-      applyDeckPatch((source) => deleteSlide({ source, partName }), "删除幻灯片"),
-    [applyDeckPatch],
-  );
-  const moveSlideAction = useCallback(
-    (partName: string, to: number) =>
-      applyDeckPatch((source) => moveSlide({ source, partName, to }), "调整幻灯片顺序"),
-    [applyDeckPatch],
-  );
-
   /** 界面上改一行：记进 edits，并标脏。 */
   const setBlockLines = useCallback(
     (partName: string, blockIndex: number, lines: string[]) => {
@@ -356,7 +345,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
             )
           : current,
       );
-      setDirty(editsRef.current.size > 0);
+      setDirty(editsRef.current.size > 0 || structuralRef.current);
       void refreshPreview();
     },
     [refreshPreview, setDirty, slides],
@@ -369,14 +358,18 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       setStatus("演示文稿还没加载好，稍等一下再保存");
       return;
     }
-    if (editsRef.current.size === 0) {
-      setStatus("没有检测到文字改动，未写盘");
+    if (editsRef.current.size === 0 && !structuralRef.current) {
+      setStatus("没有检测到改动，未写盘");
       setDirty(false);
       return;
     }
     setBusy(true);
     try {
-      setStatus(`写回中（${editsRef.current.size} 处文字改动）…`);
+      setStatus(
+        editsRef.current.size > 0
+          ? `写回中（${editsRef.current.size} 处文字改动）…`
+          : "写回中（表格/形状/备注这类改动）…",
+      );
       const current = composeCurrent();
       const result = await savePptxDocument({
         fileService,
@@ -402,6 +395,7 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
       currentXmlRef.current = new Map(current);
       sourceRef.current = result.bytes.slice(0);
       editsRef.current = new Map();
+      structuralRef.current = false;
       setDirty(false);
       void refreshPreview();
       const backup = result.backupName ? ` · 备份 ${result.backupName}` : "";
@@ -439,6 +433,8 @@ export function usePptxDocument(input: UsePptxDocumentInput) {
     insertPictureAction,
     patchTable,
     patchTableOp,
+    notesOf,
+    saveNotes,
     /** 调试三件套：预览重算次数/错误、当前喂给渲染器的字节、模型里某页的 XML。 */
     previewBuilds: () => previewBuildsRef.current,
     previewError: () => previewErrorRef.current,

@@ -5,6 +5,7 @@
  * （见 `floating`）：编辑位在侧栏里只有几百像素宽，窗格再固定占 288px 会把画布挤到 100 多像素、
  * 没法用（真机实测：画布 182×137）。窄的时候它浮在画布上，宽的时候才占布局。
  */
+import { useEffect, useState } from "react";
 import { ShapeInspector } from "./PptxShapeInspector.js";
 import { PptxTextBlocks } from "./PptxTextBlocks.js";
 import type { PptxSlide } from "./pptText.js";
@@ -31,6 +32,9 @@ export interface PptxFormatPaneProps {
   onAddTextBox: () => void;
   registerBlockRef: (index: number, element: HTMLTextAreaElement | null) => void;
   onChangeBlock: (index: number, lines: string[]) => void;
+  /** 这一页的讲稿备注（没有备注部件时 text 为空、hasNotes=false）。 */
+  notes: { text: string[]; hasNotes: boolean };
+  onNotesChange: (lines: string[]) => void;
 }
 
 export function PptxFormatPane({
@@ -50,7 +54,18 @@ export function PptxFormatPane({
   onAddTextBox,
   registerBlockRef,
   onChangeBlock,
+  notes,
+  onNotesChange,
 }: PptxFormatPaneProps) {
+  /** 备注按"一行一条"编辑；还没有备注时也给一个可输入的框。 */
+  const notesLines = notes.text.length > 0 ? notes.text : [""];
+  // 备注**失焦才提交**：每次按键都提交的话，改一个字就要把整包 zip 重写一遍（大 deck 会卡）。
+  // PowerPoint 也是离开输入框才落盘；Esc 放弃这次编辑。
+  const notesSaved = notesLines.join("\n");
+  const [notesDraft, setNotesDraft] = useState<string | null>(null);
+  useEffect(() => {
+    setNotesDraft(null);
+  }, [slide?.partName]);
   return (
     <div
       data-pptx-task-pane
@@ -74,7 +89,7 @@ export function PptxFormatPane({
       </div>
       {shape && slide ? (
         <>
-          {/* 按选中对象显示：文本框/形状给文字与段落，图片给图片信息，表格给"只能改单元格文字"的说明。
+          {/* 按选中对象显示：文本框/形状给文字与段落，图片给图片信息，表格给"去哪改"的指引。
               （用户口径：选中什么就该看到什么设置，别拿形状的文字格式套在图片上） */}
           {shape.kind !== "sp" ? (
             <div
@@ -83,7 +98,7 @@ export function PptxFormatPane({
             >
               {shape.kind === "pic"
                 ? "这是一张图片：可以改位置、大小、层级，或复制/删除；图片的裁剪、亮度、替换还没做。"
-                : "这是一个表格：目前只能改单元格文字（下面的「文本」里按单元格列出来了），表格的增删行列还没做。"}
+                : "这是一个表格：在画布上点格子（按住拖可选中一片），顶部的「表格」标签里做增删行列、合并、对齐、底纹边框；格子里的文字在下面的「文本」里改。"}
             </div>
           ) : null}
           <ShapeInspector
@@ -142,7 +157,31 @@ export function PptxFormatPane({
         </div>
       ) : null}
       <div className="border-t border-border px-3 py-2">
-        <div className="pb-1 text-[11px] font-medium">文本</div>
+        <div className="flex items-center justify-between pb-1">
+          <span className="text-[11px] font-medium">备注</span>
+          <span className="text-[10px] text-foreground-subtlest">
+            {notes.hasNotes ? "已保存进这一页" : "还没有备注"}
+          </span>
+        </div>
+        <textarea
+          data-pptx-notes
+          className="mb-2 w-full resize-y rounded border border-border bg-background px-2 py-1 text-[12px] leading-relaxed"
+          rows={3}
+          placeholder="讲稿备注（放映时不显示）"
+          value={notesDraft ?? notesSaved}
+          onChange={(event) => setNotesDraft(event.target.value)}
+          onBlur={() => {
+            if (notesDraft !== null && notesDraft !== notesSaved)
+              onNotesChange(notesDraft.split("\n"));
+            setNotesDraft(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            setNotesDraft(null);
+            event.currentTarget.blur();
+          }}
+        />
+        <div className="border-t border-border pt-2 pb-1 text-[11px] font-medium">文本</div>
         <PptxTextBlocks slide={slide} registerRef={registerBlockRef} onChange={onChangeBlock} />
       </div>
     </div>

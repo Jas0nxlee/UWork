@@ -18,8 +18,10 @@ export interface PptxPaneDebugInput {
   previewBytes: () => ArrayBuffer | null;
   /** 模型里某一页的 XML（排查"模型改了、字节没改"）。 */
   modelXml: (partName: string) => string | null;
-  /** 直接跑一条功能区命令（排查"按钮点了没反应"到底断在哪一层）。 */
-  runCommand: (command: string) => void;
+  /** 直接跑一条功能区命令（排查"按钮点了没反应"到底断在哪一层；可带参数，如插入表格的行列）。 */
+  runCommand: (command: string, args?: unknown[]) => void;
+  /** 当前页的讲稿备注。 */
+  notes: () => { text: string[]; hasNotes: boolean };
 }
 
 export function installPptxPaneDebug(input: PptxPaneDebugInput): () => void {
@@ -32,7 +34,8 @@ export function installPptxPaneDebug(input: PptxPaneDebugInput): () => void {
     previewError: () => input.previewError(),
     previewBytes: () => input.previewBytes(),
     modelXml: (partName: string) => input.modelXml(partName),
-    runCommand: (command: string) => input.runCommand(command),
+    runCommand: (command: string, args?: unknown[]) => input.runCommand(command, args),
+    notes: () => input.notes(),
     shapeNames: () => input.shapes().map((item) => item.name),
     shapeBounds: (name: string) => {
       const found = findShape(name);

@@ -174,7 +174,7 @@ export function tableSizeOf(xml: string, tableName: string): { rows: number; col
 export { P_NS };
 
 /** 表格里的某个单元格元素（`a:tr[row]/a:tc[col]`）。 */
-function cellElement(
+export function cellElement(
   document: Document,
   tableName: string,
   row: number,
@@ -186,7 +186,7 @@ function cellElement(
 }
 
 /** 单元格的属性容器 `a:tcPr`（没有就补一个，位置按 OOXML 要求放在 txBody 之后）。 */
-function ensureCellProperties(document: Document, cell: Element): Element {
+export function ensureCellProperties(document: Document, cell: Element): Element {
   const existing = Array.from(cell.children).find(
     (child) => child.namespaceURI === A_NS && child.localName === "tcPr",
   );
@@ -197,6 +197,52 @@ function ensureCellProperties(document: Document, cell: Element): Element {
 }
 
 export type CellDirection = "right" | "down";
+
+/**
+ * **合并一整片单元格**（PowerPoint 的「合并单元格」）：左上角那格留内容，其余格按被覆盖的方向打
+ * `hMerge`/`vMerge`，并把它们的内容清掉（PowerPoint 也是这个行为，合并后只保留左上角文字）。
+ *
+ * 与 `mergeCell`（向右/向下并一格）的差别只是"一片"：`gridSpan`/`rowSpan` 直接写成这一片的尺寸，
+ * 所以**先拆再并**——否则已经合并过的格子会叠出错误的跨度。
+ */
+export function mergeCellRange(
+  xml: string,
+  tableName: string,
+  from: { row: number; col: number },
+  to: { row: number; col: number },
+): string {
+  const document = parser().parseFromString(xml, "application/xml");
+  const frame = shapeByName(document, tableName);
+  if (!frame) return xml;
+  const rows = cellsOf(frame);
+  const row0 = Math.max(0, Math.min(from.row, to.row));
+  const row1 = Math.min(rows.length - 1, Math.max(from.row, to.row));
+  const col0 = Math.max(0, Math.min(from.col, to.col));
+  const col1 = Math.min((rows[row0]?.length ?? 0) - 1, Math.max(from.col, to.col));
+  if (row1 <= row0 && col1 <= col0) return xml;
+  const anchor = rows[row0]?.[col0];
+  if (!anchor) return xml;
+
+  for (let r = row0; r <= row1; r += 1) {
+    for (let c = col0; c <= col1; c += 1) {
+      const cell = rows[r]?.[c];
+      if (!cell) continue;
+      // 每一格先摘掉自己的合并标记（含这片里已经合并过的那些），再按这一片重写
+      cell.removeAttribute("gridSpan");
+      cell.removeAttribute("rowSpan");
+      cell.removeAttribute("hMerge");
+      cell.removeAttribute("vMerge");
+      if (cell === anchor) continue;
+      if (c > col0) cell.setAttribute("hMerge", "1");
+      if (r > row0) cell.setAttribute("vMerge", "1");
+      const body = cell.getElementsByTagNameNS(A_NS, "txBody")[0];
+      if (body) body.replaceChildren(document.createElementNS(A_NS, "a:p"));
+    }
+  }
+  if (col1 > col0) anchor.setAttribute("gridSpan", String(col1 - col0 + 1));
+  if (row1 > row0) anchor.setAttribute("rowSpan", String(row1 - row0 + 1));
+  return writeBack(document);
+}
 
 /**
  * **合并单元格**：把光标这一格与它右/下邻的那一格并起来（`gridSpan`/`rowSpan` + 被覆盖格的
@@ -263,64 +309,6 @@ export function splitCell(xml: string, tableName: string, row: number, col: numb
       target.removeAttribute("rowSpan");
       target.removeAttribute("hMerge");
       target.removeAttribute("vMerge");
-    }
-  }
-  return writeBack(document);
-}
-
-/** **单元格底纹**（`a:tcPr/a:solidFill`）；传 null 表示去掉。 */
-export function setCellFill(
-  xml: string,
-  tableName: string,
-  row: number,
-  col: number,
-  color: string | null,
-): string {
-  const document = parser().parseFromString(xml, "application/xml");
-  const cell = cellElement(document, tableName, row, col);
-  if (!cell) return xml;
-  const properties = ensureCellProperties(document, cell);
-  for (const fill of Array.from(properties.getElementsByTagNameNS(A_NS, "solidFill")))
-    fill.remove();
-  if (color) {
-    const fill = document.createElementNS(A_NS, "a:solidFill");
-    const srgb = document.createElementNS(A_NS, "a:srgbClr");
-    srgb.setAttribute("val", color.replace(/^#/, "").toUpperCase());
-    fill.append(srgb);
-    properties.append(fill);
-  }
-  return writeBack(document);
-}
-
-/** **单元格边框**：四边一起给（`a:lnL/lnR/lnT/lnB`）；`on=false` 表示去掉。 */
-export function setCellBorder(
-  xml: string,
-  tableName: string,
-  row: number,
-  col: number,
-  options: { on: boolean; color?: string; width?: number },
-): string {
-  const document = parser().parseFromString(xml, "application/xml");
-  const cell = cellElement(document, tableName, row, col);
-  if (!cell) return xml;
-  const properties = ensureCellProperties(document, cell);
-  for (const name of ["lnL", "lnR", "lnT", "lnB"]) {
-    for (const line of Array.from(properties.getElementsByTagNameNS(A_NS, name))) line.remove();
-  }
-  if (options.on) {
-    for (const name of ["lnL", "lnR", "lnT", "lnB"]) {
-      const line = document.createElementNS(A_NS, name);
-      line.setAttribute("w", String(options.width ?? 12700));
-      line.setAttribute("cap", "flat");
-      line.setAttribute("cmpd", "sng");
-      line.setAttribute("algn", "ctr");
-      const fill = document.createElementNS(A_NS, "a:solidFill");
-      const srgb = document.createElementNS(A_NS, "a:srgbClr");
-      srgb.setAttribute("val", (options.color ?? "000000").replace(/^#/, "").toUpperCase());
-      fill.append(srgb);
-      line.append(fill);
-      // a:tcPr 的子元素顺序有讲究：四条线要排在 solidFill **之前**
-      properties.insertBefore(line, properties.firstChild);
     }
   }
   return writeBack(document);

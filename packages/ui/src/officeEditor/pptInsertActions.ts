@@ -10,12 +10,12 @@ import { insertTable } from "./pptTableInsert.js";
 import {
   applyTableStructureEdit,
   mergeCell,
-  setCellBorder,
-  setCellFill,
+  mergeCellRange,
   setTableOptions,
   splitCell,
   tableOptionsOf,
 } from "./pptTable.js";
+import { setCellAlign, setCellAnchor, setCellBorder, setCellFill } from "./pptTableCellFormat.js";
 
 /** 插表格：只动这一页的 XML。 */
 export function patchTableXml(
@@ -45,6 +45,7 @@ export const TABLE_COMMAND_LABEL: Record<string, string> = {
   pptxTableInsertColumnRight: "右侧插入列",
   pptxTableDeleteRow: "删除行",
   pptxTableDeleteColumn: "删除列",
+  pptxTableMergeRange: "合并单元格",
   pptxTableMergeRight: "向右合并",
   pptxTableMergeDown: "向下合并",
   pptxTableSplit: "拆分单元格",
@@ -52,6 +53,12 @@ export const TABLE_COMMAND_LABEL: Record<string, string> = {
   pptxTableCellBorderOff: "去边框",
   pptxTableFirstRow: "切换首行突出",
   pptxTableBandRow: "切换镶边行",
+  pptxTableCellAnchorTop: "顶端对齐",
+  pptxTableCellAnchorMiddle: "垂直居中",
+  pptxTableCellAnchorBottom: "底端对齐",
+  pptxTableCellAlignLeft: "左对齐",
+  pptxTableCellAlignCenter: "水平居中",
+  pptxTableCellAlignRight: "右对齐",
   executeHighlight: "设置底纹",
 };
 
@@ -77,6 +84,23 @@ export function applyTableCommand(
       return applyTableStructureEdit(xml, table, row, col, { kind: "deleteRow" });
     case "pptxTableDeleteColumn":
       return applyTableStructureEdit(xml, table, row, col, { kind: "deleteColumn" });
+    case "pptxTableMergeRange": {
+      // 选区另一角从 args 来：row/col 是左上角（锚点），args = [右下角行, 右下角列]
+      const to = { row: Number(args[0] ?? row), col: Number(args[1] ?? col) };
+      return mergeCellRange(xml, table, { row, col }, to);
+    }
+    case "pptxTableCellAnchorTop":
+      return setCellAnchor(xml, table, row, col, "top");
+    case "pptxTableCellAnchorMiddle":
+      return setCellAnchor(xml, table, row, col, "middle");
+    case "pptxTableCellAnchorBottom":
+      return setCellAnchor(xml, table, row, col, "bottom");
+    case "pptxTableCellAlignLeft":
+      return setCellAlign(xml, table, row, col, "left");
+    case "pptxTableCellAlignCenter":
+      return setCellAlign(xml, table, row, col, "center");
+    case "pptxTableCellAlignRight":
+      return setCellAlign(xml, table, row, col, "right");
     case "pptxTableMergeRight":
       return mergeCell(xml, table, row, col, "right");
     case "pptxTableMergeDown":

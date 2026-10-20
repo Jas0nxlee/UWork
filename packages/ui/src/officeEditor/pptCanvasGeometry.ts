@@ -131,6 +131,7 @@ export function measuredBoxesOf(
   return boxes;
 }
 
+/** 拖动形状（移动/拉角/旋转）：`start` 是按下那一刻的几何。 */
 export interface CanvasDragState {
   mode: "move" | "resize" | "rotate";
   corner: CanvasCorner;

@@ -163,3 +163,160 @@ export async function runPptxPanelCases({ page, check }) {
     `缩放不把画布框撑宽（框 ${Math.round(before.frame.width)} → ${Math.round(after.frame.width)}px，页面 ${Math.round(after.page.width)}px ≈ 框宽×${after.zoom}%）`,
   );
 }
+
+/**
+ * PPT 备注（讲稿备注）的**界面断言**：窗格里的备注框 ↔ 包里的 `notesSlideN.xml`。
+ * 数据层的读写已经由 check-office-pptx.mjs 的 ⑬ 盯着；这里盯的是**接线**：
+ * 框里打字 → 失焦提交 → 真的落到包里那一个部件（而且是**只**动那一个部件）。
+ */
+export async function runPptxNotesPanelCases({ page, check }) {
+  const clickShapeLive = async (name) => {
+    // 点击点必须**现读**画布矩形与缩放：前面别的用例滚过/缩放过，挂载时那份早就失效
+    const point = await page.evaluate((shapeName) => {
+      const api = window.__pptxPane;
+      const box = api.shapeBox(shapeName);
+      const canvas = api.canvas();
+      if (!box || !canvas) return null;
+      return {
+        x: canvas.layer.left + ((box.x + box.width / 2) / 9525) * canvas.scale,
+        y: canvas.layer.top + ((box.y + box.height / 2) / 9525) * canvas.scale,
+      };
+    }, name);
+    if (!point) return false;
+    await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(400);
+    return true;
+  };
+  /** 点窗格标题那条空白带 = 让备注框失焦（不在画布上点，免得顺手取消选择把窗格关掉）。 */
+  const blurByPaneHeader = async () => {
+    const point = await page.evaluate(() => {
+      const box = document.querySelector("[data-pptx-task-pane]")?.getBoundingClientRect();
+      return box ? { x: box.left + box.width / 2, y: box.top + 8 } : null;
+    });
+    if (point) await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(600);
+  };
+  const readNotes = () =>
+    page.evaluate(() => {
+      const area = document.querySelector("textarea[data-pptx-notes]");
+      const section = area?.parentElement?.textContent ?? "";
+      return {
+        present: Boolean(area),
+        value: area?.value ?? null,
+        hint: section.includes("已保存进这一页")
+          ? "已保存进这一页"
+          : section.includes("还没有备注")
+            ? "还没有备注"
+            : null,
+        status: document.querySelector("[data-office-toolbar]")?.textContent?.slice(-52) ?? "",
+      };
+    });
+  /**
+   * 模型字节（喂给渲染器的那份）里每个部件的内容指纹 + 每个备注部件的正文。
+   * 正文用**产品自己的读取函数**取：备注页里还有页码占位符，它里面也有 a:t（页码那个数字），
+   * 拿正则把所有 a:t 都收进来会把页码当备注（这个坑本身就是回归要盯的东西）。
+   */
+  const snapshot = () =>
+    page.evaluate(async () => {
+      const bytes = window.__pptxPane?.previewBytes?.() ?? null;
+      if (!bytes) return null;
+      const parts = await window.__pptx.parts(bytes);
+      const zip = await window.JSZip.loadAsync(bytes.slice(0));
+      const notes = {};
+      const fields = {};
+      for (const name of Object.keys(parts)) {
+        if (!/notesSlides\/notesSlide\d+\.xml$/.test(name)) continue;
+        const xml = (await zip.file(name)?.async("string")) ?? "";
+        notes[name] = window.__pptx.readNotesText(xml);
+        // 页码占位符里的字段：改备注**不许**碰它
+        fields[name] = /<a:fld[^>]*type="slidenum"[^>]*>\s*<a:t>1<\/a:t>/.test(xml);
+      }
+      return { parts, notes, fields };
+    });
+  const changedParts = (before, after) =>
+    Object.keys(after.parts).filter((name) => before.parts[name] !== after.parts[name]);
+
+  await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    await window.__pptx.mountPane(bytes.slice(0));
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (window.__pptxPane?.canvas?.()?.ready) break;
+    }
+  });
+
+  // ① 选中形状 → 窗格里有备注框，内容是这一页已有的备注
+  await clickShapeLive("标题 1");
+  const opened = await readNotes();
+  check(
+    opened.present && opened.value === "讲稿备注" && opened.hint === "已保存进这一页",
+    `窗格里的备注框读的是这一页的备注（${JSON.stringify(opened.value)}｜${opened.hint}）`,
+  );
+
+  // ② 改字 → 点别处失焦 = 提交，且**只**动备注部件（幻灯片 XML 一个字节都不该变）
+  const before1 = await snapshot();
+  await page.fill("textarea[data-pptx-notes]", "开场先讲结论");
+  await blurByPaneHeader();
+  const after1 = await snapshot();
+  const changed1 = changedParts(before1, after1);
+  check(
+    after1.notes["ppt/notesSlides/notesSlide1.xml"]?.join("|") === "开场先讲结论" &&
+      after1.fields["ppt/notesSlides/notesSlide1.xml"] === true &&
+      changed1.length === 1,
+    `改备注只动备注部件、也不碰页码占位符（改动：${changed1.join("、") || "无"}｜页码字段还在 ${
+      after1.fields["ppt/notesSlides/notesSlide1.xml"]
+    }｜备注 ${JSON.stringify(after1.notes["ppt/notesSlides/notesSlide1.xml"])}）`,
+  );
+  const shown = await readNotes();
+  check(
+    shown.value === "开场先讲结论" && shown.status.includes("备注"),
+    `提交后备注框与状态栏都跟上（${JSON.stringify(shown.value)}｜${shown.status}）`,
+  );
+
+  // ③ 换到第 2 页：空备注；写一点 → 新建备注部件（rel + Content_Types 一起补上）
+  const switched = await page.evaluate(() => {
+    const host = document.querySelector("[data-pptx-thumb-host='1']");
+    const button = host?.closest("button");
+    if (!button) return false;
+    button.click();
+    return true;
+  });
+  await page.waitForTimeout(600);
+  const second = await readNotes();
+  check(
+    switched && second.value === "" && second.hint === "还没有备注",
+    `换到没备注的第 2 页：空框（${JSON.stringify(second.value)}｜${second.hint}）`,
+  );
+  await page.fill("textarea[data-pptx-notes]", "第二页的讲稿");
+  await blurByPaneHeader();
+  const after2 = await snapshot();
+  const wired = await page.evaluate(async () => {
+    const zip = await window.JSZip.loadAsync(window.__pptxPane.previewBytes().slice(0));
+    const rels = (await zip.file("ppt/slides/_rels/slide2.xml.rels")?.async("string")) ?? "";
+    const types = (await zip.file("[Content_Types].xml")?.async("string")) ?? "";
+    return {
+      rel: /relationships\/notesSlide"/.test(rels),
+      types: types.includes("/ppt/notesSlides/notesSlide2.xml"),
+    };
+  });
+  check(
+    after2.notes["ppt/notesSlides/notesSlide2.xml"]?.join("|") === "第二页的讲稿" &&
+      wired.rel &&
+      wired.types,
+    `给没备注的页写备注会新建部件并补 rel 与 Content_Types（rel=${wired.rel} 登记=${wired.types}）`,
+  );
+  check(
+    after2.notes["ppt/notesSlides/notesSlide1.xml"]?.join("|") === "开场先讲结论",
+    `第 1 页的备注不受影响（${JSON.stringify(after2.notes["ppt/notesSlides/notesSlide1.xml"])}）`,
+  );
+  // ④ 产物仍是合法的 pptx：渲染器认它，幻灯片数不变
+  const rendered = await page.evaluate(async () =>
+    window.__pptx.render(window.__pptxPane.previewBytes()),
+  );
+  check(
+    rendered.slides === 2,
+    `加了备注之后 deck 仍然打得开、渲染器认（${rendered.slides} 页，文字 ${JSON.stringify(
+      rendered.text?.slice(0, 30),
+    )}）`,
+  );
+}

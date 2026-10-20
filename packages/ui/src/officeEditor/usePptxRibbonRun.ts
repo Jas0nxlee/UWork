@@ -15,7 +15,14 @@ export interface PptxRibbonRunInput {
   shape: PptxShape | null;
   previewFrame: () => { width: number; height: number };
   shapesOf: (partName: string) => PptxShape[];
-  activeCell: { table: string; row: number; col: number } | null;
+  /** 选中的一片单元格（单选一格时两个角相同）。 */
+  cellRange: {
+    table: string;
+    row0: number;
+    col0: number;
+    row1: number;
+    col1: number;
+  } | null;
   setZoom: (updater: (value: number) => number) => void;
   setStatus: (message: string) => void;
   addSlideAction: () => void;
@@ -72,17 +79,36 @@ export function usePptxRibbonRun(input: PptxRibbonRunInput) {
         setParagraph: (format) =>
           partName && shape && input.setShapeParagraph(partName, shape.name, format),
         setZoom: input.setZoom,
-        tableOp: (op, opArgs) =>
-          partName && shape?.kind === "graphicFrame"
-            ? input.patchTableOp(
-                partName,
-                shape.name,
-                input.activeCell?.row ?? 0,
-                input.activeCell?.col ?? 0,
-                op,
-                opArgs,
-              )
-            : input.setStatus("先在画布上点进表格的某一格，再用表格工具"),
+        tableOp: (op, opArgs) => {
+          if (!partName || shape?.kind !== "graphicFrame") {
+            input.setStatus("先在画布上点进表格的某一格，再用表格工具");
+            return;
+          }
+          const range = input.cellRange;
+          // 「合并单元格」只选了一格时先说明白（否则会走到"没有实际变化"，用户不知道要先选一片）
+          const rows = Math.abs((range?.row1 ?? 0) - (range?.row0 ?? 0));
+          const cols = Math.abs((range?.col1 ?? 0) - (range?.col0 ?? 0));
+          if (op === "pptxTableMergeRange" && rows === 0 && cols === 0) {
+            input.setStatus("先在这片表格里按住拖，选出一片单元格再合并");
+            return;
+          }
+          // 行列操作按**锚点**（选区左上角）定位；"合并一片"还要知道另一角，所以一并塞进参数
+          const args =
+            op === "pptxTableMergeRange"
+              ? [
+                  Math.max(range?.row0 ?? 0, range?.row1 ?? 0),
+                  Math.max(range?.col0 ?? 0, range?.col1 ?? 0),
+                ]
+              : opArgs;
+          input.patchTableOp(
+            partName,
+            shape.name,
+            Math.min(range?.row0 ?? 0, range?.row1 ?? 0),
+            Math.min(range?.col0 ?? 0, range?.col1 ?? 0),
+            op,
+            args,
+          );
+        },
         insertTable: (rows, cols) => {
           if (!partName) return;
           const size = input.previewFrame();

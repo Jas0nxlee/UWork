@@ -41,11 +41,31 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
         label: "合并",
         essential: true,
         items: [
-          button("向右合并", "把这一格与右边一格合并", "pptxTableMergeRight", {
-            icon: "TableSimple24Regular",
-          }),
+          button(
+            "合并单元格",
+            "把选中的一片单元格合并成一格（保留左上角的文字）",
+            "pptxTableMergeRange",
+            { icon: "TableSimple24Regular" },
+          ),
+          button("向右合并", "把这一格与右边一格合并", "pptxTableMergeRight"),
           button("向下合并", "把这一格与下面一格合并", "pptxTableMergeDown"),
           button("拆分", "拆掉这一格参与的合并", "pptxTableSplit"),
+        ],
+      },
+      {
+        // 对齐方式：垂直在 a:tcPr@anchor、水平在段落 a:pPr@algn（OOXML 就是这么分工的）
+        label: "对齐方式",
+        items: [
+          button("靠上", "单元格内容顶端对齐", "pptxTableCellAnchorTop", {
+            icon: "AlignTop24Regular",
+          }),
+          button("垂直居中", "单元格内容垂直居中", "pptxTableCellAnchorMiddle"),
+          button("靠下", "单元格内容底端对齐", "pptxTableCellAnchorBottom"),
+          button("左对齐", "单元格文字左对齐", "pptxTableCellAlignLeft", {
+            icon: "AlignLeft24Regular",
+          }),
+          button("水平居中", "单元格文字水平居中", "pptxTableCellAlignCenter"),
+          button("右对齐", "单元格文字右对齐", "pptxTableCellAlignRight"),
         ],
       },
       {
