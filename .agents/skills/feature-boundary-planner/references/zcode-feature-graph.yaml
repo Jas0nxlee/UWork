@@ -489,7 +489,11 @@ nodes:
     kind: capability
     label: Plugin market publisher classification and UI entry points
     aliases: [插件市场, 社区插件, UI 插件, Side Pane 插件市场]
-    docs: [docs/plugins/plugin-market-interactions-scope.md, docs/plugin-management-lifecycle-case-catalog.md]
+    docs:
+      [
+        docs/plugins/plugin-market-interactions-scope.md,
+        docs/plugin-management-lifecycle-case-catalog.md,
+      ]
     codeSeeds:
       - file: packages/ui/src/settings/PluginStorePage.tsx
         symbol: PluginStorePage
@@ -560,12 +564,22 @@ nodes:
   - id: evidence.r3-remote-automation-plan
     kind: evidence
     label: Planned R3 post-merge real remote automation cases and readiness inventory
-    docs: [docs/testing/r3-remote-automation-plan.md, docs/testing/r3-remote-automation-case-matrix.md, docs/archive/remote-r3/r3-remote-automation-readiness-2026-09-07.md]
+    docs:
+      [
+        docs/testing/r3-remote-automation-plan.md,
+        docs/testing/r3-remote-automation-case-matrix.md,
+        docs/archive/remote-r3/r3-remote-automation-readiness-2026-09-07.md,
+      ]
   - id: capability.remote-environment-compatibility
     kind: capability
     label: Remote Source Server environment compatibility
     aliases: [SSH systemd fallback, remote daemon capability, 远端环境兼容, SSH 服务管理器探测]
-    docs: [docs/architecture/r3-source-server-remote-architecture.md, docs/archive/remote-r3/r3-source-server-remote-impact-brief.md, docs/archive/remote-r3/r3-source-server-release-test-plan.md]
+    docs:
+      [
+        docs/architecture/r3-source-server-remote-architecture.md,
+        docs/archive/remote-r3/r3-source-server-remote-impact-brief.md,
+        docs/archive/remote-r3/r3-source-server-release-test-plan.md,
+      ]
     codeSeeds:
       - file: packages/server/src/source-server/transportAdapter.ts
         symbol: createSourceServerTransportAdapter
@@ -582,8 +596,13 @@ nodes:
   - id: capability.remote-conversation-workspace
     kind: capability
     label: Source-scoped legacy conversation data (UI retired)
-    aliases: [remote no-project chat, remote conversation backing workspace, 远程无项目聊天, 远程任务聊天]
-    docs: [docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md, docs/superpowers/specs/2026-07-10-non-project-conversation-workspace-design.md]
+    aliases:
+      [remote no-project chat, remote conversation backing workspace, 远程无项目聊天, 远程任务聊天]
+    docs:
+      [
+        docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md,
+        docs/superpowers/specs/2026-07-10-non-project-conversation-workspace-design.md,
+      ]
     codeSeeds:
       - file: packages/services/src/file/file.ts
         symbol: ensureConversationWorkspace
@@ -594,8 +613,22 @@ nodes:
   - id: capability.remote-device-connection-ux
     kind: capability
     label: "Remote device connection naming, status presentation, and entry routing"
-    aliases: [remote device connection, SSH alias device name, remote connection step 4, 远程设备连接, 连接状态, 收起远程连接弹窗]
-    docs: [docs/architecture/remote-device-connection-ux-spec.md, docs/remote/project-first-remote-navigation-spec.md, docs/collapsible-remote-connection-dialog.md, docs/ui/ssh-config-alias.md]
+    aliases:
+      [
+        remote device connection,
+        SSH alias device name,
+        remote connection step 4,
+        远程设备连接,
+        连接状态,
+        收起远程连接弹窗,
+      ]
+    docs:
+      [
+        docs/architecture/remote-device-connection-ux-spec.md,
+        docs/remote/project-first-remote-navigation-spec.md,
+        docs/collapsible-remote-connection-dialog.md,
+        docs/ui/ssh-config-alias.md,
+      ]
     codeSeeds:
       - file: packages/desktop/src/host/sourceServerDirectory.ts
         symbol: SourceServerDirectory.recordHandshake
@@ -679,7 +712,11 @@ nodes:
   - id: persistence.remote-open-workspace-set
     kind: persistence
     label: Remote open workspace set with project/conversation purpose
-    docs: [docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md, docs/remote-workspace-session-unified-settings.md]
+    docs:
+      [
+        docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md,
+        docs/remote-workspace-session-unified-settings.md,
+      ]
     codeSeeds:
       - file: packages/ui/src/root/remoteWorkspaceSessionPersistence.ts
         symbol: buildRemoteWorkspacePersistPatch

@@ -2896,9 +2896,9 @@ describe("IM（消息）侧栏 tab", () => {
     expect(
       isSidePaneTabVisibleInScope(tab!, { workspaceKey: "/tmp/ws", ownerTaskId: "task-b" }),
     ).toBe(true);
-    expect(
-      isSidePaneTabVisibleInScope(tab!, { workspaceKey: "/tmp/ws", ownerTaskId: null }),
-    ).toBe(true);
+    expect(isSidePaneTabVisibleInScope(tab!, { workspaceKey: "/tmp/ws", ownerTaskId: null })).toBe(
+      true,
+    );
     expect(first.activeTabId).toBe(tab!.id);
 
     const again = openMessagesSidePane(first, {
