@@ -43,9 +43,10 @@ import {
   type WebRemoteControlIpcManager,
 } from "./desktopWebRemoteControlIpc.js";
 import { openFileUrlInDefaultApp, openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+// on 回调的未定义引用会弹出阻塞 Main 的原生错误框；三个入口必须显式绑定同一 view owner。
 import {
-  cancelEnterpriseLoginView,
   openEnterpriseLoginView,
+  cancelEnterpriseLoginView,
   updateEnterpriseLoginView,
 } from "./enterpriseLoginView.js";
 

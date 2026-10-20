@@ -763,8 +763,10 @@ function isExcludedRelativePath(relativePath: string): boolean {
 
 function shouldApplyLogExportRetention(archivePath: string): boolean {
   const normalizedArchivePath = normalizeArchivePath(archivePath);
+  // UWork 手动归档已使用新前缀；只识别旧标签会绕过 CLI 日志的 3 天保留窗口。
   if (
     normalizedArchivePath.startsWith("logs/") ||
+    normalizedArchivePath.startsWith(".uwork/cli/log/") ||
     normalizedArchivePath.startsWith(".zcode/cli/log/")
   ) {
     return true;

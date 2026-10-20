@@ -21,6 +21,10 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
 
 ## 验收
 
+### 2026-10-18 测试装配约束
+
+主进程测试通过受控环境变量为 `resolveDesktopHomePath` 提供临时基准目录；服务测试同时使用 `setDataBaseDir`，清理时恢复全部覆盖。bootstrap 不再接受废弃的 home 参数。用户级 fixture 与断言均使用 `.uwork`，项目级 `.zcode` 保留。手动导出归档标签使用 `.uwork`，反馈归档既有 `.zcode/cli`、`.zcode/computer-use/run` 标签暂保留兼容；两者均从 UWork 源目录提供数据。手动导出的 3 天 CLI 日志窗口同时识别当前与历史归档前缀，继续验证脱敏、凭据排除和时间窗口，不能通过跳过验证或恢复上游目录使测试变绿。
+
 - 自动化验收入口为 `scripts/test/uworkBranding.test.ts`，由桌面发布 CI 的行为测试步骤执行。Desktop Main 的 `desktopRuntimeEnv` 唯一负责 Electron 应用名、userData 与 sessionData；服务路径 API 唯一负责用户级数据根；测试不增加目录写入或迁移逻辑。
 - Node 测试执行源码中的运行时身份与路径初始化声明，以 Electron appData 为受控边界：正式、开发、预览模式分别返回 `UWork`、`UWork Dev`、`UWork Preview`，默认 sessionData 为对应 userData 下的 `session`，均不落入 `ZCode*` 目录。
 - 保留既有显式覆盖接口：`ZCODE_DESKTOP_APPLICATION_NAME`、`ZCODE_DESKTOP_USER_DATA_DIR`、`ZCODE_DESKTOP_SESSION_DATA_DIR` 优先于默认值；启用 `ZCODE_DESKTOP_USE_ELECTRON_DEFAULT_USER_DATA` 时不覆盖 Electron 默认目录，显式 userData 仍优先。
@@ -49,6 +53,28 @@ UWork 使用自己的用户级数据根，**不迁移**上游 ZCode 的任何既
 旧根 → 临时目标 → 校验文件内容 → 重定位元数据 → 原子激活目标 → 保存 bootstrap 设置 → 重启读者。旧根始终保留；复制/校验失败不切换设置。非空目标拒绝并提示选空目录，不默默丢弃目标或旧数据。源/目标嵌套拒绝。验收覆盖目标冲突、复制失败、MCP 增改删与重启、所有路径优先级。
 
 路径键迁移仅适用于 cli/config.json 的 skills（规范化 SKILL.md 绝对路径 → enable）和 command（命令文件绝对路径 → enable）两个受控映射。普通对象键、工作区路径和共享 .agents 路径保持原样；UWork 根内键重定位后原禁用状态必须保持。技能配置读写在调用时解析有效 CLI 根，避免 bootstrap 前导入缓存旧路径。
+
+## Subagent 显式用户目录隔离（2026-10-18）
+
+- `SubagentsService({ homeDir })` 的显式目录是实例级隔离边界：用户 agents、state、CLI 配置与插件启停全部从 `homeDir/.uwork` 解析，不能读取进程真实用户目录或另一实例的配置。无显式目录时继续使用服务公开路径 API，保留运行时数据根与显式 CLI storage root 的优先级。
+- CLI 配置中的 `storage.dir` 继续决定 agents/state/plugin cache 的存储根，`~/` 相对于实例的 homeDir 展开；插件启停仍从该实例的 CLI 配置读取。工作区 `.zcode/agents` 保持项目约定。
+- 路径解析器唯一拥有目录选择；Settings 写入与 Host watcher 复用同一解析结果，不增加模型回退或配置写入路径。父轮读取完整快照后固定 definitions，修改配置在下一父轮生效；已启动子任务保留原选择。
+- 回归覆盖：两个显式 homeDir 的配置、内置模型覆盖、用户 profile、插件启停互相隔离；未指定 homeDir 使用运行时路径；测试样例不能出现在真实用户目录。无效显式 provider 仍返回 `provider-not-found`。
+
+```mermaid
+sequenceDiagram
+    participant Caller as Settings / 测试实例
+    participant Paths as Subagent 路径解析器
+    participant Disk as 实例目录
+    participant Host as Host snapshot
+    participant Parent as CLI 父轮
+    Caller->>Paths: 显式 homeDir / 默认运行时根
+    Paths-->>Caller: 同一实例的 config、agents、state 路径
+    Caller->>Disk: 保存 profile / 模型覆盖
+    Disk-->>Host: watcher 发布完整快照
+    Parent->>Host: 新父轮 readRuntimeConfig
+    Host-->>Parent: 固定本轮 definitions
+```
 
 ## 上游同步回归修复（2026-10-14）
 

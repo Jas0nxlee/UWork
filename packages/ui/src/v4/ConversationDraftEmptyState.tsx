@@ -1,5 +1,5 @@
 /**
- * 草稿态空态问候：时间问候语 + ZCode Logo。
+ * 草稿态空态问候：时间问候语 + UCAS 背景标识。
  * 自旧版 ChatView/ChatViewEmptyState.tsx 恢复（该组件随旧 ChatView 删除，
  * i18n key `chat.empty.greeting.*` 一直保留）；边界时刻自动换档逻辑保真。
  * 手机远控复用同一组件，但继续保留 20px 紧凑标题；桌面草稿首页才按标题自身宽度适配。
@@ -11,7 +11,8 @@ import {
   useRef,
   useState,
 } from "react";
-import darkEmptyStateLogoUrl from "@/assets/Z.svg";
+// 上游合并曾把深色资源恢复为 Z.svg，导致浅色为 UCAS、深色为 Z；两种主题必须遵守 UWork 品牌规范。
+import darkEmptyStateLogoUrl from "@/assets/UCAS.svg";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
@@ -246,7 +247,7 @@ export function ConversationDraftEmptyState({
 function ZCodeEmptyStateLogo({ className }: { className?: string }) {
   return (
     <>
-      {/* 修复原因：夜间资源已自带渐变和透明度，公共容器叠加遮罩会让它重复变淡；渐隐效果只属于浅色线框。 */}
+      {/* 两种主题共用外层渐隐遮罩，保持 UCAS 下半部淡出和问候语层级。 */}
       <svg
         aria-hidden="true"
         className={cn(className, "opacity-70 dark:hidden")}
@@ -268,7 +269,7 @@ function ZCodeEmptyStateLogo({ className }: { className?: string }) {
           UCAS
         </text>
       </svg>
-      {/* 深色资源包含专用渐变与模糊效果，不能通过 currentColor 复刻；主题类保证两套 Logo 互斥显示。 */}
+      {/* 深色 UCAS 资源自带弱化渐变；主题类保证两套标识互斥显示。 */}
       <img
         aria-hidden="true"
         className={cn(className, "hidden dark:block")}

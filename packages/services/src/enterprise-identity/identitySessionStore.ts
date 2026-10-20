@@ -12,6 +12,11 @@ export interface IdentitySessionWrite {
 }
 export interface IdentitySessionStore {
   read(): Promise<IdentitySessionRecord>;
+  /** 与退出/切换共用身份事务；只允许仍属于同一会话代际的本机副作用提交。 */
+  withCurrentSession<T>(
+    expected: IdentitySessionRecord,
+    operation: (current: IdentitySessionRecord) => Promise<T>,
+  ): Promise<T | undefined>;
   write(
     session: EnterpriseIdentitySession | null,
     expectedRevision: number | undefined,
@@ -31,6 +36,20 @@ const recordSchema = z
   })
   .strict();
 const SHARED_KEY = "enterprise-identity:shared-session";
+
+export function matchesSessionRecord(
+  current: IdentitySessionRecord,
+  expected: IdentitySessionRecord,
+) {
+  if (current.revision !== expected.revision) return false;
+  if (!current.session || !expected.session) return current.session === expected.session;
+  // 续期只换 Token，不换代际；退出后重新登录即使同账号同 Token 也必须失效旧操作。
+  return (
+    current.session.profile.id === expected.session.profile.id &&
+    current.session.profile.tenantId === expected.session.profile.tenantId &&
+    current.session.profile.provider === expected.session.profile.provider
+  );
+}
 
 /** 加密会话是设备事实源；文件锁同时覆盖版本比较、写入和取消后的回滚。 */
 export function createSharedIdentitySessionStore(
@@ -74,6 +93,11 @@ export function createSharedIdentitySessionStore(
     });
   return {
     read: () => transaction(async () => (await readUnlocked()).record),
+    withCurrentSession: (expected, operation) =>
+      transaction(async () => {
+        const current = (await readUnlocked()).record;
+        return matchesSessionRecord(current, expected) ? operation(current) : undefined;
+      }),
     write: (session, revision, isCurrent, expectedToken) =>
       mutate(session, revision, expectedToken, false, isCurrent),
     renew: (session, expected, isCurrent) =>
@@ -127,6 +151,11 @@ export function createLocalIdentitySessionStore(
     });
   return {
     read: () => transaction(read),
+    withCurrentSession: (expected, operation) =>
+      transaction(async () => {
+        const current = await read();
+        return matchesSessionRecord(current, expected) ? operation(current) : undefined;
+      }),
     write,
     renew: (session, expected, isCurrent) =>
       write(session, expected.revision, isCurrent, expected.session?.token, true),

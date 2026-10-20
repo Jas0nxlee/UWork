@@ -13,12 +13,38 @@
 - 包根解析必须略过仅声明 `type=commonjs` 的内部 package.json，向上找到具名包根，保留真实 exports 和依赖声明；不能把 `build/cjs` 或 `umd` 当成整个包复制。
 - `v3.15.3` 修正 macOS DMG 的遗留品牌背景：普通与 Retina 素材均显示 `UWORK`，保持原安装拖拽布局。发布后核对实际 macOS arm64/x64 DMG 内的 `.background.tiff` 与本次素材一致；不覆盖已经公开的 v3.15.2 文件。
 - `v3.16.0` 发布原 PR #2/#3 与审查修复：公开 SkillHub 技能源、受信市场绑定、统一 UWork CLI/MCP/Agent 数据根、完整目录迁移以及多组织登录的并发与持久化修复。只有最新 PR head 经检查、复核并合入 `uwork`，且最终合并结果通过检查后才创建新版本标签。
+- `v3.16.1` 发布上游同步后的集成修复、原生登录配置与回调归属、企业身份变更下的网关写入校验、HTTP 绑定鉴权、子 Agent 配置隔离和 CLI 日志保留窗口修复。版本提交仅包含根版本、发布说明及本契约，保留无关本地改动；正常 pre-push hook 通过后推送分支与不可变标签，沿用五平台构建、启动检查、依赖审计与完整 Release 汇总门禁。
+- `v3.16.1` 的 Windows 构建因 Git 换行转换破坏固定资源哈希而失败，未公开 Release；保留失败标签。`v3.16.2` 包含相同功能修复和原始字节检出规则，完整性与五平台发布门禁不变。
+- `v3.16.2` 未公开：Windows 生产 fuse 与旧 Playwright Electron 启动通道不兼容；`v3.16.3` 保持正式包安全设置，使用 Chromium CDP 验收原始产物，原生 view 归属由独立 fixture 验证，保留前序标签及失败证据。
+- `v3.16.3` 未公开：Linux fixture 缺少与既有安装包测试一致的启动参数，且真正的安装包验收捕获 Main 登录 IPC 漏导入造成的同步错误框。`v3.16.4` 修复接线并执行真实回调回归，保持所有五平台构建、原始资源校验和安全设置。
+- `v3.16.4` 未公开：Windows 正式包功能验收通过，但私有目录清理遇到 EBUSY；Linux ARM64 原生 fixture 在视口就绪前测量几何。`v3.16.5` 加入有限文件删除重试与视口事实检查，保留原断言、前序标签及五平台完整发布门禁。
+- `v3.16.6` 修复首页深色主题误引用上游 Z 标识的品牌回归，恢复现有 UCAS SVG。发布检查必须执行 `v4ConversationDraftEmptyStateLogo.test.ts`，覆盖桌面与手机紧凑布局的深浅主题资源，禁止仅凭品牌 data 属性判断正确。保留 v3.16.5 及既有五平台构建、启动、签名和完整性门禁。
 - 打包身份配置兼容现有单组织公开配置，不凭客户端支持多组织宣称三个组织已经启用。stage 成功后仅记录规范化配置的组织数量，不输出组织标识、地址、配置内容或凭据。数量证据来自当前构建的日志。
 - 发布说明须明确公开 SkillHub 使用匿名下载，不能代表组织私有技能授权；多租户生产启用仍依赖服务端组织绑定唯一约束、空 Host 拒绝和 review 组织归属校验等前置项。客户端发布不是生产企业验收，本次不实施独立后端仓库的改造。
 - 隔离启动测试与正式打包共用 `resolveDesktopProductIdentity` 的程序名；Linux 的兼容内部程序名保留，不依据可见 UWork 品牌猜测路径。
 - `uwork` push / PR 执行 lint、typecheck、架构与相关服务测试；版本标签或手工工作流执行五个原生构建：macOS arm64/x64、Windows x64、Linux x64/arm64。Node/pnpm 分别遵循 `mise.toml` 和 `packageManager`，Actions 固定完整提交 SHA。
 - 构建复用现有 `bundle.mjs`。桌面安装包不依赖远程 mock CDN，CI 使用 `ZCODE_SKIP_REMOTE_ASSETS=1`，保留本地 Agent、插件、原生搜索工具、依赖闭包和平台校验。依赖和 Electron 从公开官方来源获取；随包企业身份配置仅接受公开字段，个人凭据不进入产物。
 - Electron runtime 版本唯一读取 `packages/desktop/package.json` 的固定版本，开发、测试、安装包及 Windows Helper 校验不得另行硬编码。打包配置必须能在未暂存企业身份配置时正常加载；配置存在时从 `.release-config/enterprise-identity.json` 复制到 `resources/config/enterprise-identity.json`，设置 `UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG=1` 而配置缺失时在打包开始前拒绝构建。
+- Gen UI 的固定哈希资源（visualize assets 与受 runtime manifest 引用的 tweak runtime）按原始字节检出；Windows `core.autocrlf=true` 不能改写换行。完整性校验仍比较原始 SHA256，不归一化内容、不更新哈希去适配损坏资源。回归通过真实临时 Git index 和 Windows 换行配置检出全部受清单约束的文件，再逐一校验哈希。
+- 隔离安装包启动检查输出阶段标签，首次功能断言失败必须在清理前记录，不能由 Electron 关闭等待遮住原错误。校验步骤最多运行 10 分钟，到期失败；不以强杀后继续通过代替正常退出或功能验收。CI 启用 Playwright API 诊断以定位启动/页面/原生视图边界，不输出企业配置或凭据。
+- 正式 Windows 包保持 `enableNodeCliInspectArguments=false`。安装包测试用子进程启动未改写的产物，经 Chromium CDP 连接真实 Renderer，不依赖 Playwright Electron 的 Node Inspector 通道。隔离目录同时覆盖应用数据、userData 与 sessionData；清理仅终止该测试自己启动的进程树，清理不是产品正常退出验收。真实安装包验证登录按钮、内嵌二维码 surface、新建与取消的授权 WebContents target、唯一 UWork 主页面；窗口归属与不新建 BrowserWindow 继续由同版本 Electron 的原生 view fixture 验证。测试不启用正式包 fuse、不增加产品调试接口，也不删除功能断言。
+- 非特权 Linux CI 的原生 view fixture 与安装包验收使用相同的 `--no-sandbox` 测试参数，避免未配置 root-owned SUID helper 时在断言前退出；该参数不写入正式安装包或用户启动配置。其他平台不追加此参数。
+- 测试进程树回收成功后，Windows 临时 Cookie 文件可能短暂返回 EBUSY。私有测试目录删除使用 `fs.rm` 的有限重试（10 次、200ms 线性退避），耗尽仍失败；不以固定等待或吞掉清理错误替代进程归属验证及功能验收。
+- 原生 iframe 布局 fixture 先观察其 CSS 视口与实际 view bounds / zoom 一致，再执行原有几何断言；样式节点存在本身不是视口就绪证据。保留居中误差小于 2 像素、二维码/说明不裁剪和全部主题/宽度/缩放用例，不扩大容差。
+- 原生 view fixture 在各平台完整安装包构建前运行，先验证快速的源码/平台接线；正式包 CDP 验收仍在打包后执行。任一阶段失败均保留发布阻断。
+
+```mermaid
+sequenceDiagram
+    participant Test as 布局 fixture
+    participant Main as Main view owner
+    participant Frame as 授权 frame
+    Test->>Main: 设置 surface 与 zoom
+    Main->>Frame: bounds / viewport IPC 与样式注入
+    Test->>Frame: 短快照读取（不在 frame 内挂起等待）
+    Frame-->>Test: style 已存在且 CSS 视口等于 bounds / zoom
+    Test->>Test: 执行原有居中、裁剪、主题与缩放断言
+```
+
 - Windows 的 `.zcode-install-manifest` 由桌面打包流程独立生成，记录最终安装目录内的程序所有权。Computer Use 使用开源占位包或真实 producer 都必须生成清单；只有 Helper 的资源准备与校验依赖 producer，不能让可选能力改变升级清理合同。
 - macOS 输出 DMG/ZIP，Windows 输出 NSIS EXE，Linux 输出 AppImage/DEB/RPM/Arch 包。公开 CI 无开发者证书时使用明确启用的 macOS ad-hoc 签名并验证资源封印；不声称具有 Apple 公证或 Windows 发布者签名。
 - macOS 的 ad-hoc 打包在签名前清理 appOutDir 中的 Finder/resource-fork 扩展属性；只处理当前生成的应用副本，不修改用户数据或原有安装。

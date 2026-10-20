@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractBootstrapDataBaseDir,
   resolveBootstrapSettingsFile,
 } from "../src/main/desktopDataBaseDirBootstrap.js";
 
 describe("desktopDataBaseDirBootstrap", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("应从 bootstrap setting 中提取并裁剪 dataBaseDir", () => {
     expect(
       extractBootstrapDataBaseDir({
@@ -20,10 +21,12 @@ describe("desktopDataBaseDirBootstrap", () => {
   });
 
   it("应拼出默认 bootstrap setting 路径", () => {
-    const result = resolveBootstrapSettingsFile("/Users/tester");
+    // bootstrap 只接受环境路径；旧 home 参数已移除，不能读到开发机配置。
+    vi.stubEnv("UWORK_DATA_BASE_DIR", "");
+    vi.stubEnv("ZCODE_DATA_BASE_DIR", "");
+    vi.stubEnv("ZCODE_DESKTOP_HOME_DIR", "/Users/tester");
+    const result = resolveBootstrapSettingsFile();
     // Windows 下 path.join 使用反斜杠，统一为正斜杠后再比较
-    expect(result.replace(/\\/g, "/")).toBe(
-      "/Users/tester/.zcode/v2/setting.json",
-    );
+    expect(result.replace(/\\/g, "/")).toBe("/Users/tester/.uwork/v2/setting.json");
   });
 });

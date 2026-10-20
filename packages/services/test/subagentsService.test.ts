@@ -31,7 +31,7 @@ async function writeOfficialPluginFixture(
 ): Promise<string> {
   const root = join(
     home,
-    ".zcode",
+    ".uwork",
     "cli",
     "plugins",
     "cache",
@@ -39,7 +39,7 @@ async function writeOfficialPluginFixture(
     pluginName,
     version,
   );
-  await mkdir(join(home, ".zcode", "cli", "plugins"), { recursive: true });
+  await mkdir(join(home, ".uwork", "cli", "plugins"), { recursive: true });
   await mkdir(join(root, ".zcode-plugin"), { recursive: true });
   await mkdir(join(root, "agents"), { recursive: true });
   await writeFile(
@@ -76,7 +76,7 @@ describe("subagent markdown helpers", () => {
     const home = await makeTempHome();
     const workspacePath = join(home, "workspace");
     for (const [scope, root] of [
-      ["user", join(home, ".zcode", "agents")],
+      ["user", join(home, ".uwork", "agents")],
       ["project", join(workspacePath, ".zcode", "agents")],
     ] as const) {
       await mkdir(join(root, "nested"), { recursive: true });
@@ -116,7 +116,7 @@ describe("subagent markdown helpers", () => {
     // cache/zcode-plugins-official 且没有安装记录，documents:visual-judge 在 Settings 永远不可见。
     const home = await makeTempHome();
     const workspacePath = join(home, "workspace");
-    await writeOfficialPluginFixture(home, "documents", "0.1.9", "visual-judge");
+    const oldRoot = await writeOfficialPluginFixture(home, "documents", "0.1.9", "visual-judge");
     const newRoot = await writeOfficialPluginFixture(home, "documents", "0.1.10", "visual-judge");
     const invalidRoot = await writeOfficialPluginFixture(home, "documents", "99.0", "visual-judge");
     await writeFile(
@@ -131,7 +131,7 @@ describe("subagent markdown helpers", () => {
     // browser-use 默认启用，但被用户「卸载」进入 suppressedBuiltins，同样不能贡献 agent。
     await writeOfficialPluginFixture(home, "browser-use", "0.5.0", "browser-auditor");
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: {
           suppressedBuiltins: ["browser-use@zcode-plugins-official"],
@@ -153,11 +153,12 @@ describe("subagent markdown helpers", () => {
       scope: "user",
       source: "plugin",
     });
+    expect(result.pluginAgents[0]?.path).not.toBe(join(oldRoot, "agents", "visual-judge.md"));
     expect(
       result.agents.filter((agent) => agent.source === "plugin").map((agent) => agent.name),
     ).toEqual(["documents:visual-judge", "visual-judge"]);
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: {
           enabledPlugins: { "documents@zcode-plugins-official": false },
@@ -205,7 +206,7 @@ describe("subagent markdown helpers", () => {
       "utf8",
     );
     await writeFile(
-      join(home, ".zcode", "cli", "plugins", "installed_plugins.json"),
+      join(home, ".uwork", "cli", "plugins", "installed_plugins.json"),
       JSON.stringify({
         version: 1,
         plugins: [
@@ -222,7 +223,7 @@ describe("subagent markdown helpers", () => {
       "utf8",
     );
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: { enabledPlugins: { "documents@zcode-plugins-official": true } },
       }),
@@ -236,7 +237,7 @@ describe("subagent markdown helpers", () => {
       join(installedRoot, "agents", "visual-judge.md"),
     ]);
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: {
           enabledPlugins: { "documents@zcode-plugins-official": true },
@@ -246,7 +247,7 @@ describe("subagent markdown helpers", () => {
     );
     expect((await service.list({ workspacePath, provider: "glm" })).pluginAgents).toEqual([]);
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: { enabledPlugins: { "documents@zcode-plugins-official": false } },
       }),
@@ -257,7 +258,7 @@ describe("subagent markdown helpers", () => {
   it("插件覆盖按稳定身份原子保存，别名一致，清除后回到未修改的插件默认", async () => {
     const home = await makeTempHome();
     const pluginRoot = join(home, "installed", "fixture");
-    const pluginStorage = join(home, ".zcode", "cli", "plugins");
+    const pluginStorage = join(home, ".uwork", "cli", "plugins");
     const pluginId = "fixture@personal";
     const agentId = "plugin:fixture@personal:visual-judge";
     const path = join(pluginRoot, "agents", "visual-judge.md");
@@ -279,7 +280,7 @@ describe("subagent markdown helpers", () => {
       }),
     );
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: { enabledPlugins: { [pluginId]: true } },
       }),
@@ -540,9 +541,9 @@ describe("subagent storage roots", () => {
   it("uses runtime storage.dir agents root for user subagents", async () => {
     const home = await makeTempHome();
     const storageRoot = join(home, "custom-storage");
-    await mkdir(join(home, ".zcode", "cli"), { recursive: true });
+    await mkdir(join(home, ".uwork", "cli"), { recursive: true });
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({ storage: { dir: storageRoot } }),
       "utf8",
     );
@@ -598,7 +599,7 @@ describe("createSubagentsService", () => {
   it("损坏的 Subagent state 不阻塞整个会话启动，也不覆盖原文件", async () => {
     const home = await makeTempHome();
     const path = await resolveSubagentStateFile({ homeDir: home });
-    await mkdir(join(home, ".zcode", "v2"), { recursive: true });
+    await mkdir(join(home, ".uwork", "v2"), { recursive: true });
     const original = '{"builtInModelOverrides":';
     await writeFile(path, original);
     await expect(
@@ -610,7 +611,7 @@ describe("createSubagentsService", () => {
   it("启动准备将旧内置选择落盘，让独立 Agent loader 不必等待用户编辑", async () => {
     const home = await makeTempHome();
     const statePath = await resolveSubagentStateFile({ homeDir: home });
-    await mkdir(join(home, ".zcode", "v2"), { recursive: true });
+    await mkdir(join(home, ".uwork", "v2"), { recursive: true });
     const legacy = {
       builtInModelOverrides: { Explore: "custom:builtin%3Azai-coding-plan:GLM-5.3-Flash" },
       builtInThoughtLevelOverrides: { Explore: "high" },
@@ -638,7 +639,7 @@ describe("createSubagentsService", () => {
   it("并发启动导入与新版手动清空，写队列保留用户结果", async () => {
     const home = await makeTempHome();
     const statePath = await resolveSubagentStateFile({ homeDir: home });
-    await mkdir(join(home, ".zcode", "v2"), { recursive: true });
+    await mkdir(join(home, ".uwork", "v2"), { recursive: true });
     await writeFile(
       statePath,
       JSON.stringify({ builtInModelOverrides: { Explore: "custom:builtin%3Azai-coding-plan:m" } }),
@@ -657,7 +658,7 @@ describe("createSubagentsService", () => {
   it("旧内置模型覆盖导入并随正常保存固定；旧字段仅保留供回滚", async () => {
     const home = await makeTempHome();
     const statePath = await resolveSubagentStateFile({ homeDir: home });
-    await mkdir(join(home, ".zcode", "v2"), { recursive: true });
+    await mkdir(join(home, ".uwork", "v2"), { recursive: true });
     const legacy = {
       builtInModelOverrides: { Explore: "custom:builtin%3Azai-coding-plan:GLM-5.3-Flash" },
       builtInThoughtLevelOverrides: { Explore: "high" },
@@ -809,10 +810,10 @@ describe("createSubagentsService", () => {
   it("settings user-only list hides workspace agents but keeps built-ins and user agents", async () => {
     const home = await makeTempHome();
     const workspacePath = join(home, "workspace");
-    await mkdir(join(home, ".zcode", "agents"), { recursive: true });
+    await mkdir(join(home, ".uwork", "agents"), { recursive: true });
     await mkdir(join(workspacePath, ".zcode", "agents"), { recursive: true });
     await writeFile(
-      join(home, ".zcode", "agents", "code-reviewer.md"),
+      join(home, ".uwork", "agents", "code-reviewer.md"),
       serializeSubagentMarkdown({
         name: "code-reviewer",
         description: "提交前审查代码",
@@ -859,6 +860,8 @@ describe("createSubagentsService", () => {
       readOnly: false,
     });
     expect(result.agents.find((agent) => agent.name === "general-purpose")?.readOnly).toBe(true);
+    expect(result.agents.find((agent) => agent.name === "general-purpose")?.color).toBe("blue");
+    expect(result.agents.find((agent) => agent.name === "Explore")?.color).toBe("cyan");
     expect(result.agents.find((agent) => agent.name === "code-reviewer")?.readOnly).toBe(false);
   });
 
@@ -867,7 +870,7 @@ describe("createSubagentsService", () => {
     const workspacePath = join(home, "workspace");
     const pluginRoot = join(
       home,
-      ".zcode",
+      ".uwork",
       "cli",
       "plugins",
       "cache",
@@ -875,11 +878,11 @@ describe("createSubagentsService", () => {
       "feature-dev",
       "0.0.0",
     );
-    await mkdir(join(home, ".zcode", "cli", "plugins"), { recursive: true });
+    await mkdir(join(home, ".uwork", "cli", "plugins"), { recursive: true });
     await mkdir(join(pluginRoot, ".claude-plugin"), { recursive: true });
     await mkdir(join(pluginRoot, "agents"), { recursive: true });
     await writeFile(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({
         plugins: {
           enabledPlugins: {
@@ -890,7 +893,7 @@ describe("createSubagentsService", () => {
       "utf8",
     );
     await writeFile(
-      join(home, ".zcode", "cli", "plugins", "installed_plugins.json"),
+      join(home, ".uwork", "cli", "plugins", "installed_plugins.json"),
       JSON.stringify({
         version: 1,
         plugins: [
@@ -939,6 +942,98 @@ tools:
     );
     expect(result.pluginAgents.every((agent) => agent.source === "plugin")).toBe(true);
     expect(result.pluginAgents.every((agent) => agent.readOnly)).toBe(true);
+  });
+
+  it("lists built-in official plugin agents from the official cache without an install record", async () => {
+    // Bug 根因：discoverPluginAgents 只读 installed_plugins.json，内置官方插件由 CLI seed 到
+    // cache/zcode-plugins-official 且没有安装记录，documents:visual-judge 在 Settings 永远不可见。
+    const home = await makeTempHome();
+    const workspacePath = join(home, "workspace");
+    const oldRoot = await writeOfficialPluginFixture(home, "documents", "0.1.2", "visual-judge");
+    const newRoot = await writeOfficialPluginFixture(home, "documents", "0.1.4", "visual-judge");
+    await mkdir(join(newRoot, "..", "0.1.4.backup-1"), { recursive: true });
+    await mkdir(join(newRoot, "..", ".seed-lock"), { recursive: true });
+    // ios-simulator 不在默认启用集合里，且 config 没有显式启用，必须被忽略。
+    await writeOfficialPluginFixture(home, "ios-simulator", "0.2.0", "simulator-runner");
+    // browser-use 默认启用，但被用户「卸载」进入 suppressedBuiltins，同样不能贡献 agent。
+    await writeOfficialPluginFixture(home, "browser-use", "0.5.0", "browser-auditor");
+    await writeFile(
+      join(home, ".uwork", "cli", "config.json"),
+      JSON.stringify({
+        plugins: {
+          suppressedBuiltins: ["browser-use@zcode-plugins-official"],
+        },
+      }),
+      "utf8",
+    );
+    const service = createSubagentsService({ homeDir: home, isDesktopRuntime: true });
+
+    const result = await service.list({ workspacePath, provider: "glm" });
+
+    expect(result.pluginAgents.map((agent) => agent.name)).toEqual(["documents:visual-judge"]);
+    expect(result.pluginAgents[0]).toMatchObject({
+      id: "plugin:documents@zcode-plugins-official:visual-judge",
+      pluginId: "documents@zcode-plugins-official",
+      pluginName: "documents",
+      // 多版本缓存共存时取数字感知最新的版本目录，而不是字典序首项。
+      path: join(newRoot, "agents", "visual-judge.md"),
+      scope: "user",
+      source: "plugin",
+    });
+    expect(result.pluginAgents[0]?.path).not.toBe(join(oldRoot, "agents", "visual-judge.md"));
+    expect(
+      result.agents.filter((agent) => agent.source === "plugin").map((agent) => agent.name),
+    ).toEqual(["documents:visual-judge", "visual-judge"]);
+  });
+
+  it("prefers the install record over the official cache for the same plugin id", async () => {
+    const home = await makeTempHome();
+    const workspacePath = join(home, "workspace");
+    await writeOfficialPluginFixture(home, "documents", "0.1.4", "visual-judge");
+    const installedRoot = join(home, "installed", "documents");
+    await mkdir(join(installedRoot, ".zcode-plugin"), { recursive: true });
+    await mkdir(join(installedRoot, "agents"), { recursive: true });
+    await writeFile(
+      join(installedRoot, ".zcode-plugin", "plugin.json"),
+      JSON.stringify({ name: "documents" }),
+      "utf8",
+    );
+    await writeFile(
+      join(installedRoot, "agents", "visual-judge.md"),
+      "---\nname: visual-judge\ndescription: installed visual-judge\n---\ninstalled prompt",
+      "utf8",
+    );
+    await writeFile(
+      join(home, ".uwork", "cli", "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: "documents@zcode-plugins-official",
+            name: "documents",
+            marketplace: "zcode-plugins-official",
+            version: "9.9.9",
+            installPath: installedRoot,
+            scope: "user",
+          },
+        ],
+      }),
+      "utf8",
+    );
+    await writeFile(
+      join(home, ".uwork", "cli", "config.json"),
+      JSON.stringify({
+        plugins: { enabledPlugins: { "documents@zcode-plugins-official": true } },
+      }),
+      "utf8",
+    );
+    const service = createSubagentsService({ homeDir: home, isDesktopRuntime: true });
+
+    const result = await service.list({ workspacePath, provider: "glm" });
+
+    expect(result.pluginAgents.map((agent) => agent.path)).toEqual([
+      join(installedRoot, "agents", "visual-judge.md"),
+    ]);
   });
 
   it("persists plugin agent model overrides by agent id and echoes them in list", async () => {
@@ -1020,7 +1115,7 @@ tools:
       },
     });
 
-    expect(result.agent.path).toBe(join(home, ".zcode", "agents", "code-reviewer.md"));
+    expect(result.agent.path).toBe(join(home, ".uwork", "agents", "code-reviewer.md"));
     await expect(readFile(result.agent.path, "utf8")).resolves.toContain("你是严格的代码审查员。");
   });
 

@@ -2,8 +2,9 @@
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { hostname, userInfo } from "node:os";
+import { isIP } from "node:net";
 import * as nodePath from "node:path";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, relative, resolve, sep } from "node:path";
 import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
@@ -186,7 +187,8 @@ function createServerInfo(options: HttpServerOptions): ServerRemoteInfo {
       : {}),
     version: ZCODE_VERSION,
     protocolVersion: SERVER_REMOTE_PROTOCOL_VERSION,
-    authRequired: options.authRequired ?? Boolean(readTrimmedEnv("ZCODE_SERVER_TOKEN")),
+    // 认证事实必须与当前 HTTP 中间件一致，不能用未装配的环境变量或展示提示冒充门禁。
+    authRequired: Boolean(options.authToken?.trim()),
     workspaces: resolveServerWorkspaces(options),
     compatibility: ZCODE_COMPATIBILITY_MANIFEST,
     migration: { failedPathCount: options.migrationFailedPathCount ?? 0 },
@@ -344,11 +346,20 @@ export function createHttpServer(
   port = 3030,
   options: HttpServerOptions = {},
 ) {
+  const host = options.host?.trim() || "127.0.0.1";
+  const authToken = options.authToken?.trim();
+  const loopback =
+    host.toLowerCase() === "localhost" ||
+    host === "::1" ||
+    (isIP(host) === 4 && host.startsWith("127."));
+  // 省略 hostname 会绑定所有网卡；显式对外监听也必须先具备认证，不能先 listen 再补校验。
+  if (!loopback && !authToken) {
+    throw new Error("Non-loopback HTTP binding requires an authToken");
+  }
   const app = new Hono();
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   const hostCapabilities = createHostCapabilityStore();
 
-  const authToken = options.authToken?.trim();
   if (authToken) {
     app.use("*", async (c, next) => {
       const pathname = new URL(c.req.url).pathname;
@@ -467,10 +478,11 @@ export function createHttpServer(
     });
   }
 
-  const server = serve({ fetch: app.fetch, hostname: options.host, port }, () => {
+  const server = serve({ fetch: app.fetch, hostname: host, port }, () => {
     const address = server.address();
     const listenPort = typeof address === "object" && address ? address.port : port;
-    const listenHost = options.host?.trim() || "localhost";
+    const boundHost = typeof address === "object" && address ? address.address : host;
+    const listenHost = isIP(boundHost) === 6 ? `[${boundHost}]` : boundHost;
     log(`http://${listenHost}:${listenPort}`);
   });
 

@@ -1866,6 +1866,12 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
         {
           ...initMessage,
           zcodeBuiltinProviderConfigFilePath: resolveZCodeBuiltinProviderConfigFilePath(),
+          // 合并时漏传随包路径，新设备没有本机覆盖就无法初始化企业登录 adapter。
+          enterpriseIdentityBuiltinConfigFilePath: resolveBundledEnterpriseIdentityConfigFilePath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+          }),
         },
         {
           hostProcessLocalEnv,

@@ -7,7 +7,14 @@ Desktop log export keeps recent runtime evidence while avoiding oversized suppor
 Runtime log-like files are filtered by file `mtime` and only exported when they were modified in the last 3 days. This applies to:
 
 - `logs/**`
+- `.uwork/cli/log/**`
 - `.zcode/cli/log/**`
+
+UWork manual export labels its current CLI logs with `.uwork/cli/log`; the 3-day
+window applies to that prefix as well as the legacy archive prefix. Configuration,
+rollout and CUA diagnostic retention remain unchanged. Regression evidence uses
+recent and expired files in the actual UWork source root and asserts the expired
+CLI log is absent from the archive.
 
 Retired proxy traffic capture and provider config directories are not current ZCode runtime log sources. If they still exist on a user's machine, they are treated as legacy data rather than first-class export targets.
 

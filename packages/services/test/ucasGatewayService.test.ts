@@ -165,7 +165,13 @@ function setup(options: {
   };
   const service = createUcasGatewayService({
     store,
-    readIdentitySession: async () => (options.authenticated === false ? null : session),
+    identitySessionStore: {
+      read: async () => ({
+        revision: 0,
+        session: options.authenticated === false ? null : session,
+      }),
+      withCurrentSession: async (expected, operation) => operation(expected),
+    },
     resolveApiBaseUrl: async () => (options.configured === false ? undefined : API_BASE),
     provisioning: provisioning.target,
     fetchImpl,
@@ -237,7 +243,10 @@ test("unauthenticated gateway responses surface as an unauthorized view error", 
   let applied = false;
   const service = createUcasGatewayService({
     store,
-    readIdentitySession: async () => session,
+    identitySessionStore: {
+      read: async () => ({ revision: 0, session }),
+      withCurrentSession: async (expected, operation) => operation(expected),
+    },
     resolveApiBaseUrl: async () => API_BASE,
     provisioning: {
       async apply() {

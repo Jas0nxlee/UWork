@@ -1696,7 +1696,7 @@ export function createLocalServices(options: {
   };
   const ucasGatewayService = createUcasGatewayService({
     store: ucasGatewayStore,
-    readIdentitySession: async () => (await enterpriseIdentitySessionStore.read()).session,
+    identitySessionStore: enterpriseIdentitySessionStore,
     resolveApiBaseUrl: async () => {
       // 非 desktop-local（Web/远控）不启用本机企业配置读取，网关能力保持未配置空态。
       if (options.serviceAuthorityMode !== "desktop-local") return undefined;

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEnterpriseIdentityService } from "../src/enterprise-identity/enterpriseIdentityService.js";
+import type { EnterpriseIdentityPollResult } from "@zcode/shared";
+import {
+  createEnterpriseIdentityService,
+  disposeEnterpriseIdentityService,
+} from "../src/enterprise-identity/enterpriseIdentityService.js";
 
 const id = "fixture-random-state";
 const callback = "https://auth.example.com/callback";
@@ -128,4 +132,136 @@ test("duplicate begin during native exchange reuses attempt and cancellation sti
   await completing;
   assert.equal(values.size, 0);
   assert.equal((await service.getView()).status, "signed-out");
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function setupPollRace(nativeResult?: Promise<typeof session>) {
+  const polled = deferred<EnterpriseIdentityPollResult>();
+  const pollStarted = deferred<void>();
+  const values = new Map<string, string>();
+  let exchanges = 0;
+  const service = createEnterpriseIdentityService({
+    now: () => 1000,
+    credentials: {
+      load: async (key) => values.get(key) ?? null,
+      save: async (key, value) => {
+        values.set(key, value);
+      },
+      delete: async (key) => {
+        values.delete(key);
+      },
+    },
+    adapter: {
+      listOrganizations: () => [],
+      resolveOrganization: () => undefined,
+      start: async () => attempt,
+      poll: async () => {
+        pollStarted.resolve();
+        return polled.promise;
+      },
+      complete: async () => {
+        exchanges++;
+        return nativeResult ?? session;
+      },
+      restore: async () => session,
+    },
+  });
+  return { service, polled, pollStarted, values, count: () => exchanges };
+}
+
+test("native callback arriving during a pending poll commits once, including duplicate callbacks", async () => {
+  const { service, polled, pollStarted, values, count } = setupPollRace();
+  try {
+    await service.beginLogin();
+    const polling = service.pollLogin(id);
+    await pollStarted.promise;
+    const url = `${callback}?code=fixture-code&state=${id}`;
+    const completing = service.completeLogin(id, url);
+    const duplicate = service.completeLogin(id, url);
+
+    polled.resolve({ status: "pending" });
+    const [, result, repeated] = await Promise.all([polling, completing, duplicate]);
+
+    assert.equal(result.view.status, "authenticated");
+    assert.equal(result.committedAttemptId, id);
+    assert.deepEqual(repeated, result);
+    assert.equal(count(), 1);
+    assert.equal(values.size, 1);
+    assert.equal((await service.getView()).profile?.id, session.profile.id);
+  } finally {
+    await disposeEnterpriseIdentityService(service);
+  }
+});
+
+test("a failed in-flight poll does not discard an already received native callback", async () => {
+  const { service, polled, pollStarted, values, count } = setupPollRace();
+  try {
+    await service.beginLogin();
+    const polling = service.pollLogin(id).catch(() => null);
+    await pollStarted.promise;
+    const completing = service.completeLogin(id, `${callback}?code=fixture-code&state=${id}`);
+
+    polled.reject(new Error("fixture temporary poll failure"));
+    const [, result] = await Promise.all([polling, completing]);
+
+    assert.equal(result.view.status, "authenticated");
+    assert.equal(result.committedAttemptId, id);
+    assert.equal(count(), 1);
+    assert.equal(values.size, 1);
+  } finally {
+    await disposeEnterpriseIdentityService(service);
+  }
+});
+
+test("a native callback received after polling authenticates is ignored as a duplicate", async () => {
+  const { service, polled, pollStarted, values, count } = setupPollRace();
+  try {
+    await service.beginLogin();
+    const polling = service.pollLogin(id);
+    await pollStarted.promise;
+    polled.resolve({ status: "authenticated", session });
+    const polledView = await polling;
+    const result = await service.completeLogin(id, `${callback}?code=fixture-code&state=${id}`);
+
+    assert.equal(polledView.status, "authenticated");
+    assert.equal(result.view.status, "authenticated");
+    assert.equal(result.committedAttemptId, null);
+    assert.equal(count(), 0);
+    assert.equal(values.size, 1);
+  } finally {
+    await disposeEnterpriseIdentityService(service);
+  }
+});
+
+test("cancelling during native redemption and an in-flight poll rejects both late results", async () => {
+  const nativeResult = deferred<typeof session>();
+  const { service, polled, pollStarted, values, count } = setupPollRace(nativeResult.promise);
+  try {
+    await service.beginLogin();
+    const polling = service.pollLogin(id);
+    await pollStarted.promise;
+    const completing = service.completeLogin(id, `${callback}?code=fixture-code&state=${id}`);
+
+    await service.cancelLogin(id);
+    polled.resolve({ status: "authenticated", session });
+    nativeResult.resolve(session);
+    const [, result] = await Promise.all([polling, completing]);
+
+    assert.equal(result.view.status, "signed-out");
+    assert.equal(result.committedAttemptId, null);
+    assert.equal((await service.getView()).status, "signed-out");
+    assert.equal(count(), 1);
+    assert.equal(values.size, 0);
+  } finally {
+    await disposeEnterpriseIdentityService(service);
+  }
 });
