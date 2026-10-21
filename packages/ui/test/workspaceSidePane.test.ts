@@ -34,6 +34,7 @@ import {
   openFileManagerSidePane,
   navigateFileManagerSidePane,
   openCodeViewerSidePanes,
+  openMessagesSidePane,
   openTerminalSidePane,
   reorderSidePaneTab,
   resolveActiveTabForOwner,
@@ -2553,6 +2554,8 @@ describe("workspaceSidePane", () => {
         owner: null,
       },
       treemapping: { tab: { ...base, id: "treemapping", type: "treemapping" }, owner: null },
+      // IM（消息）面板同样是应用级的：同一工作区的各对话共用，跨工作区隔离。
+      messages: { tab: { ...base, id: "messages", type: "messages" }, owner: null },
     } satisfies Record<
       WorkspaceSidePaneTab["type"],
       { tab: WorkspaceSidePaneTab; owner: string | null }
@@ -2880,4 +2883,40 @@ it("站点设置独立标签按 workspace/owner/origin 复用，不替换网页"
   expect(
     openBrowserPermissionsSidePane(opened, { ...options, ownerTaskId: "task-b" }).tabs,
   ).toHaveLength(3);
+});
+
+describe("IM（消息）侧栏 tab", () => {
+  it("打开后是可用的全局 tab，重复打开只保留一个", () => {
+    const first = openMessagesSidePane(null, { workspacePath: "/tmp/ws", workspaceKey: "/tmp/ws" });
+    const tab = first.tabs.find((item) => item.type === "messages");
+    expect(tab).toBeDefined();
+    // IM 是应用级 tab：同一个工作区里换一个对话（owner）依然可见，不随某个会话生灭。
+    // 上游用 isSidePaneTabVisibleInScope 取代了 isWorkspaceGlobalSidePaneTab，
+    // 判定同时含 workspaceKey 匹配，所以作用域要带上 tab 自己的 workspaceKey。
+    expect(
+      isSidePaneTabVisibleInScope(tab!, { workspaceKey: "/tmp/ws", ownerTaskId: "task-b" }),
+    ).toBe(true);
+    expect(isSidePaneTabVisibleInScope(tab!, { workspaceKey: "/tmp/ws", ownerTaskId: null })).toBe(
+      true,
+    );
+    expect(first.activeTabId).toBe(tab!.id);
+
+    const again = openMessagesSidePane(first, {
+      workspacePath: "/tmp/ws",
+      workspaceKey: "/tmp/ws",
+    });
+    expect(again.tabs.filter((item) => item.type === "messages")).toHaveLength(1);
+  });
+
+  it("没打开项目（workspaceKey 为空）时依然可见", () => {
+    // 真机上的现象：点了侧栏"消息"入口什么都不出现。
+    // 原因是空 workspaceKey 既不是 null 也不等于当前 key，被 workspace 过滤挡掉了。
+    const opened = openMessagesSidePane(null, { workspacePath: "", workspaceKey: "" });
+    expect(
+      getVisibleSidePaneTabs(opened.tabs, { workspaceKey: null, ownerTaskId: null }),
+    ).toHaveLength(1);
+    expect(
+      getVisibleSidePaneTabs(opened.tabs, { workspaceKey: "/tmp/ws", ownerTaskId: "task-a" }),
+    ).toHaveLength(1);
+  });
 });

@@ -12,6 +12,7 @@
  *   - 每个单元格要给 **空 `a:txBody`**：这样"表格还是可编辑的"——右侧「文本」里一格一条，
  *     用户马上就能填字（也让 `readSlideText` 认得出这些格子）。
  */
+import { setTableGrid } from "./pptTableCellFormat.js";
 import { A_NS, P_NS, writeBack } from "./pptShapes.js";
 
 const TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table";
@@ -63,6 +64,7 @@ export function insertTable(xml: string, input: InsertTableInput): InsertTableRe
   const frame = document.createElementNS(P_NS, "p:graphicFrame");
   const table = document.createElementNS(A_NS, "a:tbl");
   const properties = document.createElementNS(A_NS, "a:tblPr");
+  // 首行突出 / 镶边行：PowerPoint 插表也给这两个开关（渲染器按它上底色）
   properties.setAttribute("firstRow", "1");
   properties.setAttribute("bandRow", "1");
   const grid = document.createElementNS(A_NS, "a:tblGrid");
@@ -113,5 +115,6 @@ export function insertTable(xml: string, input: InsertTableInput): InsertTableRe
   frame.append(transform, graphic);
   tree.append(frame);
 
-  return { xml: writeBack(document), name, bounds };
+  // **新表自带网格线**：插出来是一张"看得见框"的表（写显式的四边线，理由见 setTableGrid 的注释）
+  return { xml: setTableGrid(writeBack(document), name, true), name, bounds };
 }

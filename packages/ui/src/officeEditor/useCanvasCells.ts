@@ -5,7 +5,7 @@
  * 与已经算好的绝对 `bounds`），所以"点某一格"不用自己按 gridCol/tr 累加宽度。
  * 只把**可点选的表格**（本页 XML 里有、名字对得上的）算进来——渲染器也会画从版式继承来的东西。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EMU_PER_PX, type CanvasBox } from "./pptCanvasGeometry.js";
 import type { PptxShape } from "./pptShapes.js";
 import type { PptxPreviewState } from "./usePptxPreview.js";
@@ -27,6 +27,13 @@ export function useCanvasCells(input: {
 }) {
   const { preview, pageIndex, shapes, layerRef, scale, toPx } = input;
   const [cells, setCells] = useState<CanvasCell[]>([]);
+  /**
+   * 上一份**非空**的单元格索引。命中测试用它可以扛住"预览正在重算"的那一帧：
+   * 那一帧 `getPageElements` 会抛、索引变空，正在进行的拖选就会突然"点不到格子"（真机实测：
+   * 切页之后马上拖，只选中了第一格）。索引只在重新算出来之后才会更新，所以这一帧沿用旧的更稳。
+   */
+  const cellsRef = useRef<CanvasCell[]>([]);
+  if (cells.length > 0) cellsRef.current = cells;
 
   useEffect(() => {
     let elements: readonly {
@@ -64,11 +71,13 @@ export function useCanvasCells(input: {
     (clientX: number, clientY: number): CanvasCell | null => {
       const layer = layerRef.current;
       if (!layer || scale <= 0) return null;
+      // 索引空的那一帧用上一份（见 cellsRef 的注释）
+      const index = cells.length > 0 ? cells : cellsRef.current;
       const rect = layer.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
       const selectable = new Set(shapes.map((shape) => shape.name));
-      for (const cell of [...cells].reverse()) {
+      for (const cell of [...index].reverse()) {
         if (!selectable.has(cell.table)) continue;
         const left = toPx(cell.box.x);
         const top = toPx(cell.box.y);
@@ -94,5 +103,36 @@ export function useCanvasCells(input: {
     [cells],
   );
 
-  return { cells, hitCell, boxOfCell };
+  /**
+   * **选中一片单元格**的显示框（含每格是不是"锚点"）。1×1 的选区就是普通的一格；
+   * 拖出一片之后每格都画，看着才像 PowerPoint。
+   */
+  const boxesOfRange = useCallback(
+    (
+      active: { table: string; row0: number; col0: number; row1: number; col1: number } | null,
+    ): Array<{ key: string; box: CanvasBox; anchor: boolean }> => {
+      if (!active) return [];
+      const rowMin = Math.min(active.row0, active.row1);
+      const rowMax = Math.max(active.row0, active.row1);
+      const colMin = Math.min(active.col0, active.col1);
+      const colMax = Math.max(active.col0, active.col1);
+      return cells
+        .filter(
+          (cell) =>
+            cell.table === active.table &&
+            cell.row >= rowMin &&
+            cell.row <= rowMax &&
+            cell.col >= colMin &&
+            cell.col <= colMax,
+        )
+        .map((cell) => ({
+          key: `${cell.table}#${cell.row},${cell.col}`,
+          box: cell.box,
+          anchor: cell.row === active.row0 && cell.col === active.col0,
+        }));
+    },
+    [cells],
+  );
+
+  return { cells, hitCell, boxOfCell, boxesOfRange };
 }

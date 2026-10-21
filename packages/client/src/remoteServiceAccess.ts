@@ -24,6 +24,7 @@ import {
   IOAuthService,
   IEnterpriseIdentityService,
   IUcasGatewayService,
+  IImService,
   IModelSelectionService,
   IProviderSettingsService,
   IProviderProvisioningTargetService,
@@ -96,6 +97,8 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly enterpriseIdentityService: IEnterpriseIdentityService;
   /** 企业网关自动配置与套餐/用量；Host 未注册时不提供。 */
   readonly ucasGatewayService?: IUcasGatewayService;
+  /** 基础 IM（单聊/群聊/频道）；Host 未注册时不提供。 */
+  readonly imService?: IImService;
   readonly providerSettingsService: IProviderSettingsService;
   readonly modelSelectionService: IModelSelectionService;
   /** Host-only target proxy；不属于 IServiceAccessor，避免向 Renderer 暴露 Secret 写入接口。 */
@@ -139,6 +142,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
     );
     this.ucasGatewayService = ProxyChannel.toService<IUcasGatewayService>(
       channelClient.getChannel(IUcasGatewayService.channelName),
+    );
+    this.imService = ProxyChannel.toService<IImService>(
+      channelClient.getChannel(IImService.channelName),
     );
     // 远端工作区的 project 必须保留 Source 语义；只有显式能力才创建完整窗口目录组。
     if (options.windowProjectDirectory) {

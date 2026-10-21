@@ -10,9 +10,90 @@
  */
 import type { RibbonTab } from "./officeRibbonModel.js";
 import { button, colorSelect } from "./officeRibbonModel.js";
-import { FONTS, SIZES, TEXT_COLORS } from "./officeRibbonOptions.js";
+import { FONTS, HIGHLIGHT_COLORS, SIZES, TEXT_COLORS } from "./officeRibbonOptions.js";
 
 export const PPTX_RIBBON_TABS: RibbonTab[] = [
+  {
+    id: "table",
+    label: "表格",
+    // 上下文标签：只有选中表格（光标在表格里）时才出现——与 Word/WPS 的「表格工具」同一个做法
+    contextual: true,
+    groups: [
+      {
+        label: "行与列",
+        essential: true,
+        items: [
+          button("上方插入行", "在这一格上方插入一行", "pptxTableInsertRowAbove", {
+            icon: "TableInsertRow24Regular",
+          }),
+          button("下方插入行", "在这一格下方插入一行", "pptxTableInsertRowBelow"),
+          button("左侧插入列", "在这一格左侧插入一列", "pptxTableInsertColumnLeft", {
+            icon: "TableInsertColumn24Regular",
+          }),
+          button("右侧插入列", "在这一格右侧插入一列", "pptxTableInsertColumnRight"),
+          button("删除行", "删除这一格所在行", "pptxTableDeleteRow", {
+            icon: "TableDeleteRow24Regular",
+          }),
+          button("删除列", "删除这一格所在列", "pptxTableDeleteColumn"),
+        ],
+      },
+      {
+        label: "合并",
+        essential: true,
+        items: [
+          button(
+            "合并单元格",
+            "把选中的一片单元格合并成一格（保留左上角的文字）",
+            "pptxTableMergeRange",
+            { icon: "TableSimple24Regular" },
+          ),
+          button("向右合并", "把这一格与右边一格合并", "pptxTableMergeRight"),
+          button("向下合并", "把这一格与下面一格合并", "pptxTableMergeDown"),
+          button("拆分", "拆掉这一格参与的合并", "pptxTableSplit"),
+        ],
+      },
+      {
+        // 对齐方式：垂直在 a:tcPr@anchor、水平在段落 a:pPr@algn（OOXML 就是这么分工的）
+        label: "对齐方式",
+        items: [
+          button("靠上", "单元格内容顶端对齐", "pptxTableCellAnchorTop", {
+            icon: "AlignTop24Regular",
+          }),
+          button("垂直居中", "单元格内容垂直居中", "pptxTableCellAnchorMiddle"),
+          button("靠下", "单元格内容底端对齐", "pptxTableCellAnchorBottom"),
+          button("左对齐", "单元格文字左对齐", "pptxTableCellAlignLeft", {
+            icon: "AlignLeft24Regular",
+          }),
+          button("水平居中", "单元格文字水平居中", "pptxTableCellAlignCenter"),
+          button("右对齐", "单元格文字右对齐", "pptxTableCellAlignRight"),
+        ],
+      },
+      {
+        label: "单元格",
+        items: [
+          colorSelect("底纹", "单元格底纹", "Highlight24Regular", "highlight", HIGHLIGHT_COLORS),
+          button("描边", "给这一格加四边边框", "pptxTableCellBorderOn", {
+            icon: "BorderAll24Regular",
+          }),
+          button("去边框", "去掉这一格的边框", "pptxTableCellBorderOff"),
+        ],
+      },
+      {
+        label: "表格样式",
+        essential: true,
+        items: [
+          button("套用网格", "给整张表画上边框（每格四边）", "pptxTableGridOn", {
+            icon: "BorderAll24Regular",
+          }),
+          button("去网格", "去掉整张表的边框", "pptxTableGridOff"),
+          button("首行突出", "首行加粗/上底色（开关）", "pptxTableFirstRow", {
+            icon: "TextBold24Regular",
+          }),
+          button("镶边行", "隔行底色（开关）", "pptxTableBandRow"),
+        ],
+      },
+    ],
+  },
   {
     id: "home",
     label: "开始",
@@ -135,6 +216,18 @@ export const PPTX_RIBBON_TABS: RibbonTab[] = [
     id: "view",
     label: "视图",
     groups: [
+      {
+        label: "窗格",
+        essential: true,
+        items: [
+          button(
+            "设置形状格式",
+            "开/关右侧「设置形状格式」窗格（也可以右键画布上的对象）",
+            "pptxToggleFormatPane",
+            { icon: "TaskListSquareLtr24Regular" },
+          ),
+        ],
+      },
       {
         label: "缩放",
         items: [

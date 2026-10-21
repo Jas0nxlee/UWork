@@ -19,8 +19,8 @@ export interface PptxCanvasOverlaysProps {
   moving: boolean;
   onResizeStart: (event: React.PointerEvent<HTMLSpanElement>, corner: CanvasCorner) => void;
   onRotateStart: (event: React.PointerEvent<HTMLSpanElement>) => void;
-  /** 选中单元格的细框（有才画）。 */
-  activeCellBox: { key: string; box: CanvasBox } | null;
+  /** 选中单元格的细框：**一片**就是一组（1×1 时只有一项）；`anchor` 是选区左上角那一格。 */
+  cellBoxes: Array<{ key: string; box: CanvasBox; anchor: boolean }>;
   /** 就地改字：编辑层盖的框（单元格编辑时是那一格，否则是形状）。 */
   editing: boolean;
   editingBox: CanvasBox | null;
@@ -49,20 +49,26 @@ export function PptxCanvasOverlays(props: PptxCanvasOverlaysProps) {
           onCancel={props.onEditingCancel}
         />
       ) : null}
-      {props.activeCellBox ? (
+      {props.cellBoxes.map((cell) => (
         <div
-          data-pptx-canvas-cell={props.activeCellBox.key}
-          className="border-2 border-sky-500 bg-sky-500/10"
+          key={cell.key}
+          data-pptx-canvas-cell={cell.key}
+          // 锚点那格实一点、其余格淡一点：一眼看出"这一片选中了、从哪一格开始"
+          className={
+            cell.anchor
+              ? "border-2 border-sky-500 bg-sky-500/10"
+              : "border border-sky-400/60 bg-sky-400/5"
+          }
           style={{
             position: "absolute",
             pointerEvents: "none",
-            left: props.toPx(props.activeCellBox.box.x),
-            top: props.toPx(props.activeCellBox.box.y),
-            width: props.toPx(props.activeCellBox.box.width),
-            height: props.toPx(props.activeCellBox.box.height),
+            left: props.toPx(cell.box.x),
+            top: props.toPx(cell.box.y),
+            width: props.toPx(cell.box.width),
+            height: props.toPx(cell.box.height),
           }}
         />
-      ) : null}
+      ))}
       {props.activeBox && !props.editing ? (
         <PptxSelectionOverlay
           box={props.activeBox}

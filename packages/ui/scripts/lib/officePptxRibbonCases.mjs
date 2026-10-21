@@ -229,6 +229,98 @@ export async function runPptxRibbonCases({ page, check }) {
     `功能区的表格网格能插出表格（形状：${shapes.join("、")}）`,
   );
 
+  // ③e 表格工具：选中表格才出现「表格」上下文标签，逐个按钮点下去都要改到 XML
+  await page.evaluate(() => {
+    if (!document.querySelector("[data-pptx-task-pane]")) {
+      document.querySelector("[data-pptx-open-format]")?.click();
+    }
+    document.querySelector('[data-pptx-shape="表格 1"]')?.click();
+  });
+  await page.waitForTimeout(400);
+  const tableTab = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-office-ribbon-tab]")].some(
+      (node) => (node.textContent ?? "").trim() === "表格",
+    ),
+  );
+  check(tableTab, "选中表格时出现「表格」上下文标签（与 Word 的表格工具同一做法）");
+
+  const tableToolRun = await page.evaluate(async () => {
+    const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
+      (node) => (node.textContent ?? "").trim() === "表格",
+    );
+    tab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const click = async (title) => {
+      const find = () =>
+        [...document.querySelectorAll("button")].find(
+          (node) => (node.getAttribute("title") ?? "") === title,
+        );
+      let node = find();
+      if (!node) {
+        document.querySelector("[data-office-ribbon-more]")?.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        node = find();
+      }
+      if (!node) return false;
+      node.click();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      return true;
+    };
+    /** 只看**这一张表**里的线：整页搜会把页上另一张表（插进来那张自带网格）的线也算进来。 */
+    const read = () => {
+      const xml = window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "";
+      const start = xml.indexOf("<a:tbl");
+      const end = xml.indexOf("</a:tbl>", start);
+      const slice = start < 0 || end < 0 ? "" : xml.slice(start, end);
+      return {
+        size: window.__pptx.tableSizeOf(xml, "表格 1"),
+        options: window.__pptx.tableOptionsOf(xml, "表格 1"),
+        hasBorder: /<a:lnL[ >]/.test(slice),
+      };
+    };
+    const before = read();
+    const addedRow = await click("在这一格下方插入一行");
+    const afterRow = read();
+    const merged = await click("把这一格与下面一格合并");
+    const afterMerge = read();
+    const bordered = await click("给这一格加四边边框");
+    const afterBorder = read();
+    const styled = await click("首行加粗/上底色（开关）");
+    const afterStyle = read();
+    return {
+      addedRow,
+      merged,
+      bordered,
+      styled,
+      rowsBefore: before.size?.rows ?? null,
+      rowsAfter: afterRow.size?.rows ?? null,
+      mergedMarks: /rowSpan="2"|vMerge="1"/.test(
+        window.__pptxPane.modelXml("ppt/slides/slide1.xml") ?? "",
+      ),
+      borderBefore: before.hasBorder,
+      borderAfter: afterBorder.hasBorder,
+      styleBefore: before.options?.firstRow ?? null,
+      styleAfter: afterStyle.options?.firstRow ?? null,
+      void: afterMerge,
+    };
+  });
+  check(
+    tableToolRun.addedRow && tableToolRun.rowsAfter === (tableToolRun.rowsBefore ?? 0) + 1,
+    `表格工具：下方插入行（${tableToolRun.rowsBefore} → ${tableToolRun.rowsAfter} 行）`,
+  );
+  check(
+    tableToolRun.merged && tableToolRun.mergedMarks,
+    "表格工具：把这一格与下面一格合并（XML 里出现 rowSpan/vMerge）",
+  );
+  check(
+    tableToolRun.bordered && !tableToolRun.borderBefore && tableToolRun.borderAfter,
+    `表格工具：给单元格加四边边框（点到按钮=${tableToolRun.bordered}｜之前有线=${tableToolRun.borderBefore}｜之后有线=${tableToolRun.borderAfter}）`,
+  );
+  check(
+    tableToolRun.styled && tableToolRun.styleAfter === !tableToolRun.styleBefore,
+    `表格工具：首行突出是开关（${tableToolRun.styleBefore} → ${tableToolRun.styleAfter}）`,
+  );
+
   // ④ 「开始」里的幻灯片命令：新建一页
   await page.evaluate(() => {
     const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
