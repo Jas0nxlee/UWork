@@ -91,7 +91,11 @@ test("retired subscription RPC never contacts pricing, billing or remote feature
   });
   assert.equal(await service.getStartPlanPreview(), null);
   assert.equal(await service.getForceUpdateConfig(), null);
+  assert.equal(await service.getBillingDiscount(), undefined);
+  assert.equal(await service.getRequestVerificationConfig(), null);
   await service.getDynamicWorkflowClientConfig();
+  await assert.rejects(service.getManualClaimPlanPreviews(), /移除/);
+  await assert.rejects(service.claimManualPlan({ planId: "retired-plan" }), /移除/);
   await assert.rejects(service.getStaticProducts(), /移除/);
   await assert.rejects(service.getEnterprisePricing(), /移除/);
   assert.equal(requests, 0);

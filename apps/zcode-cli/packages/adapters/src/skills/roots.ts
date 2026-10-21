@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { SkillRoot, SkillSource } from "@zcode/contracts";
 import { resolveUserStorageRoot } from "@zcode/shared";
 
@@ -13,6 +13,7 @@ const AGENTS_DIR = ".agents";
 
 export interface SkillRootResolutionOptions {
   homeDirectory?: string;
+  additionalDirectories?: readonly string[];
   extraRoots?: string[];
   extraResolvedRoots?: SkillRoot[];
   includeZcodeSkills?: boolean;
@@ -55,6 +56,18 @@ export async function resolveDefaultSkillRoots(
     if (includeZcode) {
       roots.push(...skillRootsForBase(directory, "project", nextPriority));
     }
+  }
+
+  for (const directory of new Set(
+    (options.additionalDirectories ?? []).map((path) => resolve(path)),
+  )) {
+    if (directory === resolvedWorkingDirectory) continue;
+    roots.push(
+      ...skillRootsForBase(directory, "project", nextPriority).map((item) => ({
+        ...item,
+        namespace: basename(directory),
+      })),
+    );
   }
 
   roots.push(...(options.extraResolvedRoots ?? []));

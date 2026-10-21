@@ -1,26 +1,16 @@
-import type { ConversationRow, WorkflowRunState } from "@zcode/shared/zcode-protocol-v4";
+import { workflowRunStepCounts, type WorkflowRunState } from "@zcode/shared/zcode-protocol-v4";
+import type { ConversationRow } from "@zcode/shared/zcode-protocol-v4";
+import {
+  ZCODE_WORKFLOWS_FOR_RUN_MAX_CANDIDATES,
+  type ZCodeWorkflowsForRunCandidate,
+} from "@zcode/shared";
 import type { WorkflowCausalityGraphData } from "@/components/workflow-graph/types.js";
 import type { WorkflowRunCardSummary } from "@/ToolCallBlocks/shared.js";
+import { readWorkflowHoleTarget } from "@/ToolCallBlocks/renderers/createWorkflowHoleInput.js";
+import { isFillWorkflowHoleToolCall } from "@/lib/workflowToolNames.js";
 
 /**
- * 步数进度：**已结算 / 已排程**（settled / observed）。动态工作流没有静态总数，所以分母是
- * 已排程节点数，绝不冒充全程百分比。
- *
- * 导出而不是留在建表函数里：状态胶囊的 Workflows 分区读的是同一条规则。此文件是该规则的唯一实现。
- */
-export function workflowRunStepCounts(run: WorkflowRunState): {
-  nodesSettled: number;
-  nodesTotal: number;
-} {
-  let nodesSettled = 0;
-  for (const node of run.nodes) {
-    if (node.phase === "settled") nodesSettled += 1;
-  }
-  return { nodesSettled, nodesTotal: run.nodes.length };
-}
-
-/**
- * 工具卡 → workflow run 的联接。
+ * 工具卡 → dwf run 的联接（docs/dynamic-workflow/presentation.md「The tool row」）。
  *
  * 权威来源是 `workflowRuns` 投影里每条 run 的 `toolCallId`（schema 注释就写着它是
  * 「工具卡 → 详情页的关联键」）；工具行自己的 output 在 v4 下只剩
@@ -37,14 +27,14 @@ export function buildWorkflowRunByToolCallId(
   for (const run of runs ?? []) {
     // 没有 toolCallId 的 run 没有可点的卡片，不进表。
     if (!run.toolCallId) continue;
-    const { nodesSettled, nodesTotal } = workflowRunStepCounts(run);
+    const { settled, total } = workflowRunStepCounts(run);
     byToolCallId.set(run.toolCallId, {
       runId: run.runId,
       status: run.status,
       ...(run.stopReason === undefined ? {} : { stopReason: run.stopReason }),
-      nodesSettled,
+      nodesSettled: settled,
       // 已排程（observed）而不是全程总数：动态工作流的节点数由脚本在运行时决定。
-      nodesTotal,
+      nodesTotal: total,
       agents: run.actors.length,
       // 活投影整条带上：卡片内联的时间线要灯、药丸与墨迹。
       run,
@@ -68,13 +58,13 @@ export function buildWorkflowRunByRunId(
 ): ReadonlyMap<string, WorkflowRunCardSummary> {
   const byRunId = new Map<string, WorkflowRunCardSummary>();
   for (const run of runs ?? []) {
-    const { nodesSettled, nodesTotal } = workflowRunStepCounts(run);
+    const { settled, total } = workflowRunStepCounts(run);
     byRunId.set(run.runId, {
       runId: run.runId,
       status: run.status,
       ...(run.stopReason === undefined ? {} : { stopReason: run.stopReason }),
-      nodesSettled,
-      nodesTotal,
+      nodesSettled: settled,
+      nodesTotal: total,
       agents: run.actors.length,
       run,
       ...(run.resumable === true ? { resumable: true as const } : {}),
@@ -173,8 +163,68 @@ export function buildWorkflowGraphByToolCallId(
   return byToolCallId;
 }
 
-/** 「配置」修订出来的 run 的发起 toolCallId 前缀（agent 铸 `settings-<uuid>`）。 */
-const WORKFLOW_SETTINGS_TOOL_CALL_PREFIX = "settings-";
+/**
+ * runId → 最新一次成功补全的 display（docs/dynamic-workflow/presentation.md「Holes on the timeline」的
+ * 「The model」）：`FillWorkflowHole` 行的输出是 `CreateWorkflowOutput`，它的 `causalityGraph` 是**有效脚本**
+ * 的图——留白的体已经站在留白的位置上。卡与侧板取「run id 是自己的、最新的那份 display」：补全之后是
+ * 补全行的，之前是发起行的。行窗口按序一遍，后来的覆盖先来的；只认成功且编过的行（编不过的补全什么
+ * 都没接进 run，它的图不是这条 run 的）。名字从 display 的 `fill` 块带出（补全后的留白在图上没有落点；
+ * 行的入参里没有名字——transcript 只存模型自己的入参）；类型不上界面。
+ */
+export interface WorkflowFillGraph {
+  graph: WorkflowCausalityGraphData;
+  holeLabels: ReadonlyMap<string, { name: string }>;
+}
+
+function readFillRow(
+  row: ConversationRow,
+): { runId: string; holeId: string; name?: string; graph: WorkflowCausalityGraphData } | undefined {
+  if (row.kind !== "toolCall" || row.status !== "success") return undefined;
+  if (!isFillWorkflowHoleToolCall(row)) return undefined;
+  const display = row.display;
+  if (display?.kind !== "create_workflow" || display.ok !== true) return undefined;
+  const graph = display.causalityGraph;
+  if (graph === undefined || graph.steps.length === 0) return undefined;
+  const target = readWorkflowHoleTarget(row.input, display.fill);
+  if (target?.runId === undefined || target.holeId === undefined) return undefined;
+  return {
+    runId: target.runId,
+    holeId: target.holeId,
+    ...(target.name === undefined ? {} : { name: target.name }),
+    graph,
+  };
+}
+
+export function buildWorkflowFillGraphByRunId(
+  rows: readonly ConversationRow[] | undefined,
+): ReadonlyMap<string, WorkflowFillGraph> {
+  const byRunId = new Map<string, WorkflowFillGraph>();
+  for (const row of rows ?? []) {
+    const fill = readFillRow(row);
+    if (fill === undefined) continue;
+    // 名字跨补全累积：第二次补全的图上仍有第一次的头，它的名字只在第一行的入参里。
+    const labels = new Map(byRunId.get(fill.runId)?.holeLabels ?? []);
+    if (fill.name !== undefined) labels.set(fill.holeId, { name: fill.name });
+    byRunId.set(fill.runId, { graph: fill.graph, holeLabels: labels });
+  }
+  return byRunId;
+}
+
+/** 卡与侧板取图的唯一入口：补全过就是补全行的图，否则按发起 toolCallId（含「配置」的借图规则）。 */
+export function resolveWorkflowRunGraphForRun(
+  graphs: ReadonlyMap<string, WorkflowCausalityGraphData>,
+  fills: ReadonlyMap<string, WorkflowFillGraph> | undefined,
+  toolCallId: string | undefined,
+  runId: string | undefined,
+  runs: readonly WorkflowRunState[] | undefined,
+): WorkflowCausalityGraphData | undefined {
+  const fill = runId === undefined ? undefined : fills?.get(runId);
+  if (fill !== undefined) return fill.graph;
+  return toolCallId === undefined ? undefined : resolveWorkflowRunGraph(graphs, toolCallId, runs);
+}
+
+/** 「配置」修订出来的 run 的发起 toolCallId 前缀（agent 铸 `settings-<uuid>`，docs/dynamic-workflow/launch.md）。 */
+export const WORKFLOW_SETTINGS_TOOL_CALL_PREFIX = "settings-";
 
 /**
  * 按发起 toolCallId 取图，外加唯一一条借图规则：
@@ -205,4 +255,51 @@ export function resolveWorkflowRunGraph(
         : runs?.find((candidate) => candidate.runId === predecessorId)?.toolCallId;
   }
   return undefined;
+}
+
+/**
+ * 「模型把这次 run 存成了哪个工作流」的转写（docs/dynamic-workflow/transcript-and-notifications.md
+ * 「Which workflow a run is saved as」）：行窗口里成功的 `SaveWorkflow` 行，按它入参认领的
+ * `run_id` 归到那条 run 名下。
+ *
+ * 这是**候选**而不是结论：行只说「模型当时存了这个名字」，文件还在不在、是不是那一份，由
+ * agent 侧的 `workflows/forRun` 再解析一遍。所以这里不读 output，也不判断成败之外的任何东西——
+ * `status === "success"` 之外的行（编译失败、被拒、还在流式）本来就没有写成文件。
+ *
+ * 与其他联接同一条纪律：纯函数、一遍行窗口、身份只认入参通道（display 上没有这件事）。
+ */
+export type WorkflowSaveCandidate = ZCodeWorkflowsForRunCandidate;
+
+function readWorkflowSaveCandidate(
+  row: ConversationRow,
+): { runId: string; candidate: WorkflowSaveCandidate } | undefined {
+  if (row.kind !== "toolCall" || row.toolName !== "SaveWorkflow" || row.status !== "success") {
+    return undefined;
+  }
+  const input = row.input;
+  if (typeof input !== "object" || input === null) return undefined;
+  const record = input as Record<string, unknown>;
+  const runId = typeof record.run_id === "string" ? record.run_id.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  if (runId.length === 0 || name.length === 0) return undefined;
+  const scope = record.scope === "global" || record.scope === "project" ? record.scope : undefined;
+  return { runId, candidate: { name, ...(scope === undefined ? {} : { scope }) } };
+}
+
+export function buildWorkflowSaveCandidatesByRunId(
+  rows: readonly ConversationRow[] | undefined,
+): ReadonlyMap<string, readonly WorkflowSaveCandidate[]> {
+  const byRunId = new Map<string, WorkflowSaveCandidate[]>();
+  for (const row of rows ?? []) {
+    const found = readWorkflowSaveCandidate(row);
+    if (found === undefined) continue;
+    const list = byRunId.get(found.runId) ?? [];
+    // 同名重存（改了元数据再存一次）只留一个候选：解析一遍与解析三遍答案相同。
+    if (list.some((entry) => entry.name === found.candidate.name)) continue;
+    // 协议的候选上界在这里就守住：超出部分留最早的那几个（先存下的那份更可能还在）。
+    if (list.length >= ZCODE_WORKFLOWS_FOR_RUN_MAX_CANDIDATES) continue;
+    list.push(found.candidate);
+    byRunId.set(found.runId, list);
+  }
+  return byRunId;
 }

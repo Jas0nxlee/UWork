@@ -1,4 +1,5 @@
 import {
+  applyDynamicWorkflowUserMode,
   DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
   resolveDynamicWorkflowClientConfig,
   type ApiClient,
@@ -11,9 +12,11 @@ interface CodingPlanSubscriptionServiceDependencies {
   apiClient: ApiClient;
   credentialService: Pick<ICredentialService, "load">;
   resolveOffPeakModelSelectionView?: () => Promise<ModelSelectionView>;
+  /** 本机设置 owner 每次提供当前选择；远端 Host 未注入时只返回本地 offer。 */
+  resolveDynamicWorkflowUserMode?: () => Promise<unknown>;
 }
 
-/** 套餐 API 已退役；本地功能配置不再借道智谱 client/configs。 */
+/** UWork 的套餐兼容边界：本地功能配置不借道已退役的智谱账号或 client/configs。 */
 export function createCodingPlanSubscriptionService(
   dependencies: CodingPlanSubscriptionServiceDependencies,
 ): ICodingPlanSubscriptionService {
@@ -23,9 +26,16 @@ export function createCodingPlanSubscriptionService(
   return {
     getStartPlanPreview: async () => null,
     getForceUpdateConfig: async () => null,
+    getBillingDiscount: async () => undefined,
+    getRequestVerificationConfig: async () => null,
     getModelContextBudgetStrategy: async () => DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
-    getDynamicWorkflowClientConfig: async () =>
-      resolveDynamicWorkflowClientConfig({ remote: undefined, env: process.env }),
+    getDynamicWorkflowClientConfig: async () => {
+      // 上游远端配置读取位于 Agent 就绪链，会让独立 UCAS 初始化等待外部请求超时。
+      // 保留本地 offer 和新用户选择接口，shared 规则负责派生视图，不恢复套餐网络依赖。
+      const offer = resolveDynamicWorkflowClientConfig({ remote: undefined, env: process.env });
+      const resolveUserMode = dependencies.resolveDynamicWorkflowUserMode;
+      return resolveUserMode ? applyDynamicWorkflowUserMode(offer, await resolveUserMode()) : offer;
+    },
     getOffPeakClientConfig: async () => {
       if (!dependencies.resolveOffPeakModelSelectionView) return removed();
       return {
@@ -33,6 +43,8 @@ export function createCodingPlanSubscriptionService(
         modelSelectionView: await dependencies.resolveOffPeakModelSelectionView(),
       };
     },
+    getManualClaimPlanPreviews: removed,
+    claimManualPlan: removed,
     batchPreview: removed,
     getStaticProducts: removed,
     getStaticTeamProducts: removed,

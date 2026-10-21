@@ -40,6 +40,10 @@ sequenceDiagram
 
 ## 验收
 
+### 2026-10-18 推送门禁回归
+
+远程 workspace Host 的集成测试遵循同一退役合同：历史个人/团队 OAuth 凭据不能恢复登录、换取 PAT 或触发订阅请求；已存在 Local Host owner 时也不能由恢复/套餐 RPC 重新激活。保留四种 family/plan 组合的凭据不可用、重试与无网络断言，不把已退役链路重新实现为成功路径。远程文件/Agent 服务与个人 API Key 的正常使用继续验证。
+
 1. 带历史 OAuth 凭据启动：无账号展示、无登录页，不请求登录/套餐/权益 API。
 2. 新安装且无自定义供应商：工作区可打开，模型设置可添加供应商；不强制登录。
 3. 设置展示个人供应商及唯一的 UCAS 默认供应商；UCAS 地址和 API 格式固定，只允许保存 API Key 和模型配置。其他供应商的添加、保存、排序、删除和模型编辑继续通过现有 facade。
@@ -50,6 +54,28 @@ sequenceDiagram
 ## 范围
 
 本次移除账号和智谱内置模型供应商服务，仅保留 UCAS 默认供应商，不删除远程 workspace 的连接鉴权，不改用户手动配置的模型服务。模型设置中的“添加供应商”初始呈灰色；在同一次页面挂载期间连续点击 20 次解锁，其他点击会重置点击序列。官方自动更新需在本地定制版本停用，避免重新覆盖本次移除行为。
+
+## 上游同步后的本地功能配置（2026-10-14）
+
+Host 的动态工作流配置不能依赖智谱 `client/configs`。每次读取从本地 `ZCODE_DYNAMIC_WORKFLOW_MODE` 与 shared 默认值构造 offer，再通过 shared 的 `applyDynamicWorkflowUserMode` 应用当前设置；`forceRefresh` 保留接口兼容，但不触发网络。Settings 继续拥有用户选择，服务只发布派生视图，不另存选择或远端快照。
+
+Agent 按现有生命周期缓存本地 offer，并在使用时读取最新用户选择；Desktop 和远端 Host 使用同一工厂，手机只读取已有 Host 视图。此修复不改 continuous/replayable、attachment、workspaceIdentity 或 owner/lease。无本地覆盖时保留默认关闭；合法覆盖与用户切换仍生效，任何配置查询都不读取历史账号凭据或访问套餐端点。
+
+```mermaid
+sequenceDiagram
+    participant Caller as UI / Agent 初始化
+    participant Config as 本地功能配置服务
+    participant Shared as shared 规则
+    participant Settings as 设置 owner
+    Caller->>Config: getDynamicWorkflowClientConfig(options)
+    Config->>Shared: 本地环境覆盖 + 默认值 → offer
+    Config->>Settings: 读取当前用户选择
+    Settings-->>Config: mode 或未选择
+    Config->>Shared: applyDynamicWorkflowUserMode(offer, mode)
+    Config-->>Caller: 生效视图；无网络等待
+```
+
+验收：注入立即失败或永不完成的 ApiClient，默认配置和覆盖配置仍立即返回，网络请求数为零；重复读取可观察用户选择变化，`forceRefresh` 不改变本地来源。现有套餐退役边界和新增兼容 RPC 继续遵循产品规则。
 
 ## 2026-09-23 验证记录
 

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -13,16 +14,34 @@ export interface ServerLayout {
   readonly componentsCacheDir: string;
   readonly stableBinDir: string;
   readonly statusFile: string;
+  readonly ingressTokenFile: string;
   readonly lockFile: string;
   readonly controlEndpoint: string;
   readonly serviceDir: string;
   readonly uninstalledFile: string;
   readonly updateTransactionFile: string;
+  readonly updateLockFile: string;
 }
 
-function getDefaultServerDataRoot(): string {
+/** 新默认安装根相对 data base 的目录名（`{dataBaseDir}/.uwork/server`）。 */
+const SERVER_DATA_ROOT_DIR_NAME = ".uwork";
+/** 3.16.2 之前的安装根（`{dataBaseDir}/.zcode/server`）。 */
+const LEGACY_SERVER_DATA_ROOT_DIR_NAME = ".zcode";
+
+export function getDefaultServerDataRoot(): string {
   const configured = process.env.ZCODE_DATA_BASE_DIR?.trim();
-  return join(configured || homedir(), ".zcode", "server");
+  const baseDir = configured || homedir();
+  const current = join(baseDir, SERVER_DATA_ROOT_DIR_NAME, "server");
+  // 向后兼容：旧安装（3.16.2 之前）位于 `~/.zcode/server`。新根不存在而旧根存在时直接继续
+  // 使用旧根——不迁移、不复制、不报错，已部署的远端靠原目录即可被继续接管与更新；新装
+  // 才落到新的 `~/.uwork/server`。
+  if (
+    !existsSync(current) &&
+    existsSync(join(baseDir, LEGACY_SERVER_DATA_ROOT_DIR_NAME, "server"))
+  ) {
+    return join(baseDir, LEGACY_SERVER_DATA_ROOT_DIR_NAME, "server");
+  }
+  return current;
 }
 
 export function resolveServerLayout(serverRoot = getDefaultServerDataRoot()): ServerLayout {
@@ -39,14 +58,16 @@ export function resolveServerLayout(serverRoot = getDefaultServerDataRoot()): Se
     componentsCacheDir: join(root, "cache", "components"),
     stableBinDir: join(root, "bin"),
     statusFile: join(runDir, "status.json"),
+    ingressTokenFile: join(runDir, "ingress-token"),
     lockFile: join(runDir, "server.lock"),
     controlEndpoint:
       process.platform === "win32"
-        ? `\\\\.\\pipe\\zcode-server-${stablePathId(root)}`
+        ? `\\\\.\\pipe\\uwork-server-${stablePathId(root)}`
         : join(runDir, "control.sock"),
     serviceDir: join(root, "service"),
     uninstalledFile: join(root, "uninstalled.json"),
     updateTransactionFile: join(root, "update-transaction.json"),
+    updateLockFile: join(runDir, "update.lock"),
   };
 }
 
@@ -79,7 +100,13 @@ export async function resolveCanonicalServerLayout(
 
 function inferDataBaseDir(serverRoot: string): string {
   const parent = dirname(serverRoot);
-  if (basename(serverRoot) === "server" && basename(parent) === ".zcode") {
+  // 新旧安装根都落在 data base 之下（`.uwork/server` 与旧 `.zcode/server`），
+  // 两者的 data base 都必须还原为祖父目录，否则旧安装升级后 Agent/SQLite 数据会换位置。
+  if (
+    basename(serverRoot) === "server" &&
+    (basename(parent) === SERVER_DATA_ROOT_DIR_NAME ||
+      basename(parent) === LEGACY_SERVER_DATA_ROOT_DIR_NAME)
+  ) {
     return dirname(parent);
   }
   // 非标准的显式 server root 仍保持隔离，不向其父目录扩散 Agent/SQLite 数据。
@@ -104,7 +131,7 @@ export function isPathWithin(rootPath: string, candidatePath: string): boolean {
   return diff === "" || (!diff.startsWith("..") && !diff.split(sep).includes(".."));
 }
 
-interface UninstallTargetValidation {
+export interface UninstallTargetValidation {
   ok: boolean;
   reason?: "outside-server-root" | "home-directory" | "non-absolute";
   canonicalPath?: string;
@@ -128,10 +155,18 @@ export function validateUninstallTarget(
   return { ok: true, canonicalPath };
 }
 
-function assertServerDataRoot(serverRoot: string): string {
+export async function canonicalExistingPath(pathValue: string): Promise<string> {
+  return await realpath(pathValue);
+}
+
+export function assertServerDataRoot(serverRoot: string): string {
   const resolved = resolve(serverRoot);
   if (!isAbsolute(resolved) || resolved === dirname(resolved)) {
     throw new Error("Invalid server data root");
   }
   return resolved;
+}
+
+export function serverDataRootFromBase(baseDir: string): string {
+  return join(resolve(baseDir), ".zcode", "server");
 }

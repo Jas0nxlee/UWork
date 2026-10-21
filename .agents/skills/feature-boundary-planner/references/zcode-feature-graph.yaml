@@ -382,6 +382,413 @@ nodes:
     codeSeeds:
       - file: apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
         symbol: applySubmissionExecutionState
+  # Upstream 3.16.2 additions limited to capabilities this fork also ships (deferred ToolSearch,
+  # preview pane image actions, side pane scope, sidebar/archive/project editing, plugin market,
+  # composer text draft, remote Source Server device flow, tool presentation and share timeline).
+  - id: capability.tool-search
+    kind: capability
+    label: Provider-aware deferred ToolSearch
+    aliases: [ToolSearch, 工具搜索, 延迟工具加载]
+    docs: [apps/zcode-cli/docs/design/v2/tool/19-tool-search.md]
+    codeSeeds:
+      - file: apps/zcode-cli/packages/core/src/tool/search/exposure.ts
+        symbol: buildToolExposure
+      - file: apps/zcode-cli/packages/core/src/tool/search/history.ts
+        symbol: collectDiscoveredTools
+    invariants:
+      - Current provider and launch override decide exposure; genuine results and effective compact boundaries own discovery.
+      - Pure output-token continuation reuses its announcement snapshot; disabled projection never mutates raw history.
+  - id: surface.tool-search-settings
+    kind: ui-surface
+    label: General Settings ToolSearch mode
+    docs: [apps/zcode-cli/docs/design/v2/tool/19-tool-search.md]
+    codeSeeds:
+      - file: packages/ui/src/SettingsPage.tsx
+        symbol: SettingsPage
+      - file: packages/ui/src/settingsPageHelpers.tsx
+        symbol: GeneralSectionContent
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts
+        symbol: resolveSessionStartupPreferences
+    invariants:
+      - Host settings own auto/local/off (default off); new and cold-restored runtimes read once. Active runtimes and warm resumes stay fixed; forks inherit the parent.
+  - id: evidence.tool-search-lifecycle
+    kind: evidence
+    label: "ToolSearch Desktop, CLI/TUI E2E and Runtime HTTP integration"
+    docs: [docs/testing/conversation-session-e2e-coverage-matrix.md]
+    codeSeeds:
+      - file: packages/desktop/test/e2e/conversation-session/conversation-session-toolsearch-lifecycle.test.ts
+      - file: packages/desktop/test/e2e/conversation-session/conversation-session-toolsearch-cli.test.ts
+      - file: packages/desktop/test/e2e/conversation-session/conversation-session-toolsearch-tui.test.ts
+      - file: packages/desktop/test/e2e/conversation-session/conversation-session-toolsearch-catalog.test.ts
+  - id: capability.preview-pane-image-actions
+    kind: capability
+    label: "Preview Pane image copy, download and draft file reference"
+    aliases: [图片下载, 添加图片到聊天, 右侧图片操作]
+    docs: [docs/ui/preview-pane-image-copy.md]
+    codeSeeds:
+      - file: packages/ui/src/previewPaneImageContent.tsx
+        symbol: ImagePreviewContent
+      - file: packages/ui/src/PreviewPane.tsx
+        symbol: resolvePreviewPaneImageFileReference
+    invariants:
+      - Add to chat appends a file mention to the current focused draft without sending; remote references require matching workspace identity.
+      - Only image paths inside the source workspace become relative references; outside paths remain absolute.
+      - Download keeps original image bytes and MIME; file-backed SVG reads original bytes through the source workspace file service; clipboard copy keeps PNG output.
+      - Workspace identity guards do not alter desktop continuous or mobile replayable state.
+  - id: service.image-preview-download
+    kind: service
+    label: Shared image download through platform saveFile or browser download
+    codeSeeds:
+      - file: packages/ui/src/components/ai-elements/image-preview-dialog.tsx
+        symbol: downloadImagePreview
+  - id: service.workspace-file-draft-reference
+    kind: service
+    label: Existing focused Composer file reference event
+    codeSeeds:
+      - file: packages/ui/src/lib/workspaceFileDrag.ts
+        symbol: dispatchWorkspaceFileAddToChat
+      - file: packages/ui/src/lib/workspaceFileComposer.ts
+        symbol: appendWorkspaceFileMentionToComposer
+  - id: capability.side-pane-scope
+    kind: capability
+    label: Side pane display and commands share workspace and conversation ownership
+    aliases: [侧栏归属, 关闭其他标签, 最近关闭标签]
+    docs: [docs/ui/side-pane-tabs.md, docs/testing/side-pane-tabs-e2e-case-catalog.md]
+    codeSeeds:
+      - file: packages/ui/src/lib/workspaceSidePane.ts
+        symbol: isSidePaneTabVisibleInScope
+      - file: packages/ui/src/hooks/useAppPanels.ts
+        symbol: useAppPanels
+    invariants:
+      - "Display, close selection, recent-closed and reopen share one workspace/owner predicate."
+      - Browser close keeps main authority; async completion only removes selected IDs in the originating workspace.
+      - Workspace-global tools remain global inside their workspace; intrinsic session owners and draft owners remain distinct.
+  - id: surface.archive-management
+    kind: ui-surface
+    label: Archived chats in Data and statistics settings
+    aliases: [归档管理, 已归档的聊天]
+    docs: [docs/superpowers/specs/2026-09-11-archive-management.md]
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/ArchiveManagement.tsx
+        symbol: ArchiveManagement
+      - file: packages/ui/src/project-sidebar/useArchiveManagement.ts
+        symbol: useArchiveManagement
+  - id: state.virtual-project-directory
+    kind: state-owner
+    label: "Shared Host project tree projection for sidebar, composer and settings"
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/ProjectDirectoryProvider.tsx
+        symbol: ProjectDirectoryProvider
+  - id: service.project-task-mutation
+    kind: service
+    label: UI adapter to existing Controller and TaskService mutations
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/task-mutation.ts
+        symbol: mutateProjectTask
+  - id: capability.plugin-market-ui
+    kind: capability
+    label: Plugin market publisher classification and UI entry points
+    aliases: [插件市场, 社区插件, UI 插件, Side Pane 插件市场]
+    docs:
+      [
+        docs/plugins/plugin-market-interactions-scope.md,
+        docs/plugin-management-lifecycle-case-catalog.md,
+      ]
+    codeSeeds:
+      - file: packages/ui/src/settings/PluginStorePage.tsx
+        symbol: PluginStorePage
+      - file: packages/ui/src/settings/PluginsSection.tsx
+        symbol: PluginsSection
+      - file: packages/ui/src/settings/pluginStoreListing.ts
+        symbol: isUiPluginItem
+      - file: packages/ui/src/plugin-ui/adapters/useMarketPluginUi.ts
+        symbol: useMarketPluginUi
+      - file: packages/ui/src/store/pluginManagementStore.ts
+        symbol: createPluginManagementStore
+    invariants:
+      - "Publisher, use category and validated UI capability are independent; search stays within the selected source segment."
+      - Installation is user-scoped; project enabled/config overrides and restoring inheritance remain supported.
+      - Main market and side pane share the page but keep separate query projections; CLI owns installed/configured state.
+      - UI opening reuses an existing local desktop session; unsupported clients can browse/manage but cannot open surfaces.
+      - Default recommendations are curated independently of installed/development plugins; closing a panel does not uninstall.
+  - id: surface.sidebar-search-view
+    kind: ui-surface
+    label: Sidebar capsule search and project/group/recent view switcher with option icons
+    aliases: [侧栏搜索, 最近更新, 按项目, 按分组, sidebar filter]
+    docs: [docs/superpowers/specs/2026-09-09-virtual-project-design.md]
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/ProjectSidebarNavigation.tsx
+        symbol: ProjectSidebarNavigation
+      - file: packages/ui/src/project-sidebar/index.tsx
+        symbol: ProjectSidebar
+  - id: state.sidebar-view-preference
+    kind: state-owner
+    label: Client-local sidebar view and expansion preference
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/useProjectSidebarPreferences.ts
+        symbol: useProjectSidebarPreferences
+  - id: surface.recent-task-list
+    kind: ui-surface
+    label: Unarchived tasks in strict CLI update-time order with date headings and two-line cwd/time rows
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/view.ts
+        symbol: selectProjectRows
+      - file: packages/ui/src/project-sidebar/ProjectTaskRows.tsx
+        symbol: ProjectTaskRows
+  - id: state.composer-text-draft
+    kind: state-owner
+    label: Text-only Composer draft persistence
+    docs: [docs/ui/composer-text-draft-persistence.md, docs/ui/project-task-draft-lifecycle.md]
+    codeSeeds:
+      - file: packages/ui/src/v4/composer/composerDraftStore.ts
+        symbol: persistV4ComposerDraft
+      - file: packages/ui/src/v4/composer/useDraftConfigControl.ts
+        symbol: useDraftConfigControl
+      - file: packages/ui/src/lib/composerRecent.ts
+        symbol: acceptComposerRecentReceipt
+      - file: packages/ui/src/v4/pendingCommandRegistry.ts
+        symbol: PendingCommandRegistry
+      - file: packages/ui/src/root/useRootWorkspaceActions.ts
+        symbol: useRootWorkspaceActions
+      - file: packages/services/src/project/index.ts
+        symbol: createProjectService
+      - file: packages/ui/src/v4/composer/composerDraftWorkspaceTransfer.ts
+        symbol: captureV4ComposerDraftHandoff
+      - file: packages/ui/src/v4/composer/composerDraftStore.ts
+        symbol: clearV4ComposerDraftTaskGroup
+    invariants:
+      - "A Root draft with no original ModelSelection adopts the first valid target-host preferredSelection when providers become ready, preserving text, editor state, permission and Plan. Existing selections, including invalid ones, and existing/imported Sessions are never replaced by this rule. Recent still changes only on accepted Submission."
+      - Only non-whitespace text creates a durable draft. Empty controls stay in the active Composer; New Task initializes from client-local host/project Recent; unclassified tasks have their own scope. Session restoration keeps draft text/model but takes permission and Plan from the current snapshot.
+      - Historical grant/Plan records establish an observation baseline on entry; only newly observed changes update the mounted Composer. Observation IDs are never persisted in drafts. Reads are side-effect free.
+      - Project/group creation intent accompanies durable text. Project ID isolates Root drafts even when primary roots match; formal session drafts retain workspace/session identity. Accepted user Submission updates frozen project Recent through the pending command registry. A pending task draft ID reuses its directory until accepted and protects later drafts from late acknowledgements.
+  - id: evidence.r3-remote-automation-plan
+    kind: evidence
+    label: Planned R3 post-merge real remote automation cases and readiness inventory
+    docs:
+      [
+        docs/testing/r3-remote-automation-plan.md,
+        docs/testing/r3-remote-automation-case-matrix.md,
+        docs/archive/remote-r3/r3-remote-automation-readiness-2026-09-07.md,
+      ]
+  - id: capability.remote-environment-compatibility
+    kind: capability
+    label: Remote Source Server environment compatibility
+    aliases: [SSH systemd fallback, remote daemon capability, 远端环境兼容, SSH 服务管理器探测]
+    docs:
+      [
+        docs/architecture/r3-source-server-remote-architecture.md,
+        docs/archive/remote-r3/r3-source-server-remote-impact-brief.md,
+        docs/archive/remote-r3/r3-source-server-release-test-plan.md,
+      ]
+    codeSeeds:
+      - file: packages/server/src/source-server/transportAdapter.ts
+        symbol: createSourceServerTransportAdapter
+      - file: packages/zcode-server-cli/src/cli.ts
+        symbol: runServerCli
+      - file: packages/zcode-server-cli/src/platform/serviceManager.ts
+        symbol: registerService
+      - file: packages/server/src/remote/remoteAssetPreflight.ts
+        symbol: detectRemoteAssetTools
+      - file: packages/zcode-server-cli/src/runtime/stableLauncher.ts
+        symbol: writeStableLauncher
+      - file: packages/zcode-server-cli/src/packaging/stage.ts
+        symbol: stageRelease
+  - id: capability.remote-conversation-workspace
+    kind: capability
+    label: Source-scoped legacy conversation data (UI retired)
+    aliases:
+      [remote no-project chat, remote conversation backing workspace, 远程无项目聊天, 远程任务聊天]
+    docs:
+      [
+        docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md,
+        docs/superpowers/specs/2026-07-10-non-project-conversation-workspace-design.md,
+      ]
+    codeSeeds:
+      - file: packages/services/src/file/file.ts
+        symbol: ensureConversationWorkspace
+      - file: packages/ui/src/root/useRemoteWorkspaceHistory.ts
+        symbol: useRemoteWorkspaceHistory
+      - file: packages/ui/src/RemoteConnectionDialogContent.tsx
+        symbol: RemoteConnectionDeviceStep
+  - id: capability.remote-device-connection-ux
+    kind: capability
+    label: "Remote device connection naming, status presentation, and entry routing"
+    aliases:
+      [
+        remote device connection,
+        SSH alias device name,
+        remote connection step 4,
+        远程设备连接,
+        连接状态,
+        收起远程连接弹窗,
+      ]
+    docs:
+      [
+        docs/architecture/remote-device-connection-ux-spec.md,
+        docs/remote/project-first-remote-navigation-spec.md,
+        docs/collapsible-remote-connection-dialog.md,
+        docs/ui/ssh-config-alias.md,
+      ]
+    codeSeeds:
+      - file: packages/desktop/src/host/sourceServerDirectory.ts
+        symbol: SourceServerDirectory.recordHandshake
+      - file: packages/ui/src/SSHDialog.tsx
+        symbol: RemoteConnectionDialog
+      - file: packages/ui/src/settings/SourceServerManagementPanel.tsx
+        symbol: SourceServerManagementPanel
+      - file: packages/ui/src/WorkspaceSidebar/RemoteProjectConnectionDetails.tsx
+        symbol: RemoteProjectConnectionDetails
+  - id: surface.remote-device-settings
+    kind: ui-surface
+    label: Settings remote device and connection profile management
+    codeSeeds:
+      - file: packages/ui/src/settings/SourceServerManagementPanel.tsx
+        symbol: SourceServerManagementPanel
+      - file: packages/ui/src/hooks/useSourceServerManagementSnapshot.ts
+        symbol: useSourceServerManagementSnapshot
+  - id: surface.remote-connection-device-picker
+    kind: ui-surface
+    label: Remote connection device picker and project selection flow
+    codeSeeds:
+      - file: packages/ui/src/RemoteConnectionDialogContent.tsx
+        symbol: RemoteConnectionDeviceStep
+      - file: packages/ui/src/SSHDialog.tsx
+        symbol: SSHDialog
+  - id: surface.remote-source-task-sidebar
+    kind: ui-surface
+    label: Flat project sidebar and local projectless tasks
+    codeSeeds:
+      - file: packages/ui/src/WorkspaceSidebar.tsx
+        symbol: WorkspaceSidebar
+      # TODO(uwork-merge): 上游 3.16.2 删除了 packages/ui/src/lib/workspacePurpose.ts
+      # （partitionWorkspaceTabsByPurpose），此处改用 shared 中仍在的 WorkspacePurpose 类型。
+      - file: packages/shared/src/workspacePurpose.ts
+        symbol: WorkspacePurpose
+  - id: shared.source-server-update-action
+    kind: shared-ui
+    label: Source Server guarded update action
+    docs: [docs/architecture/r3-source-server-remote-architecture.md]
+    codeSeeds:
+      - file: packages/ui/src/lib/sourceServerUpdateAction.ts
+        symbol: runSourceServerUpdate
+      - file: packages/ui/src/root/sourceServerUpdateNotifications.ts
+        symbol: createSourceServerUpdateNotificationController
+      - file: packages/ui/src/components/ui/toast.tsx
+        symbol: ToastMessageView
+  - id: state.source-server-update-operation-progress
+    kind: state-owner
+    label: Host-owned Source Server update operation progress
+    docs: [docs/architecture/r3-source-server-remote-architecture.md]
+    codeSeeds:
+      - file: packages/desktop/src/host/sourceServerManagementService.ts
+        symbol: createSourceServerManagementService
+      - file: packages/ui/src/hooks/useSourceServerOperationLogs.ts
+        symbol: useSourceServerOperationLogs
+      - file: packages/ui/src/settings/SourceServerUpdateActivity.tsx
+        symbol: SourceServerUpdateActivity
+  - id: state.remote-workspace-ui-projection
+    kind: state-owner
+    label: "Unified remote device, open workspace, attachment, and purpose projection"
+    codeSeeds:
+      - file: packages/ui/src/hooks/useSourceServerManagementSnapshot.ts
+        symbol: useSourceServerManagementSnapshot
+      # TODO(uwork-merge): 上游 3.16.2 删除了 packages/ui/src/lib/workspacePurpose.ts
+      # （partitionWorkspaceTabsByPurpose），此处改用 shared 中仍在的 WorkspacePurpose 类型。
+      - file: packages/shared/src/workspacePurpose.ts
+        symbol: WorkspacePurpose
+      - file: packages/ui/src/root/useRemoteWorkspaceHistory.ts
+        symbol: useRemoteWorkspaceHistory
+  - id: service.remote-workspace-intent-controller
+    kind: service
+    label: Remote device/workspace intent controller
+    docs: [docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md]
+    codeSeeds:
+      - file: packages/ui/src/root/useRemoteWorkspaceHistory.ts
+        symbol: useRemoteWorkspaceHistory
+      - file: packages/desktop/src/host/sourceServerConnectionManager.ts
+        symbol: SourceServerConnectionManager
+      - file: packages/desktop/src/host/windowRemoteConnectionRegistry.ts
+        symbol: createWindowRemoteConnectionRegistry
+  - id: persistence.remote-open-workspace-set
+    kind: persistence
+    label: Remote open workspace set with project/conversation purpose
+    docs:
+      [
+        docs/architecture/remote-domain-simplification-and-conversation-workspace-spec.md,
+        docs/remote-workspace-session-unified-settings.md,
+      ]
+    codeSeeds:
+      - file: packages/ui/src/root/remoteWorkspaceSessionPersistence.ts
+        symbol: buildRemoteWorkspacePersistPatch
+      - file: packages/ui/src/lib/remoteWorkspaceHistory.ts
+        symbol: readPersistedWorkspaceSessionEntries
+  - id: surface.source-settings-scope
+    kind: ui-surface
+    label: Non-Provider Settings Source user/server and project scope routing
+    docs: [docs/archive/remote-r3/r3-provider-refactor-merge.md]
+    codeSeeds:
+      - file: packages/ui/src/SettingsPage.tsx
+        symbol: SettingsPage
+      - file: packages/ui/src/hooks/useWorkspaceServices.tsx
+        symbol: useWorkspaceServicesResolution
+  - id: service.source-settings-attachment
+    kind: service
+    label: Desktop-only Source user/server settings attachment
+    codeSeeds:
+      - file: packages/desktop/src/host/sourceSettingsServiceCollection.ts
+        symbol: createSourceSettingsServiceCollection
+      - file: packages/desktop/src/host/windowHostAttachmentRegistry.ts
+        symbol: createWindowHostAttachmentRegistry
+  - id: persistence.source-workspace-migration-ledger
+    kind: persistence
+    label: "Source workspace canonical alias, phase ledger and conflict report"
+    codeSeeds:
+      - file: packages/services/src/session/sourceServerWorkspaceAliasRepo.ts
+        symbol: SourceServerWorkspaceAliasRepo
+  - id: service.source-server-workspace-mapper
+    kind: service
+    label: Source Server Core canonical workspace identity mapper
+    docs: [docs/architecture/r3-source-server-remote-architecture.md]
+    codeSeeds:
+      - file: packages/services/src/source-server-workspace/sourceServerWorkspaceService.ts
+        symbol: createSourceServerWorkspaceService
+      - file: packages/zcode-server-cli/src/server-core/http.ts
+  - id: capability.project-creation-folder-confirmation
+    kind: capability
+    label: Project creation folder confirmation
+    aliases: [创建项目信任文件夹, 项目目录确认, project folder trust confirmation]
+    docs: [docs/specs/project-creation-folder-confirmation.md]
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/ProjectFolderTrustDialog.tsx
+        symbol: ProjectFolderTrustDialog
+      - file: packages/ui/src/project-sidebar/ProjectEditor.tsx
+        symbol: ProjectEditor
+  - id: surface.project-creation-form
+    kind: ui-surface
+    label: Project creation form and selected folder draft
+    docs: [docs/specs/project-creation-folder-confirmation.md]
+    codeSeeds:
+      - file: packages/ui/src/project-sidebar/ProjectCreation.tsx
+        symbol: ProjectCreation
+      - file: packages/ui/src/project-sidebar/ProjectEditor.tsx
+        symbol: ProjectEditor
+  - id: shared-ui.tool-presentation
+    kind: shared-ui
+    label: Common App and share readonly tool presentation
+    aliases: [WebFetch, Fetch, 工具公开展示]
+    docs: [docs/ui/tool-display-rendering.md, docs/conversation-share-v1.md]
+    codeSeeds:
+      - file: packages/ui/src/ToolCallBlocks/ToolPresentation.tsx
+        symbol: ToolPresentation
+      - file: packages/ui/src/ToolCallBlocks/resolveRenderer.ts
+        symbol: resolveToolCallRenderer
+  - id: surface.conversation-share-tool-timeline
+    kind: ui-surface
+    label: Public and imported readonly tool timeline
+    codeSeeds:
+      - file: packages/ui/src/v4/ConversationShareReadonlyTimeline.tsx
+        symbol: ConversationShareReadonlyTimeline
+
 edges:
   - from: capability.enterprise-identity
     to: surface.enterprise-login
@@ -634,3 +1041,195 @@ edges:
     type: emits-model-selection-for
     rank: must-inspect
     condition: Applied runtime model selection is projected through ModelSelected events.
+
+  # Edges added with the 3.16.2 nodes above; edges whose far endpoint is outside this curated
+  # graph are intentionally omitted (the skill reports such gaps as graph-drift-candidate).
+  - from: capability.tool-search
+    to: surface.tool-search-settings
+    type: renders-in
+    rank: must-inspect
+    condition: Settings supplies the immutable startup policy through the existing Host preference request.
+  - from: capability.tool-search
+    to: evidence.tool-search-lifecycle
+    type: verified-by
+    rank: evidence-only
+  - from: surface.conversation-model-control
+    to: state.composer-text-draft
+    type: commits-to
+    rank: must-inspect
+  - from: state.composer-text-draft
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: capability.preview-pane-image-actions
+    to: service.image-preview-download
+    type: commits-to
+    rank: must-inspect
+  - from: capability.preview-pane-image-actions
+    to: service.workspace-file-draft-reference
+    type: commits-to
+    rank: must-inspect
+  - from: service.workspace-file-draft-reference
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: capability.side-pane-scope
+    to: capability.workspace-identity
+    type: isolated-by
+    rank: must-inspect
+  - from: surface.conversation-share-tool-timeline
+    to: shared-ui.tool-presentation
+    type: shares-component
+    rank: must-inspect
+    condition: Public snapshots and product default grouping; no runtime authority or interactive plugin UI.
+  - from: capability.remote-conversation-workspace
+    to: surface.remote-connection-device-picker
+    type: must-not-open-through
+    rank: must-inspect
+    condition: Device picker connects a Source Profile and requires a project directory. Legacy remote conversation data remains stored but has no UI creation or history entry.
+  - from: capability.remote-device-connection-ux
+    to: surface.remote-device-settings
+    type: renders-status-and-connect-entry-in
+    rank: must-inspect
+    condition: Settings presents device and unbound Profile connectivity without exposing identification/line concepts; user connect actions open the global wizard at the connecting step.
+  - from: capability.remote-device-connection-ux
+    to: surface.remote-source-task-sidebar
+    type: renders-status-and-connect-entry-in
+    rank: must-inspect
+    condition: "Remote projects remain visible in one global project order, including offline and legacy identities; project connection actions retain the exact directory in the global wizard."
+  - from: capability.remote-device-connection-ux
+    to: surface.remote-connection-device-picker
+    type: routes-profile-intent-through
+    rank: must-inspect
+    condition: "A preferred Profile intent loads credentials and enters wizard step 4 before the Host connection call; install, upgrade, retry, and errors stay in that flow, while success selects a project directory or opens the explicitly requested project."
+  - from: capability.remote-device-connection-ux
+    to: capability.remote-conversation-workspace
+    type: must-not-default-profile-connect-success-to
+    rank: must-inspect
+    condition: "All user-clicked Profile connections are project flows; no remote projectless draft is created. Explicit directory intent survives install, upgrade and credential interaction."
+  - from: capability.remote-device-connection-ux
+    to: state.remote-workspace-ui-projection
+    type: projects-display-state-from
+    rank: must-inspect
+    condition: The UI hides pending/unbound terminology without deleting Source/Profile ownership state or changing aggregation.
+  - from: capability.remote-device-connection-ux
+    to: capability.workspace-identity
+    type: must-not-rekey
+    rank: invariant-only
+    condition: "SSH alias and device display names are presentation/default metadata and never participate in device identity, Profile matching, or workspaceKey."
+  - from: capability.remote-device-connection-ux
+    to: boundary.desktop-continuous
+    type: must-not-change-delivery
+    rank: invariant-only
+  - from: capability.remote-device-connection-ux
+    to: boundary.web-remote-replayable
+    type: must-remain-isolated-from
+    rank: invariant-only
+    condition: "Desktop UI entry routing does not create a Mobile runtime, remote session, or replayable recovery path."
+  - from: capability.remote-conversation-workspace
+    to: surface.remote-source-task-sidebar
+    type: is-hidden-from
+    rank: must-inspect
+    condition: "Only local projectless tasks remain in the task section. Remote conversation tasks are hidden in groups, pinned, timeline, archive, search and startup restoration without deleting data."
+  - from: capability.remote-conversation-workspace
+    to: capability.workspace-identity
+    type: isolates-by
+    rank: must-inspect
+    condition: Each Source Server has one idempotent conversation backing workspace; purpose does not participate in identity.
+  - from: capability.remote-conversation-workspace
+    to: state.remote-workspace-ui-projection
+    type: projects-through
+    rank: must-inspect
+    condition: "Settings, device picker, and sidebar consume one read projection but filter different row sets."
+  - from: state.remote-workspace-ui-projection
+    to: persistence.remote-open-workspace-set
+    type: reads-and-persists
+    rank: must-inspect
+    condition: "Remote purpose is optional for old data, defaults to project, and conversation backing paths are excluded from project history/count projections."
+  - from: capability.remote-conversation-workspace
+    to: boundary.desktop-continuous
+    type: must-not-change-delivery
+    rank: invariant-only
+  - from: capability.remote-conversation-workspace
+    to: boundary.web-remote-replayable
+    type: reuses-existing-attachment-without-creating-runtime
+    rank: invariant-only
+    condition: Mobile hides remote projectless history while preserving local conversation and remote project attachments; no new runtime or recovery mechanism is introduced.
+  - from: surface.remote-device-settings
+    to: shared.source-server-update-action
+    type: commits-update-through
+    rank: must-inspect
+  - from: surface.remote-connection-device-picker
+    to: shared.source-server-update-action
+    type: commits-update-through
+    rank: must-inspect
+  - from: surface.remote-source-task-sidebar
+    to: shared.source-server-update-action
+    type: commits-toast-update-through
+    rank: must-inspect
+  - from: state.source-server-update-operation-progress
+    to: surface.remote-device-settings
+    type: renders-in
+    rank: must-inspect
+  - from: state.source-server-update-operation-progress
+    to: surface.remote-connection-device-picker
+    type: renders-in
+    rank: must-inspect
+  - from: shared.source-server-update-action
+    to: boundary.web-remote-replayable
+    type: must-remain-isolated-from
+    rank: invariant-only
+    condition: Source management update actions remain Desktop-only and do not create a Mobile runtime or management channel.
+  - from: surface.source-settings-scope
+    to: service.source-settings-attachment
+    type: commits-user-server-scope-to
+    rank: must-inspect
+    condition: A selected remote Source uses its Desktop-only source-settings attachment even when no workspace is open; offline never falls back to base services.
+  - from: service.source-settings-attachment
+    to: boundary.web-remote-replayable
+    type: must-remain-unavailable-to
+    rank: invariant-only
+    condition: Mobile may read Source facts from existing workspace/task projection but cannot call management or source-settings channels.
+  - from: service.source-server-workspace-mapper
+    to: persistence.source-workspace-migration-ledger
+    type: resolves-and-recovers-through
+    rank: must-inspect
+    condition: Abandoned paths stay open on the frozen canonical until explicit retry; resume-time conflicts fail the current phase before partial rekey can complete.
+  - from: service.source-server-workspace-mapper
+    to: capability.workspace-identity
+    type: preserves-controller-identity-for
+    rank: must-inspect
+  - from: capability.project-creation-folder-confirmation
+    to: surface.project-creation-form
+    type: renders-in
+    rank: must-inspect
+    condition: "Every creation with selected folders requires explicit confirmation, including folders used by another project. No persistent folder trust record; local zero-root projects skip confirmation and retain lazy default-directory creation."
+  - from: surface.archive-management
+    to: state.virtual-project-directory
+    type: reads-projection-from
+    rank: must-inspect
+    condition: "Archived rows group by Host + virtual project ID, never root path; settings and workspace share one directory owner."
+  - from: surface.archive-management
+    to: service.project-task-mutation
+    type: commits-through
+    rank: must-inspect
+    condition: Unarchive and confirmed deletion keep complete workspace identity; bulk results do not fabricate success for failed rows.
+  - from: surface.sidebar-search-view
+    to: state.sidebar-view-preference
+    type: commits-display-preference-to
+    rank: must-inspect
+    condition: Only localStorage view changes; Shell navigation and Host facts stay unchanged.
+  - from: surface.sidebar-search-view
+    to: surface.recent-task-list
+    type: selects
+    rank: must-inspect
+  - from: surface.recent-task-list
+    to: state.virtual-project-directory
+    type: projects-from
+    rank: must-inspect
+    condition: "Include all visible unarchived rows, including pinned; no running-first or project/Host grouping."
+  - from: state.sidebar-view-preference
+    to: state.virtual-project-directory
+    type: owned-by
+    rank: must-inspect
+    condition: Sidebar and composer share one directory owner; view never changes composer project order.

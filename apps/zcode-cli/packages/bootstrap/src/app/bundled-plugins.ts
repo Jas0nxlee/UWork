@@ -135,12 +135,21 @@ function seedBundledOfficialPlugins(input: {
       withOfficialPluginSeedLock(
         targetRoot,
         () => {
+          const manifestFile = plugin.files.find(
+            (file) => file.path === ".zcode-plugin/plugin.json",
+          );
+          if (!manifestFile)
+            throw new Error(`Bundled plugin manifest is missing: ${plugin.definition.name}`);
+          const sourceManifestContents = readSeedFileBytes(source, plugin, manifestFile).toString(
+            "utf8",
+          );
           // 桌面会并发预热多个 workspace Agent；复制插件资源时，
           // 多进程会互删 target 并在 Windows rename 时触发 EPERM。拿锁后必须二次检查，
           // 让等待者直接复用首个进程已经提交的完整缓存。
           if (isSeedCurrent(targetRoot, plugin)) {
             cleanupLegacySeedBackup(targetRoot, retryBudget);
             const manifestWritten = tryWriteOfficialPluginRuntimeManifest({
+              sourceManifestContents,
               pluginName: plugin.definition.name,
               retryBudget,
               rootPath: targetRoot,
@@ -172,6 +181,7 @@ function seedBundledOfficialPlugins(input: {
             );
             replaceSeedRoot(temporaryRoot, targetRoot, plugin, retryBudget);
             writeOfficialPluginRuntimeManifest({
+              sourceManifestContents,
               pluginName: plugin.definition.name,
               retryBudget,
               rootPath: targetRoot,
@@ -216,6 +226,7 @@ function seedBundledOfficialPlugins(input: {
 }
 
 function tryWriteOfficialPluginRuntimeManifest(input: {
+  sourceManifestContents: string;
   pluginName: string;
   retryBudget: OfficialPluginCacheRetryBudget;
   rootPath: string;
@@ -318,7 +329,7 @@ function resolveFilesystemSeedSource(): OfficialPluginSeedSource | undefined {
   };
 }
 
-function findMissingOfficialPluginSeedPaths(
+export function findMissingOfficialPluginSeedPaths(
   definition: Pick<OfficialPluginDefinition, "requiredSeedPaths">,
   files: ReadonlyArray<{ path: string }>,
 ): string[] {
@@ -426,6 +437,10 @@ function writeOfficialMarketplace(storageRoot: string, source: OfficialPluginSee
         const description = readSeedPluginDescription(source, plugin);
         return {
           cachePath: officialPluginCacheRoot(storageRoot, plugin.definition),
+          // 未安装/已卸载时商店读目录条目的 componentTypes 判断「UI 插件」；缺失会掉进分类分组。
+          ...(plugin.definition.componentTypes
+            ? { componentTypes: [...plugin.definition.componentTypes] }
+            : {}),
           ...(description ? { description } : {}),
           name: plugin.definition.name,
           source: source.kind,
@@ -637,8 +652,9 @@ function officialPluginCacheRoot(
   );
 }
 
-function candidateBaseDirs(): string[] {
-  // Electron app-server 运行在 resources/glm/zcode.cjs，官方插件资源也随桌面包
+/** 内置技能包（bundled-skills.ts）沿同一组候选目录定位，保证两类内置资产在每种运行布局下同进同出。 */
+export function candidateBaseDirs(): string[] {
+  // 修复原因：Electron app-server 运行在 resources/glm/zcode.cjs，官方插件资源也随桌面包
   // stage 到同级 packages/*-plugin。候选目录必须优先看入口文件目录，避免生产态退回到
   // monorepo-only 的 __dirname 查找假设。
   return [entrypointDir(), runtimeDir(), process.cwd()].filter(

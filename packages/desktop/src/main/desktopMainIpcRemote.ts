@@ -1,20 +1,25 @@
+import { normalizeRemoteConnectionError } from "@zcode/shared";
 /* eslint-disable max-lines -- 远程连接、OAuth 回调、遥测和通知 IPC 共用窗口级上下文，集中注册避免跨文件状态漂移。 */
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, type WebContents } from "electron";
 import armsRum from "@arms/rum-electron";
 import {
   armsCustomEventPayloadSchema,
   buildRemoteWorkspaceConnectResultTelemetry,
   classifyRemoteUsageError,
   formatZodError,
+  hostRemoteWorkspaceConnectFailedResponseSchema,
   normalizeUnknownError,
   InternalChannels,
+  isPublicZCodeErrorCode,
   isTrustedCodingPlanWebviewOrigin,
-  resolveZaiBusinessBaseUrl,
   PlatformChannels,
   remoteTargetSchema,
   rendererTelemetryEventPayloadSchema,
   type ArmsRumEnv,
+  type BindRemoteWorkspaceSessionContextIpcResult,
   type RemoteTarget,
+  type WindowHostRemoteWorkspaceDescriptor,
+  type BindRemoteWorkspaceSessionContextResult,
   type TelemetryEventPayload,
 } from "@zcode/shared";
 import { dispatchTaskNotification } from "./desktopNotifications.js";
@@ -33,14 +38,42 @@ import {
   reportRemoteConnectResultToArms,
   type RemoteConnectionStats,
 } from "./desktopRemoteUsageArmsTelemetry.js";
-import { openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+import {
+  registerWebRemoteControlIpcHandlers,
+  type WebRemoteControlIpcManager,
+} from "./desktopWebRemoteControlIpc.js";
+import { openFileUrlInDefaultApp, openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+// on 回调的未定义引用会弹出阻塞 Main 的原生错误框；三个入口必须显式绑定同一 view owner。
 import {
   openEnterpriseLoginView,
   cancelEnterpriseLoginView,
   updateEnterpriseLoginView,
 } from "./enterpriseLoginView.js";
 
-function isAllowedExternalOpenUrl(value: string): boolean {
+function isPublicRemoteReasonCode(code: string | undefined): code is string {
+  // Bug 原因：前缀 OR 形成第二份公开码真源，任何内部 source-server-* 字符串都会穿透
+  // Main 暴露给 Renderer。公开边界只消费 shared 登记表，新增码必须先进入统一合同。
+  return isPublicZCodeErrorCode(code);
+}
+
+function readRetryable(error: unknown): boolean | undefined {
+  if (!error || typeof error !== "object" || !("retryable" in error)) return undefined;
+  return typeof error.retryable === "boolean" ? error.retryable : undefined;
+}
+
+function toBindIpcFailure(error: unknown): BindRemoteWorkspaceSessionContextIpcResult {
+  const normalized = normalizeUnknownError(error);
+  const reasonCode = isPublicRemoteReasonCode(normalized.code) ? normalized.code : undefined;
+  const retryable = reasonCode ? readRetryable(error) : undefined;
+  return {
+    success: false,
+    error: normalized.message,
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(retryable !== undefined ? { retryable } : {}),
+  };
+}
+
+export function isAllowedExternalOpenUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "file:";
@@ -71,6 +104,8 @@ function parseOpenExternalRequest(payload: unknown): OpenExternalRequest | null 
   };
 }
 
+const CODING_PLAN_ZAI_PAYPAL_RELAY_HOSTS = new Set(["api.z.ai", "api.z.ai"]);
+
 function isPaypalHostname(hostname: string): boolean {
   return hostname === "paypal.com" || hostname.endsWith(".paypal.com");
 }
@@ -81,7 +116,7 @@ function isCodingPlanPaypalNavigationUrl(url: string): boolean {
     if (parsed.protocol !== "https:") return false;
     if (isPaypalHostname(parsed.hostname)) return true;
     return (
-      ["https://api.z.ai", resolveZaiBusinessBaseUrl()].includes(parsed.origin) &&
+      CODING_PLAN_ZAI_PAYPAL_RELAY_HOSTS.has(parsed.hostname) &&
       parsed.pathname.startsWith("/api/pay/paypal/")
     );
   } catch {
@@ -170,12 +205,20 @@ export function registerRemoteIpcHandlers(options: {
   };
   /** 仅由 VITE_ZCODE_E2E_STORE_BRIDGE + test runner 双门禁打开。 */
   finalArmsCustomEventE2EEnabled?: boolean;
+  webRemoteControlManager: WebRemoteControlIpcManager;
   createRemoteWorkspaceSession: (
     win: BrowserWindow,
     target: RemoteTarget,
     requestId?: string,
-    context?: { workspacePath: string; workspaceIdentity?: string },
-    lifecycle?: { remoteUsageTelemetryEligible?: boolean },
+    context?: {
+      workspacePath?: string;
+      workspaceIdentity?: string;
+      confirmSourceServerInstall?: boolean;
+    },
+    lifecycle?: {
+      remoteUsageTelemetryEligible?: boolean;
+      onConnected?: (descriptor: WindowHostRemoteWorkspaceDescriptor) => void;
+    },
   ) => Promise<string>;
   getRemoteConnectionStats: () => RemoteConnectionStats;
   disposeRemoteWorkspaceSession: (
@@ -190,13 +233,18 @@ export function registerRemoteIpcHandlers(options: {
   ) => void;
   bindRemoteWorkspaceSessionContext: (
     sessionId: string,
-    context: { workspacePath: string; workspaceIdentity?: string },
+    context: {
+      workspacePath: string;
+      workspaceIdentity?: string;
+      workspacePurpose?: import("@zcode/shared").WorkspacePurpose;
+    },
     expectedWebContentsId?: number,
-  ) => Promise<void>;
+  ) => Promise<BindRemoteWorkspaceSessionContextResult>;
   confirmRendererAttachmentReady: (
     webContentsId: number,
     payload: { sessionId: string; attachmentId: string },
   ) => void;
+  attachSourceSettings?: (sender: WebContents, sourceServerId: string) => { attachmentId: string };
   isDockerDaemonAvailable: () => Promise<boolean>;
   listAvailableWSLDistros: () => Promise<unknown[]>;
   listAvailableDockerContainers: () => Promise<unknown[]>;
@@ -239,12 +287,18 @@ export function registerRemoteIpcHandlers(options: {
 
   ipcMain.on(InternalChannels.ScopedServicePortReady, (event, rawPayload: unknown) => {
     if (!rawPayload || typeof rawPayload !== "object") return;
-    const payload = rawPayload as { sessionId?: unknown; attachmentId?: unknown };
+    const payload = rawPayload as {
+      sessionId?: unknown;
+      attachmentId?: unknown;
+    };
     const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
     const attachmentId =
       typeof payload.attachmentId === "string" ? payload.attachmentId.trim() : "";
     if (!sessionId || !attachmentId) return;
-    options.confirmRendererAttachmentReady(event.sender.id, { sessionId, attachmentId });
+    options.confirmRendererAttachmentReady(event.sender.id, {
+      sessionId,
+      attachmentId,
+    });
   });
   if (finalArmsCustomEventE2E) {
     ipcMain.handle(PlatformChannels.ReadFinalArmsCustomEventsE2E, () =>
@@ -262,6 +316,11 @@ export function registerRemoteIpcHandlers(options: {
       },
     );
   }
+
+  registerWebRemoteControlIpcHandlers({
+    reportRemoteUsageEvent,
+    webRemoteControlManager: options.webRemoteControlManager,
+  });
 
   ipcMain.on(PlatformChannels.OAuthRegisterState, (event, payload: unknown) => {
     const registration = parseOAuthStateRegistration(payload);
@@ -282,6 +341,10 @@ export function registerRemoteIpcHandlers(options: {
     const { url } = request;
     if (!isAllowedExternalOpenUrl(url)) {
       options.logger.warn("[open-external] blocked unsupported url", url);
+      return;
+    }
+    if (new URL(url).protocol === "file:") {
+      void openFileUrlInDefaultApp(url, options.logger);
       return;
     }
     const sender = event.sender;
@@ -324,6 +387,7 @@ export function registerRemoteIpcHandlers(options: {
     if (event.senderFrame === event.sender.mainFrame)
       updateEnterpriseLoginView(event.sender.id, update);
   });
+
   ipcMain.handle(PlatformChannels.OpenExternalFile, async (_event, rawPath: string) =>
     openPathInDefaultApp(rawPath, options.logger),
   );
@@ -388,7 +452,9 @@ export function registerRemoteIpcHandlers(options: {
   });
 
   ipcMain.on(PlatformChannels.OAuthCallbackHandled, (event) => {
-    options.appTelemetryRuntime.onOAuthCallbackHandled({ rendererId: event.sender.id });
+    options.appTelemetryRuntime.onOAuthCallbackHandled({
+      rendererId: event.sender.id,
+    });
     options.onOAuthCallbackHandledSideEffect?.();
   });
 
@@ -416,6 +482,7 @@ export function registerRemoteIpcHandlers(options: {
       workspacePath?: unknown;
       workspaceIdentity?: unknown;
       connectTrigger?: unknown;
+      confirmSourceServerInstall?: unknown;
     } =
       rawPayload && typeof rawPayload === "object" && "target" in rawPayload
         ? (rawPayload as {
@@ -424,6 +491,7 @@ export function registerRemoteIpcHandlers(options: {
             workspacePath?: unknown;
             workspaceIdentity?: unknown;
             connectTrigger?: unknown;
+            confirmSourceServerInstall?: unknown;
           })
         : { target: rawPayload, requestId: undefined };
     const result = remoteTargetSchema.safeParse(wrappedPayload.target);
@@ -451,6 +519,7 @@ export function registerRemoteIpcHandlers(options: {
       connectTriggerValue === "reconnect" || connectTriggerValue === "restore"
         ? connectTriggerValue
         : "new";
+    const confirmSourceServerInstall = wrappedPayload.confirmSourceServerInstall === true;
 
     try {
       const win = BrowserWindow.fromWebContents(event.sender);
@@ -458,12 +527,24 @@ export function registerRemoteIpcHandlers(options: {
         throw new Error("未找到当前窗口，无法创建远程 session");
       }
 
+      let reusedConnectionTarget: RemoteTarget | undefined;
       const sessionId = await options.createRemoteWorkspaceSession(
         win,
         result.data,
         requestId,
-        workspacePath ? { workspacePath, workspaceIdentity } : undefined,
-        { remoteUsageTelemetryEligible: true },
+        workspacePath || confirmSourceServerInstall
+          ? {
+              workspacePath,
+              workspaceIdentity,
+              ...(confirmSourceServerInstall ? { confirmSourceServerInstall: true } : {}),
+            }
+          : undefined,
+        {
+          remoteUsageTelemetryEligible: true,
+          onConnected: (descriptor) => {
+            reusedConnectionTarget = descriptor.reusedConnectionTarget;
+          },
+        },
       );
       reportRemoteUsageEvent(
         event.sender.id,
@@ -479,13 +560,19 @@ export function registerRemoteIpcHandlers(options: {
         remoteKind: result.data.kind,
         connectTrigger,
       });
-      return { success: true, sessionId };
+      return {
+        success: true,
+        sessionId,
+        ...(reusedConnectionTarget ? { reusedConnectionTarget } : {}),
+      };
     } catch (error) {
-      const normalizedError = normalizeUnknownError(error);
+      const normalizedError = normalizeRemoteConnectionError(error);
       const errorCategory = classifyRemoteUsageError(error);
       // 这里之前直接把 Error 对象交给 logger，落盘时会被 JSON.stringify 压成 `{}`。
       // 改成显式展开 message/code/stack，保证远程建连失败时主进程日志里能看到真实上下文。
       options.logger.error("[connect-remote] caught error:", {
+        requestId,
+        confirmSourceServerInstall,
         message: normalizedError.message,
         code: normalizedError.code,
         stack: error instanceof Error ? error.stack : undefined,
@@ -506,8 +593,55 @@ export function registerRemoteIpcHandlers(options: {
         connectTrigger,
         errorCategory,
       });
-      return { success: false, error: normalizedError.message };
+      const reasonCode = isPublicRemoteReasonCode(normalizedError.code)
+        ? normalizedError.code
+        : undefined;
+      const retryable = reasonCode ? readRetryable(error) : undefined;
+      const profileId = hostRemoteWorkspaceConnectFailedResponseSchema.shape.profileId.safeParse(
+        (reasonCode === "source-server-upgrade-required" ||
+          reasonCode === "source-server-install-required") &&
+          error &&
+          typeof error === "object" &&
+          "profileId" in error
+          ? error.profileId
+          : undefined,
+      );
+      const resolvedWslTarget =
+        hostRemoteWorkspaceConnectFailedResponseSchema.shape.resolvedWslTarget.safeParse(
+          (reasonCode === "source-server-install-required" ||
+            reasonCode === "source-server-upgrade-required") &&
+            error &&
+            typeof error === "object" &&
+            "resolvedWslTarget" in error
+            ? error.resolvedWslTarget
+            : undefined,
+        );
+      return {
+        success: false,
+        error: normalizedError.message,
+        ...(reasonCode ? { reasonCode } : {}),
+        ...(retryable !== undefined ? { retryable } : {}),
+        ...(profileId.success && profileId.data ? { profileId: profileId.data } : {}),
+        ...(resolvedWslTarget.success && resolvedWslTarget.data
+          ? { resolvedWslTarget: resolvedWslTarget.data }
+          : {}),
+      };
     }
+  });
+
+  ipcMain.handle(PlatformChannels.RequestSourceSettingsAttachment, (event, rawPayload: unknown) => {
+    const sourceServerId =
+      rawPayload &&
+      typeof rawPayload === "object" &&
+      "sourceServerId" in rawPayload &&
+      typeof rawPayload.sourceServerId === "string"
+        ? rawPayload.sourceServerId.trim()
+        : "";
+    if (!sourceServerId) throw new Error("sourceServerId is required");
+    if (!options.attachSourceSettings) {
+      throw new Error("Source settings attachment is unavailable");
+    }
+    return options.attachSourceSettings(event.sender, sourceServerId);
   });
 
   ipcMain.handle(
@@ -532,31 +666,43 @@ export function registerRemoteIpcHandlers(options: {
 
   ipcMain.handle(
     PlatformChannels.BindRemoteWorkspaceSessionContext,
-    async (event, rawPayload: unknown) => {
-      if (!rawPayload || typeof rawPayload !== "object") {
-        throw new Error("远程 workspace context payload 无效");
+    async (event, rawPayload: unknown): Promise<BindRemoteWorkspaceSessionContextIpcResult> => {
+      try {
+        if (!rawPayload || typeof rawPayload !== "object") {
+          throw new Error("远程 workspace context payload 无效");
+        }
+        const payload = rawPayload as {
+          remoteSessionId?: unknown;
+          workspacePath?: unknown;
+          workspaceIdentity?: unknown;
+          workspacePurpose?: unknown;
+        };
+        const remoteSessionId =
+          typeof payload.remoteSessionId === "string" ? payload.remoteSessionId.trim() : "";
+        const workspacePath =
+          typeof payload.workspacePath === "string" ? payload.workspacePath : "";
+        const workspaceIdentity =
+          typeof payload.workspaceIdentity === "string" ? payload.workspaceIdentity.trim() : "";
+        const workspacePurpose =
+          payload.workspacePurpose === "project" || payload.workspacePurpose === "conversation"
+            ? payload.workspacePurpose
+            : undefined;
+        if (!remoteSessionId || !workspacePath.trim()) {
+          throw new Error("远程 workspace context 缺少 sessionId 或 workspacePath");
+        }
+        const result = await options.bindRemoteWorkspaceSessionContext(
+          remoteSessionId,
+          {
+            workspacePath,
+            ...(workspaceIdentity ? { workspaceIdentity } : {}),
+            ...(workspacePurpose ? { workspacePurpose } : {}),
+          },
+          event.sender.id,
+        );
+        return { success: true, result };
+      } catch (error) {
+        return toBindIpcFailure(error);
       }
-      const payload = rawPayload as {
-        remoteSessionId?: unknown;
-        workspacePath?: unknown;
-        workspaceIdentity?: unknown;
-      };
-      const remoteSessionId =
-        typeof payload.remoteSessionId === "string" ? payload.remoteSessionId.trim() : "";
-      const workspacePath = typeof payload.workspacePath === "string" ? payload.workspacePath : "";
-      const workspaceIdentity =
-        typeof payload.workspaceIdentity === "string" ? payload.workspaceIdentity.trim() : "";
-      if (!remoteSessionId || !workspacePath.trim()) {
-        throw new Error("远程 workspace context 缺少 sessionId 或 workspacePath");
-      }
-      await options.bindRemoteWorkspaceSessionContext(
-        remoteSessionId,
-        {
-          workspacePath,
-          ...(workspaceIdentity ? { workspaceIdentity } : {}),
-        },
-        event.sender.id,
-      );
     },
   );
 

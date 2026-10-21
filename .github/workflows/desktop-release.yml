@@ -43,10 +43,26 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm architecture:check
+      - name: Validate focused desktop release regressions
+        run: >-
+          pnpm exec vitest run
+          packages/desktop/test/genUiVendorCheckout.test.ts
+          packages/desktop/test/packagedDesktopCdp.test.ts
+          packages/desktop/test/enterpriseLoginIpcBindings.test.ts
+          packages/ui/test/v4ConversationDraftEmptyStateLogo.test.ts
       - name: Validate complete desktop Agent and shared runtime build
         run: node scripts/build-desktop-agent-cli.mjs
       - name: Validate release contracts and archive security
-        run: node --test packages/safe-extract-zip/test/*.test.cjs scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs
+        run: >-
+          node --test packages/safe-extract-zip/test/*.test.cjs
+          packages/safe-extract-zip/contract.test.ts
+          scripts/test/desktop-release.test.mjs
+          scripts/test/desktop-asar-runtime.test.mjs
+          scripts/test/desktop-packaging-config.test.mjs
+          scripts/test/web-remote-uwork-integration.test.mjs
+          scripts/test/arms-patch-install-contract.test.mjs
+          scripts/test/generate-third-party-notices.test.mjs
+          scripts/third-party-notices.test.mjs
       - name: Validate office-editor plugin and UWork plugin naming aliases
         run: >-
           pnpm exec tsx --test
@@ -60,6 +76,9 @@ jobs:
           packages/services/test/enterpriseIdentity.test.ts
           packages/services/test/enterpriseIdentityNative.test.ts
           packages/services/test/enterpriseIdentitySharedStore.test.ts
+          packages/services/test/identitySessionGuard.test.mts
+          packages/services/test/ucasGatewayService.test.ts
+          packages/services/test/ucasGatewayIdentityRace.test.mts
           packages/services/test/enterpriseIdentityOrganizations.test.ts
           packages/services/test/wecomIdentityAdapter.test.ts
           packages/services/test/wecomIdentityConfig.test.ts
@@ -74,9 +93,16 @@ jobs:
           packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
-          packages/services/test/appCaCert.test.ts
+          packages/services/test/appCaCertSecurity.test.mts
           scripts/test/dependencySecurity.test.ts
           scripts/test/mcpOAuthIssuer.test.ts
+      - name: Validate HTTP binding and capability authentication
+        run: >-
+          pnpm exec vitest run
+          packages/server/test/serverInfoHttp.test.ts
+          packages/server/test/hostCapability.test.ts
+          packages/server/test/botsHttp.test.ts
+          packages/desktop/test/serverRemoteConnection.test.ts
       - name: Dependency release gate
         run: pnpm audit --prod --audit-level=high --json > dependency-audit.json
       - name: Preserve dependency audit
@@ -116,16 +142,30 @@ jobs:
         env:
           UWORK_ENTERPRISE_IDENTITY_CONFIG: ${{ secrets.UWORK_ENTERPRISE_IDENTITY_CONFIG }}
         run: pnpm exec tsx scripts/desktop-enterprise-identity.ts stage
+      - name: Verify native login view ownership and callback routing
+        if: matrix.platform != 'linux'
+        timeout-minutes: 2
+        run: node packages/desktop/scripts/native-enterprise-login-smoke.mjs
+      - name: Verify native Linux login view ownership and callback routing
+        if: matrix.platform == 'linux'
+        timeout-minutes: 2
+        run: xvfb-run -a node packages/desktop/scripts/native-enterprise-login-smoke.mjs
       - name: Build native desktop installers
         run: pnpm --dir packages/desktop exec node scripts/bundle.mjs --os ${{ matrix.platform }} --arch ${{ matrix.arch }} --skip-prepare
       - name: Verify bundled public WeCom configuration
         run: pnpm exec tsx scripts/desktop-enterprise-identity.ts verify ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh desktop can open WeCom scanning
         if: matrix.platform != 'linux'
-        run: pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+        timeout-minutes: 10
+        env:
+          DEBUG: pw:api
+        run: pnpm --dir packages/desktop exec tsx test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify fresh Linux desktop can open WeCom scanning
         if: matrix.platform == 'linux'
-        run: xvfb-run -a pnpm --dir packages/desktop exec node test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+        timeout-minutes: 10
+        env:
+          DEBUG: pw:api
+        run: xvfb-run -a pnpm --dir packages/desktop exec tsx test/enterpriseIdentityPackaged.e2e.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Verify macOS resource signature
         if: matrix.platform == 'mac'
         shell: bash

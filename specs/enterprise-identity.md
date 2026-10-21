@@ -1,10 +1,18 @@
 # UWork 可选企业身份登录
 
+## Main 原生登录 IPC 接线回归（2026-10-18）
+
+`OpenEnterpriseLogin`、`CancelEnterpriseLogin`、`UpdateEnterpriseLogin` 显式绑定同一个
+`enterpriseLoginView` owner 的导出。Main 只做所属主 frame 的校验与转发，不保存身份状态。
+`on` 回调中的未定义引用会成为未捕获异常并弹出同步原生错误框，阻塞窗口与调试连接；不能
+通过延长等待或吞掉错误恢复。回归执行生产注册的真实回调及其实际导入绑定，验证三个操作的
+所属窗口参数，以及其他 frame 的打开拒绝、取消/更新忽略。安装包验收继续验证真实扫码入口。
+
 ## 安装即可扫码的发布配置（2026-09-30）
 
 - 正式 GitHub 安装包在 Windows、macOS、Linux 均携带经过严格 schema 校验的默认企业微信公开配置。仅包含 CorpID、AgentID、orgId、HTTPS 认证服务地址和同源回调；Secret、Token、UCAS Key 与用户会话不能进入配置或安装包。
 - 默认配置从受信发布构建的 `UWORK_ENTERPRISE_IDENTITY_CONFIG` 加密配置注入，暂存于 Git 忽略的构建目录，再复制到 `resources/config/enterprise-identity.json`。源码不记录真实企业参数。缺少或无效构建配置必须阻断正式构建；每个平台打包后重新校验资源内容与注入配置一致。
-- Main 是安装布局路径的唯一所有者，向 window-scoped Local Host 注入默认配置路径。Host 先读取本机 `.zcode/v2/enterprise-identity.json`；本机文件不存在时才读取随包默认文件。显式本机配置无效时不悄悄回退；两者均不存在的开发环境仍可跳过登录。本机覆盖不被安装升级修改。
+- Main 是安装布局路径的唯一所有者，向 window-scoped Local Host 注入默认配置路径。Host 先读取本机 `{appConfigDir}/enterprise-identity.json`（默认 `~/.uwork/v2/enterprise-identity.json`）；本机文件不存在时才读取随包默认文件。显式本机配置无效时不悄悄回退；两者均不存在的开发环境仍可跳过登录。本机覆盖不被安装升级修改。
 - 配置源只决定 adapter 接入，不改变 IdentitySessionStore、attempt generation、owner/lease、跨窗口同步或 desktop-continuous/web-remote-replayable 边界。新安装无本机配置即可启用扫码；有默认 UCAS Key 时不重复引导，没有时沿用下述登录后输入对话框。
 
 ```mermaid
@@ -241,7 +249,7 @@ sequenceDiagram
 
 ## 多组织（多子公司）支持（2026-10-08）
 
-**背景**：ucas-proxy 一个控制面已托管三家子公司（生产实测：北京 `beijing` / 南京 `nanjing` / 厦门 `xiamen`，另有 `admin` 组织；各自的企微自建应用与 `custom_domain` 不同）。此前客户端内置配置只有一组 `{corpId, agentId, orgId}`，南京/厦门员工用当前客户端**没有登录入口**。
+**背景**：ucas-proxy 一个控制面已托管四家子公司（生产实测：北京 `beijing` / 南京 `nanjing` / 厦门 `xiamen` / **天津 `tianjin`（2026-10-21 接入）**，另有 `admin` 组织；各自的企微自建应用与 `custom_domain` 不同）。此前客户端内置配置只有一组 `{corpId, agentId, orgId}`，南京/厦门员工用当前客户端**没有登录入口**。
 
 **产品规则**
 
@@ -280,6 +288,23 @@ sequenceDiagram
 
 **回调域名必须逐组织核对（2026-10-08 生产实测）**：企微在授权页按「该企业应用后台配置的授权回调域名」校验 `redirect_uri`，**端口参与匹配**。生产 openresty 为三家公司各起一个 server 块（`/www/sites/pivot{,-nj,.ansilic}*`）：`pivot.ucas.com.cn:23090`、`pivot-nj.ucas.com.cn:23091`、`pivot.ansilic.com:23092`（都反代 `127.0.0.1:23080` 的同一份 SPA）。用企微授权页做「3 个应用 × 候选域名」矩阵实测，**只有对角组合出二维码**，交叉组合（含"正确域名 + 错误端口"如 `pivot-nj.ucas.com.cn:23090`）全部报「redirect_uri 与配置的授权完成回调域名不一致」。所以 `callbackUrl` 必须逐组织取、且与企微后台逐字一致（含端口）；不要按"同域名不同端口"或 443 默认端口推断。
 
+**天津组织配置记录（2026-10-21）**
+
+以下生产接口和数据库结果来自接入 PR 的记录，本次合并仅核对客户端配置读取与组织校验源码；不代表已复验生产环境或完成企微扫码验收。
+
+| 项            | 值                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------- |
+| `orgId`       | `80f0a35d-d5f7-4e7e-bc3a-d02d2a1a2360`（slug `tianjin`）                               |
+| 企微应用      | `corpId=wwb6eecb2e8c0f9d8a`、`agentId=1000003`                                         |
+| 入口          | `https://pivot-tj.ucas.com.cn`（接入记录报告 `/api/auth/orgs`、`/callback` 返回 200）  |
+| `callbackUrl` | `https://pivot-tj.ucas.com.cn/callback`（**无端口**，与其它三家"域名+端口"的形态不同） |
+
+- 接入记录中的生产库只读核对（`organizations` 表）：`custom_domain=pivot-tj.ucas.com.cn`、`new_api_group=beijing`，与其它三家共用同一控制面与模型组。
+- **客户端不需要改代码**：登录卡片按配置清单渲染，加一条即出现「天津」；组织校验仍是"请求 `org_id` / 回包 `org_id` / 续期 `tenantId` 三处一致"。
+- 配置读取只有两层：先读本机 `{appConfigDir}/enterprise-identity.json`；仅文件不存在时，才读当前运行形态的内置配置。开发态内置路径为 `packages/desktop/.release-config/enterprise-identity.json`，安装包内置路径为 `Resources/config/enterprise-identity.json`，两者不是依次回退的三层。旧单组织本机文件也会完整覆盖内置清单；无效本机文件会报错，不静默换组织。
+- 正式安装包内置参数由 CI 的 `UWORK_ENTERPRISE_IDENTITY_CONFIG` 生成；本 PR 不更新该 secret，也不构建或部署安装包，默认天津入口是否生效仍待配置与重新构建验收。
+- **待人工核对**：在天津企微应用后台核对上表回调 URL 对应的授权回调域名设置，并以实际扫码回调验证；不要把带 `/callback` 路径的完整 URL 当成域名字段值。HTTPS 默认端口的入口记录不能证明企微后台配置正确。
+
 **二维码阶段的回头路**：多组织时等待扫码的卡片提供「重新选择公司」——取消当前尝试、保留登录入口并回到选择器（与「跳过登录」的区别是不关闭弹窗）。
 
 ## 审查修复契约（2026-10-09）
@@ -293,3 +318,27 @@ Renderer 发起 start → 用户返回 → 旧 start 返回/失败 → 仅取消
 验收覆盖延迟启动、失败与过期、偏好写入失败/重试/连续选择、并发 hydration 及 dispose。真实扫码和服务端多租户生产前置独立验收。
 
 组织选择与登录的 admission 顺序：已接收的连续选择全部完成持久化/失败结算后，beginLogin 才读取当前组织并启动。服务通过 selection 完成屏障等待完整队列，不只等待已经进入全局 writes 的第一笔写入；后续选择不得把已启动 attempt 的组织归属漂移。
+
+## P1 审查修复 2026-10-16
+
+- Main 在每个窗口的 Local Host InitLocal 中注入 `enterpriseIdentityBuiltinConfigFilePath`，通过现有安装布局 resolver 解析；Host 保持本机覆盖优先、缺失时读取随包公开配置。新安装无本机配置也能得到 configured 身份服务。
+- 同一 attempt 的原生 code 兑换和轮询分别合并各自的在途请求；合法 native callback 立即领取一次性兑换权，不等待 poll。领取后 poll 的结果及失败不再有身份写入权；重复 native callback 共享同次兑换，取消、过期及跨窗口 revision CAS 仍可拒绝旧结果。poll 已经完成认证时，晚到 native callback 不兑换，不伪造 committedAttemptId。
+- 回归执行真实 Main 启动消息回调装配，并覆盖 pending/失败 poll 与 native callback 并发、重复 callback、取消后的晚到结果。桌面 continuous 与手机 replayable 复用同一身份 owner，无新增会话或队列。
+
+```mermaid
+sequenceDiagram
+  participant UI as Renderer
+  participant Id as EnterpriseIdentityService
+  participant Issuer
+  participant Store as IdentitySessionStore 唯一会话 owner
+  UI->>Id: pollLogin(attempt)
+  Id->>Issuer: poll（在途）
+  UI->>Id: completeLogin(attempt, callback)
+  Id->>Id: native 领取一次性兑换权
+  Id->>Issuer: complete(code)，不等待 poll
+  Issuer-->>Id: poll pending / failed / authenticated
+  Id->>Id: native 已领取，忽略 poll 写入及错误
+  Issuer-->>Id: native session
+  Id->>Store: generation + revision CAS
+  Store-->>Id: 接受或拒绝，不复活已取消尝试
+```

@@ -1,8 +1,8 @@
 /* eslint-disable max-lines */
 import type { Dirent } from "node:fs";
-import { mkdir, open, readFile, readdir, realpath, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, relative, sep } from "node:path";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import type {
   FileBinaryPreview,
   FileEntry,
@@ -115,7 +115,7 @@ function validateScratchWorkspaceName(name: string): string {
 function normalizeRelativePath(rootPath: string, targetPath: string): string {
   return relative(rootPath, targetPath).split(sep).join("/");
 }
-function isSkippableWorkspaceFileListError(error: unknown): boolean {
+export function isSkippableWorkspaceFileListError(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
   return code === "EACCES" || code === "EPERM" || code === "ENOENT";
 }
@@ -125,7 +125,7 @@ interface FileExistenceCacheEntry {
   expiresAt: number;
 }
 
-class FileExistenceCache {
+export class FileExistenceCache {
   private readonly entries = new Map<string, FileExistenceCacheEntry>();
 
   get size(): number {
@@ -586,6 +586,50 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
         totalBytes: fileStat.size,
       };
     },
+    /**
+     * 原地写回（应用内文档编辑保存）。防丢更新的三道闸：
+     * ① expectedRevision 与磁盘当前 (size, mtimeMs) 必须一致，否则抛 "File revision mismatch"；
+     * ② 可选先把原文件复制成 sibling 备份（`_backup`、`_backup-2`…），用户永远能回到上一版；
+     * ③ 临时文件 + rename 原子替换，避免写一半把文档写坏。
+     */
+    async writeBinaryFile(params: {
+      path: string;
+      dataBase64: string;
+      expectedRevision?: { size: number; mtimeMs: number };
+      backup?: "none" | "sibling";
+    }): Promise<{
+      path: string;
+      bytes: number;
+      backup?: string;
+      revision: { size: number; mtimeMs: number };
+    }> {
+      const fileStat = await stat(params.path);
+      if (!fileStat.isFile()) {
+        throw new Error(`Path is not a file: ${params.path}`);
+      }
+      const expected = params.expectedRevision;
+      if (expected && (fileStat.size !== expected.size || fileStat.mtimeMs !== expected.mtimeMs)) {
+        throw new Error(
+          `File revision mismatch: ${params.path} (disk ${fileStat.size}B/${fileStat.mtimeMs} vs expected ${expected.size}B/${expected.mtimeMs})`,
+        );
+      }
+      const data = Buffer.from(params.dataBase64, "base64");
+      let backup: string | undefined;
+      if (params.backup === "sibling") {
+        backup = await nextSiblingBackupPath(params.path);
+        await copyFile(params.path, backup);
+      }
+      const temporary = `${params.path}.${Date.now().toString(36)}.tmp`;
+      await writeFile(temporary, data);
+      await rename(temporary, params.path);
+      const after = await stat(params.path);
+      return {
+        path: params.path,
+        bytes: data.byteLength,
+        ...(backup ? { backup } : {}),
+        revision: { size: after.size, mtimeMs: after.mtimeMs },
+      };
+    },
     async searchWorkspaceFiles(params: WorkspaceFileSearchParams): Promise<WorkspaceFileEntry[]> {
       const requestedLimit = params.limit ?? WORKSPACE_FILE_SEARCH_DISPLAY_CAP;
       if (!Number.isFinite(requestedLimit) || typeof params.query !== "string") {
@@ -639,4 +683,25 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       await writeWorkspaceFileSearchIgnore(params.rootPath, params.content);
     },
   };
+}
+
+/**
+ * sibling 备份命名：`<stem>_backup<ext>`，已存在就 `<stem>_backup-2<ext>`、`_backup-3`……
+ * 与 office 插件里的约定一致（用户能看到、可自行清理）。
+ */
+async function nextSiblingBackupPath(path: string): Promise<string> {
+  const directory = dirname(path);
+  const extension = extname(path);
+  const stem = basename(path, extension);
+  let candidate = join(directory, `${stem}_backup${extension}`);
+  let index = 2;
+  for (;;) {
+    try {
+      await stat(candidate);
+    } catch {
+      return candidate;
+    }
+    candidate = join(directory, `${stem}_backup-${index}${extension}`);
+    index += 1;
+  }
 }

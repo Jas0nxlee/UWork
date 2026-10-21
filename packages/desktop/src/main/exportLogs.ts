@@ -141,7 +141,8 @@ const DOCSHOT_ARCHIVE_PATHS = ["docshot-assets"] as const;
 const NON_LOG_STATE_ARCHIVE_PATHS = [
   "agent-config",
   "certs",
-  "repo",
+  "repo-snapshots",
+  "repo-wiki",
   "sessions",
   "session-bindings",
   "checkpoints",
@@ -702,8 +703,10 @@ function isDocshotArchivePath(relativePath: string): boolean {
 
 function isNonLogStateArchivePath(relativePath: string): boolean {
   const normalizedRelativePath = normalizeArchivePath(relativePath);
-  return NON_LOG_STATE_ARCHIVE_PATHS.some((archivePath) =>
-    normalizedRelativePath.startsWith(archivePath),
+  return NON_LOG_STATE_ARCHIVE_PATHS.some(
+    (archivePath) =>
+      normalizedRelativePath === archivePath ||
+      normalizedRelativePath.startsWith(`${archivePath}/`),
   );
 }
 
@@ -760,8 +763,10 @@ function isExcludedRelativePath(relativePath: string): boolean {
 
 function shouldApplyLogExportRetention(archivePath: string): boolean {
   const normalizedArchivePath = normalizeArchivePath(archivePath);
+  // UWork 手动归档已使用新前缀；只识别旧标签会绕过 CLI 日志的 3 天保留窗口。
   if (
     normalizedArchivePath.startsWith("logs/") ||
+    normalizedArchivePath.startsWith(".uwork/cli/log/") ||
     normalizedArchivePath.startsWith(".zcode/cli/log/")
   ) {
     return true;
@@ -941,7 +946,7 @@ async function collectLogArchiveFile(
   files.push({ absolutePath, archivePath });
 }
 
-async function collectLogArchiveFiles(sourceDir: string): Promise<LogArchiveFileEntry[]> {
+export async function collectLogArchiveFiles(sourceDir: string): Promise<LogArchiveFileEntry[]> {
   const files: LogArchiveFileEntry[] = [];
   const visitedDirs = new Set<string>();
   await collectLogArchiveFilesFromDirectory(sourceDir, "", visitedDirs, files);
@@ -949,7 +954,7 @@ async function collectLogArchiveFiles(sourceDir: string): Promise<LogArchiveFile
   return files;
 }
 
-async function createLogArchiveArtifacts(
+export async function createLogArchiveArtifacts(
   sourceDir: string,
   options: CreateLogArchiveArtifactsOptions = {},
 ): Promise<LogArchiveArtifacts> {
@@ -1091,7 +1096,7 @@ function logSkippedLogArchiveFiles(skippedFiles: LogArchiveSkippedFileEntry[]): 
   });
 }
 
-async function writeLogArchiveZip(
+export async function writeLogArchiveZip(
   outputPath: string,
   artifacts: LogArchiveArtifacts,
   options: WriteLogArchiveZipOptions = {},
@@ -1124,7 +1129,7 @@ async function writeLogArchiveZip(
   }
 }
 
-async function writeLogArchiveDirectory(
+export async function writeLogArchiveDirectory(
   outputPath: string,
   artifacts: LogArchiveArtifacts,
 ): Promise<void> {
@@ -1143,6 +1148,17 @@ export async function createFeedbackLogArchiveFromExportLogs(
     sources: [
       { directory: join(sourceDir, "logs"), archivePrefix: "logs" },
       { directory: getZCodeCliLogDir(), archivePrefix: ".zcode/cli/log" },
+      {
+        directory: getZCodeCliDir(),
+        archivePrefix: ".zcode/cli",
+        includeFileNames: ["config.json"],
+        onlyCurrentDay: false,
+        contentPolicy: "cli-config",
+      },
+      {
+        directory: join(getZCodeCliDir(), "rollout"),
+        archivePrefix: ".zcode/cli/rollout",
+      },
       {
         directory: getCuaHelperRunDir(),
         archivePrefix: ".zcode/computer-use/run",

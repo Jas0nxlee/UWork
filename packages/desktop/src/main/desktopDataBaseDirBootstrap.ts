@@ -2,11 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { setDataBaseDir } from "@zcode/services/node";
 import { resolveDesktopSettingsFile } from "./desktopHomePath.js";
 
-function resolveBootstrapSettingsFile(): string {
+export function resolveBootstrapSettingsFile(): string {
   return resolveDesktopSettingsFile();
 }
 
-function extractBootstrapDataBaseDir(rawValue: unknown): string | null {
+export function extractBootstrapDataBaseDir(rawValue: unknown): string | null {
   if (!rawValue || typeof rawValue !== "object") {
     return null;
   }

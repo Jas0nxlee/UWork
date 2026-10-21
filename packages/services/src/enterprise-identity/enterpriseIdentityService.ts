@@ -76,6 +76,7 @@ export function createEnterpriseIdentityService(options: {
   let nativeAttemptClaimed = false;
   let startTask: Promise<EnterpriseIdentityAttempt> | null = null;
   let resultTask: Promise<EnterpriseIdentityCompletion> | null = null;
+  let pollTask: Promise<EnterpriseIdentityCompletion> | null = null;
   let restoreTask: Promise<EnterpriseIdentityView> | null = null;
   let adapterTask: Promise<void> | null = null;
   let selectionTask: Promise<void> | null = null;
@@ -97,6 +98,7 @@ export function createEnterpriseIdentityService(options: {
     nativeAttemptClaimed = false;
     startTask = null;
     resultTask = null;
+    pollTask = null;
     restoreTask = null;
     return generation;
   };
@@ -152,16 +154,17 @@ export function createEnterpriseIdentityService(options: {
     value: EnterpriseIdentitySession,
     current: number,
     renewal?: IdentitySessionRecord,
+    isCurrent: () => boolean = () => current === generation,
   ): Promise<boolean> => {
     if (disposed) return false;
     const validated = enterpriseIdentitySessionSchema.parse(value);
     if (validated.expiresAt <= now()) throw new Error("企业登录会话已过期");
     return enqueue(async () => {
-      if (current !== generation) return false;
+      if (!isCurrent()) return false;
       const result = renewal
-        ? await store.renew(validated, renewal, () => current === generation)
-        : await store.write(validated, attemptRevision, () => current === generation);
-      if (current !== generation) return false;
+        ? await store.renew(validated, renewal, isCurrent)
+        : await store.write(validated, attemptRevision, isCurrent);
+      if (!isCurrent()) return false;
       // 同一账号的另一窗口可能已完成续期；共享版本和身份未变时采用库中的新 Token，避免续期回环。
       const sameRenewal =
         renewal &&
@@ -247,25 +250,32 @@ export function createEnterpriseIdentityService(options: {
     current: number,
     committedAttemptId: string | null,
     operation: () => Promise<EnterpriseIdentitySession | null>,
+    kind: "native" | "poll" = "native",
   ): Promise<EnterpriseIdentityCompletion> => {
-    if (resultTask) return resultTask;
+    const pending = kind === "native" ? resultTask : pollTask;
+    if (pending) return pending;
+    // poll 是查询，native 是一次性兑换：不能共享任务吞掉 code，也不能让晚到 poll 覆盖 native。
+    const isCurrent = () => current === generation && (kind === "native" || !nativeAttemptClaimed);
     const task = (async () => {
       try {
         const result = await operation();
-        if (current !== generation) return { view: await getView(), committedAttemptId: null };
-        const committed = result ? await commit(result, current) : false;
-        if (result && !committed) await restoreOwned(current);
+        if (!isCurrent()) return { view: await getView(), committedAttemptId: null };
+        const committed = result ? await commit(result, current, undefined, isCurrent) : false;
+        if (result && !committed && isCurrent()) await restoreOwned(current);
         const latest = await getView();
         const accepted = committed && current === generation && latest.status === "authenticated";
         return { view: latest, committedAttemptId: accepted ? committedAttemptId : null };
       } catch {
+        if (!isCurrent()) return { view: await getView(), committedAttemptId: null };
         fail(current);
         throw new Error("企业微信登录失败，请重试或跳过登录");
       }
     })();
-    resultTask = task;
+    if (kind === "native") resultTask = task;
+    else pollTask = task;
     return releaseIdentityOperation(task, () => {
       if (resultTask === task) resultTask = null;
+      if (pollTask === task) pollTask = null;
     });
   };
   const service: IEnterpriseIdentityService = {
@@ -347,17 +357,22 @@ export function createEnterpriseIdentityService(options: {
         return getView();
       }
       const current = generation;
-      return completeResult(current, null, async () => {
-        const polled = await adapter!.poll!(attemptId, controller.signal);
-        const result = enterpriseIdentityPollResultSchema.parse(polled);
-        if (current !== generation) return null;
-        if (result.status === "expired") {
-          invalidate();
-          signedOut("expired");
-          return null;
-        }
-        return result.status === "authenticated" ? result.session : null;
-      }).then((result) => result.view);
+      return completeResult(
+        current,
+        null,
+        async () => {
+          const polled = await adapter!.poll!(attemptId, controller.signal);
+          const result = enterpriseIdentityPollResultSchema.parse(polled);
+          if (current !== generation || nativeAttemptClaimed) return null;
+          if (result.status === "expired") {
+            invalidate();
+            signedOut("expired");
+            return null;
+          }
+          return result.status === "authenticated" ? result.session : null;
+        },
+        "poll",
+      ).then((result) => result.view);
     },
     completeLogin(attemptId, callbackUrl) {
       const currentView = async () => ({ view: await getView(), committedAttemptId: null });

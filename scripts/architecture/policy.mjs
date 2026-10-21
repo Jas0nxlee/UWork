@@ -2,14 +2,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { parse as parseYaml } from "yaml";
+import { SOURCE_EXTENSIONS, resolveSpecifier } from "./resolver.mjs";
+import { isSnapshotPath } from "./upstream-snapshot.mjs";
 
-const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+export { SOURCE_EXTENSIONS };
 
 export function posix(value) {
   return value.split(path.sep).join("/");
 }
 
-function isSourceFile(file) {
+export function isSourceFile(file) {
   return SOURCE_EXTENSIONS.some((extension) => file.endsWith(extension));
 }
 
@@ -24,7 +26,9 @@ async function walk(root, files) {
     if (["node_modules", "dist", "out", "coverage", ".git"].includes(entry.name)) continue;
     const target = path.join(root, entry.name);
     if (entry.isDirectory()) await walk(target, files);
-    else if (entry.isFile() && isSourceFile(target)) files.push(target);
+    // 契约文档也是必需产物；只枚举源码会把实际存在的 CONTRACT.md 误报为缺失。
+    else if (entry.isFile() && (isSourceFile(target) || entry.name === "CONTRACT.md"))
+      files.push(target);
   }
 }
 
@@ -40,14 +44,26 @@ function validatePolicy(raw, cwd) {
     if (!Array.isArray(module.roots) || module.roots.length === 0) {
       throw new Error(`模块 ${module.id} 必须声明 roots`);
     }
+    const layers = module.layers === undefined ? {} : module.layers;
+    if (
+      !layers ||
+      typeof layers !== "object" ||
+      Array.isArray(layers) ||
+      Object.values(layers).some((value) => {
+        const roots = Array.isArray(value) ? value : [value];
+        return roots.length === 0 || roots.some((root) => typeof root !== "string" || !root.trim());
+      })
+    ) {
+      throw new Error(`模块 ${module.id} 的 layers 必须映射到非空路径或非空路径数组`);
+    }
     return {
       id: module.id,
       roots: module.roots.map((root) => path.resolve(cwd, root)),
       managed: module.managed === true,
       requires: [...new Set(module.requires ?? [])],
       publicEntrypoints: (module.publicEntrypoints ?? []).map((entry) => posix(entry)),
-      layers: module.layers ?? {},
-      layerOrder: module.layerOrder ?? Object.keys(module.layers ?? {}),
+      layers,
+      layerOrder: module.layerOrder ?? Object.keys(layers),
       owner: module.owner ?? null,
     };
   });
@@ -59,13 +75,45 @@ function validatePolicy(raw, cwd) {
     }
   }
   const global = {
-    maxFileLines: raw.global?.maxFileLines ?? 400,
+    maxFileLines: raw.global?.maxFileLines ?? 800,
     maxContractLines: raw.global?.maxContractLines ?? 300,
     forbidCycles: raw.global?.forbidCycles !== false,
     forbidDeepImports: raw.global?.forbidDeepImports !== false,
     managedOnly: raw.global?.managedOnly !== false,
     maxPublicMethods: raw.global?.maxPublicMethods ?? 12,
+    // 新增源码文件必须落在 managed 模块内；这是"新代码走这套约束"的唯一机械保证。
+    newFilesRequireManagedModule: raw.global?.newFilesRequireManagedModule !== false,
+    newFileScopes: raw.global?.newFileScopes ?? ["packages", "apps"],
+    // 规则生效时间点：首次进入 git 历史早于该日期的文件不受 unmanaged-new-file 追溯。
+    // 原因：长期分支相对 merge-base 有几百个提交的"新增"文件，它们写在规则存在之前；
+    // 用共享 baseline 兜会让各分支互相冲突，用生效日期则各分支一致且无需登记。
+    newFilesEnforcedSince: raw.global?.newFilesEnforcedSince
+      ? String(raw.global.newFilesEnforcedSince)
+      : null,
+    acceptedUpstreamCommits: raw.global?.acceptedUpstreamCommits ?? [],
+    acceptedUpstreamSnapshot: raw.global?.acceptedUpstreamSnapshot ?? null,
   };
+  if (
+    !Array.isArray(global.acceptedUpstreamCommits) ||
+    global.acceptedUpstreamCommits.some(
+      (entry) =>
+        !entry ||
+        !/^[a-f0-9]{40}$/.test(entry.commit ?? "") ||
+        !/^[a-f0-9]{40}$/.test(entry.previousHead ?? "") ||
+        typeof entry.reason !== "string" ||
+        !entry.reason.trim(),
+    )
+  ) {
+    throw new Error("acceptedUpstreamCommits 必须包含完整 commit、previousHead SHA 和非空 reason");
+  }
+  if (
+    global.acceptedUpstreamSnapshot !== null &&
+    (!isSnapshotPath(global.acceptedUpstreamSnapshot) || global.acceptedUpstreamCommits.length)
+  ) {
+    throw new Error(
+      "acceptedUpstreamSnapshot 必须为仓库相对路径，且不能与 acceptedUpstreamCommits 混用",
+    );
+  }
   const exceptions = (raw.exceptions ?? []).map((exception) => ({
     ...exception,
     paths: exception.paths ?? [],
@@ -76,10 +124,13 @@ function validatePolicy(raw, cwd) {
 export function layerForFile(file, module) {
   const matches = module.roots
     .flatMap((root) =>
-      Object.entries(module.layers).map(([name, directory]) => ({
-        name,
-        directory: path.resolve(root, directory),
-      })),
+      // 同层可以有多个精确根；仍由最长匹配决定选层，不能让 adapters 的 "." 吞掉契约目录。
+      Object.entries(module.layers).flatMap(([name, directories]) =>
+        (Array.isArray(directories) ? directories : [directories]).map((directory) => ({
+          name,
+          directory: path.resolve(root, directory),
+        })),
+      ),
     )
     .filter(({ directory }) => file === directory || file.startsWith(`${directory}${path.sep}`))
     .sort((a, b) => b.directory.length - a.directory.length);
@@ -149,33 +200,50 @@ export async function discoverFiles(policy) {
   return [...new Set(files)].sort();
 }
 
-export function resolveImport(from, specifier, knownFiles) {
-  if (!specifier.startsWith(".")) return null;
-  let base = path.resolve(path.dirname(from), specifier);
-  if (SOURCE_EXTENSIONS.some((extension) => base.endsWith(extension))) {
-    base = base.slice(0, base.lastIndexOf("."));
-  }
-  const candidates = [];
-  for (const extension of SOURCE_EXTENSIONS) candidates.push(`${base}${extension}`);
-  for (const extension of SOURCE_EXTENSIONS) candidates.push(path.join(base, `index${extension}`));
-  return candidates.find((candidate) => knownFiles.has(candidate)) ?? null;
+export function resolveImport(from, specifier, knownFiles, workspace = null) {
+  return resolveSpecifier(from, specifier, knownFiles, workspace);
 }
 
-export function importsOf(file, source) {
+/**
+ * 返回 [{ specifier, typeOnly }]。typeOnly 覆盖 `import type {}`、`export type {}` 以及
+ * 所有具名成员都是 `type` 修饰的情况；它们不产生运行时依赖，domain-io 不应把
+ * `import type { Stats } from "node:fs"` 当成 IO。模块边界与深导入仍然按边计算。
+ */
+export function importDeclarationsOf(file, source) {
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const imports = [];
   function visit(node) {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
-      imports.push(node.moduleSpecifier.text);
-    }
-    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
-      if (ts.isStringLiteral(node.moduleReference.expression))
-        imports.push(node.moduleReference.expression.text);
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier) {
+      const clause = node.importClause;
+      const named = clause?.namedBindings;
+      const allMembersTypeOnly =
+        !!clause &&
+        !clause.name &&
+        !!named &&
+        ts.isNamedImports(named) &&
+        named.elements.length > 0 &&
+        named.elements.every((element) => element.isTypeOnly);
+      imports.push({
+        specifier: node.moduleSpecifier.text,
+        typeOnly: !!clause?.isTypeOnly || allMembersTypeOnly,
+      });
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      imports.push({ specifier: node.moduleSpecifier.text, typeOnly: !!node.isTypeOnly });
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      imports.push({ specifier: node.moduleReference.expression.text, typeOnly: false });
     }
     ts.forEachChild(node, visit);
   }
   visit(sourceFile);
   return imports;
+}
+
+export function importsOf(file, source) {
+  return importDeclarationsOf(file, source).map((item) => item.specifier);
 }
 
 export function isException(policy, rule, file, cwd) {

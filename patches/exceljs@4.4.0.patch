@@ -1,0 +1,14 @@
+diff --git a/lib/stream/xlsx/workbook-reader.js b/lib/stream/xlsx/workbook-reader.js
+index 0d3afd62a54ebc566ac430a0741c9d51f8b12888..b9bd98a1ebf28a3dfa4ee5c6051e5afc85b6f4a7 100644
+--- a/lib/stream/xlsx/workbook-reader.js
++++ b/lib/stream/xlsx/workbook-reader.js
+@@ -107,7 +107,8 @@ class WorkbookReader extends EventEmitter {
+           if (entry.path.match(/xl\/worksheets\/sheet\d+[.]xml/)) {
+             match = entry.path.match(/xl\/worksheets\/sheet(\d+)[.]xml/);
+             sheetNo = match[1];
+-            if (this.sharedStrings && this.workbookRels) {
++            // 修复依据：工作表可能早于 workbook.xml，必须等 model 就绪再读取 sheets。
++            if (this.sharedStrings && this.workbookRels && this.model) {
+               yield* this._parseWorksheet(iterateStream(entry), sheetNo);
+             } else {
+               // create temp file for each worksheet

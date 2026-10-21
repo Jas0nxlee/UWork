@@ -6,6 +6,12 @@
 
 验收：浅色/深色主界面展示 UCAS；SVG 图标可渲染；Finder/菜单/窗口为 UWork；原供应商和会话配置保持；自动获取模型功能同时交付。
 
+## 首页背景资源回归（2026-10-18）
+
+- `ConversationDraftEmptyState` 负责首页背景展示：浅色使用 UCAS SVG 文字，深色使用现有 `packages/ui/src/assets/UCAS.svg`，不能引用上游 `Z.svg`。桌面和手机远控复用同一组件，不增加状态或服务接口。
+- 两种主题继续使用现有 36:11 宽高比、最大 832px 宽度及公共容器的下半部渐隐遮罩；背景不拦截点击，也不参与可访问性朗读。
+- 回归验证须检查实际图片资源及渲染结果，不能仅凭 `data-main-background="UCAS"` 判断品牌正确。覆盖深浅主题、桌面与手机窄屏，确认只显示对应主题的 UCAS，并保持问候语可读。
+
 ## macOS DMG 安装背景
 
 - DMG 背景的中央品牌字样使用全大写 `UWORK`，替换遗留的 `ZCODE`。背景仍由 Desktop build 素材负责，electron-builder 继续引用 `build/dmg_background.png` 并消费同名 Retina 素材，不改变安装拖拽交互、图标位置或任何应用状态。

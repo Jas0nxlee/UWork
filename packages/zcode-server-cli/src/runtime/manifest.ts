@@ -13,8 +13,16 @@ export const supportedServerTargets = [
 
 export type ServerTarget = (typeof supportedServerTargets)[number];
 
+/** 当前产品身份（写入 manifest 的新值）。 */
+export const SERVER_PRODUCT = "uwork-server" as const;
+/**
+ * 兼容身份：3.16.2 之前的发行包/已安装 release 里 manifest.json 写的是 `zcode-server`。
+ * 读取时接受两者并归一化成 {@link SERVER_PRODUCT}，旧发行包因此仍可安装/校验/更新。
+ */
+export const LEGACY_SERVER_PRODUCT = "zcode-server" as const;
+
 export interface ServerRuntimeManifest {
-  product: "zcode-server";
+  product: typeof SERVER_PRODUCT;
   target: ServerTarget;
   appVersion: string;
   nodeVersion: string;
@@ -33,7 +41,11 @@ export interface ServerRuntimeManifest {
 
 export const serverRuntimeManifestSchema = z
   .object({
-    product: z.literal("zcode-server"),
+    // 读入接受 `uwork-server` 与旧 `zcode-server`（后者是 3.16.2 之前发行包的 product）；
+    // 归一化输出新身份，安装/更新链后续比较只面对单一事实值。
+    product: z
+      .union([z.literal(SERVER_PRODUCT), z.literal(LEGACY_SERVER_PRODUCT)])
+      .transform(() => SERVER_PRODUCT),
     target: z.enum(supportedServerTargets),
     appVersion: z.string().min(1),
     nodeVersion: z.string().min(1),
@@ -71,7 +83,7 @@ export function createRuntimeManifest(
   extras: Pick<ServerRuntimeManifest, "tools" | "plugins" | "components"> = {},
 ): ServerRuntimeManifest {
   return {
-    product: "zcode-server",
+    product: SERVER_PRODUCT,
     target,
     appVersion,
     nodeVersion: SERVER_RUNTIME_NODE_VERSION,

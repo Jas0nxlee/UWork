@@ -66,8 +66,8 @@ export function ThemePreviewCard({
   const { intl } = useZCodeIntl();
   const previewSurfaceClassName = mode === "light" ? "ring-1 ring-black/5" : "ring-1 ring-white/8";
   const previewThemeStyle = {
-    "--color-background": mode === "light" ? "#f8f8f8" : "#161616",
-    "--color-card": mode === "light" ? "#f8f8f8" : "#161616",
+    "--color-background": mode === "light" ? "#f5f5f5" : "#0f0f0f",
+    "--color-card": mode === "light" ? "#f5f5f5" : "#0f0f0f",
     "--color-foreground": mode === "light" ? "#0d0d0d" : "#ffffff",
   } as CSSProperties;
 
@@ -158,6 +158,46 @@ export function SettingsBadge({ children }: { children: ReactNode }) {
     <span className="rounded-md bg-surface px-2.5 py-1 text-ui-base font-medium text-foreground-subtle">
       {children}
     </span>
+  );
+}
+
+export function SettingsRangeControl({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  valueLabel,
+  valueLabelClassName,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  valueLabel: ReactNode;
+  valueLabelClassName?: string;
+}) {
+  return (
+    <div className="flex w-[280px] min-w-0 items-center gap-3">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.currentTarget.value))}
+        className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
+      />
+      <span
+        className={cn(
+          "min-w-10 text-right text-ui-base font-medium tabular-nums text-foreground",
+          valueLabelClassName,
+        )}
+      >
+        {valueLabel}
+      </span>
+    </div>
   );
 }
 
