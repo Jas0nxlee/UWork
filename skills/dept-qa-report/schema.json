@@ -1,0 +1,69 @@
+{
+  "_comment": "测试与服务保障部的『测试记录』模板。字段取自部门现有《测试情况统计表》，骨架字段（编号/名称/项目经理/日期/标题/输出物…）由平台定义，这里只声明部门自己要的列。",
+  "templateId": "dept.qa.test-report",
+  "templateVersion": 1,
+  "contractVersion": 1,
+  "title": "测试记录",
+  "periodFormat": "YYYY-MM",
+  "type": "dept.qa.test-record",
+  "fields": [
+    {
+      "name": "项目状态",
+      "label": "项目状态",
+      "type": "string",
+      "oneOf": "项目状态",
+      "required": true
+    },
+    {
+      "name": "测试方式",
+      "label": "测试方式",
+      "type": "string",
+      "oneOf": "测试方式",
+      "required": true,
+      "description": "是否用 AI 做的，部门在统计这个维度；UWork 里做的可自动带出"
+    },
+    {
+      "name": "测试内容分类",
+      "label": "测试内容分类",
+      "type": "string",
+      "oneOf": "测试内容分类",
+      "required": true,
+      "description": "受控编号分类，取自部门台账。"
+    },
+    {
+      "name": "产品总数",
+      "label": "产品总数",
+      "type": "number",
+      "range": { "min": 0, "max": 10000 }
+    },
+    { "name": "产品名称", "label": "产品名称", "type": "string", "length": { "max": 500 } },
+    {
+      "name": "测试数量",
+      "label": "测试数量",
+      "type": "number",
+      "range": { "min": 0, "max": 10000 }
+    },
+    {
+      "name": "工作输出物",
+      "label": "工作输出物",
+      "type": "string",
+      "length": { "max": 800 },
+      "required": true,
+      "description": "本次交付了什么（文档/计划/报告名）。在 UWork 里做的产物应能自动预填这一列。"
+    },
+    {
+      "name": "被测对象版本",
+      "label": "简述被测对象的版本、编号等信息",
+      "type": "string",
+      "length": { "max": 800 }
+    },
+    {
+      "name": "是否计入统计",
+      "label": "是否统计",
+      "type": "string",
+      "oneOf": "是否计入统计",
+      "description": "部门台账里原本就有这一列：不计入统计的记录不该出现在汇总口径里。"
+    },
+    { "name": "备注", "label": "备注", "type": "string", "length": { "max": 1000 } }
+  ]
+}

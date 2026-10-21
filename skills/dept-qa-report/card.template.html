@@ -1,0 +1,279 @@
+<!--
+  汇报卡片（agent 端内联展示）。由 scripts/render-card.mjs 用草稿填好后，agent 输出
+  `::visualize{"path":"…"}` 让应用把它渲染成对话里的卡片。
+
+  为什么是"卡片 + 回一句话"而不是"卡片 + 按钮"：Gen UI 沙箱是**只读**的（契约里只有
+  window.zcode.openExternal），按钮发不了消息。所以卡片负责把草稿讲清楚，
+  「汇报 / 暂存」由用户回一句话决定——这是当前能力下最诚实的做法；
+  真按钮要等原生卡片（需要动消息渲染那条被仔细测过的路径）。
+
+  两条硬约束（错了就渲染不出来，且是静默失败）：
+  1. 必须是**片段**：不能有 doctype/html/head/body 标签，沙箱会把片段塞进自己的 body；
+  2. 文件必须落在宿主输出根目录（ZCODE_GEN_UI_OUTPUT_ROOT）下、小写连字符 .html 命名。
+  颜色只用沙箱设计令牌（--card/--foreground/--primary/--border…），明暗主题自动跟随。
+-->
+<style>
+  .uw-report {
+    /* 撑满正文列（客户端的 GenUiCard 只给 w-full，限宽是它的明确反例：注释写着"卡片再次限宽
+       会让 inline UI 无法填满正文"）。主会话列变宽/变窄时，沙箱会随容器重排并上报新高度，
+       所以这里只用相对宽度，不写任何固定像素。 */
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--radius-2xl, 14px);
+    corner-shape: var(--corner-shape, round);
+    color: var(--card-foreground);
+    background: var(--card);
+    box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  }
+  .uw-report .accent {
+    height: 3px;
+    background: var(--primary);
+  }
+  .uw-report .head {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 14px 6px;
+  }
+  .uw-report .doc {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    background: var(--muted);
+  }
+  .uw-report .title {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .uw-report .period {
+    flex: none;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--muted-foreground);
+    background: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .uw-report .meta {
+    padding: 0 14px 10px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+  .uw-report .body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 14px 12px;
+  }
+  .uw-report .label {
+    margin-bottom: 3px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+  .uw-report .text {
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .uw-report .block {
+    border-left: 2px solid var(--border);
+    padding-left: 9px;
+  }
+  .uw-report .alert {
+    border-left: 2px solid var(--destructive);
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .uw-report .alert .label {
+    color: var(--destructive);
+  }
+  .uw-report .fields {
+    display: grid;
+    /* 台账字段随卡片宽度自适应：宽屏 4–5 列、窄屏 2 列，避免撑满后每格右侧留一大片空。 */
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 7px 18px;
+  }
+  .uw-report .field .k {
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+  .uw-report .field .v {
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .uw-report .att {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    background: var(--muted);
+  }
+  .uw-report .foot {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+  /* 按钮就是"用户替自己说那句话"：主按钮（汇报）用强调色，次按钮中性。 */
+  .uw-report .action {
+    appearance: none;
+    padding: 5px 12px;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--foreground);
+    background: var(--muted);
+    box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  }
+  .uw-report .action.primary {
+    color: var(--primary-foreground, #fff);
+    background: var(--primary);
+    box-shadow: none;
+  }
+  .uw-report .action:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .uw-report .status {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    color: var(--muted-foreground);
+  }
+  .uw-report kbd {
+    padding: 1px 6px;
+    border-radius: 5px;
+    font: inherit;
+    color: var(--foreground);
+    background: var(--muted);
+    box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  }
+</style>
+<div class="uw-report">
+  <div class="accent"></div>
+  <div class="head">
+    <div class="doc">📄</div>
+    <div class="title">__TITLE__</div>
+    <div class="period">__PERIOD__</div>
+  </div>
+  <div class="meta">__META__</div>
+  <div class="body">
+    __SECTIONS__
+    <div class="fields">__FIELDS__</div>
+    __ATTACHMENTS__
+  </div>
+  <div class="foot">
+    __ACTIONS__
+    <span class="status" data-card-status></span>
+  </div>
+  <div class="foot draft">草稿在本机：<code>__DRAFT_PATH__</code></div>
+</div>
+<script>
+  /*
+   * 两个按钮，两种性质——**别把它们当成同一类动作**：
+   *
+   * - 「汇报」= 让 agent 动起来（follow-up）。沙箱里唯一能让 agent 动的通路就是它，宿主还会校验用户手势
+   *   （没有手势就退化成一次确认弹窗），所以脚本不可能自己触发 agent。`data-prompt` 就是那句原话
+   *   （`汇报：<标题>`），agent 侧按同样的词识别。
+   * - 「暂存」= **纯本地**。不发消息、不叫 agent、不打模型：只把"暂存于何时"写进 widget state 的
+   *   `privateContent`（明确不给模型看的那半边，存在本机 `~/.uwork/v2/gen-ui-state`）。
+   *   草稿文件本来就在本机（就是下面那行显示的路径），暂存不需要任何人为它做什么。
+   *
+   * 环境里没有 `window.zcode`（比如把这张 HTML 拿到浏览器里直接看）时不报错，只如实说明。
+   */
+  (() => {
+    const status = document.querySelector("[data-card-status]");
+    const followButtons = [...document.querySelectorAll("button[data-prompt]")];
+    const localButtons = [...document.querySelectorAll("button[data-local]")];
+    const allButtons = [...followButtons, ...localButtons];
+    const say = (text) => {
+      if (status) status.textContent = text;
+    };
+    const zcode = window.zcode;
+    const localTime = (iso) => {
+      const at = new Date(iso);
+      return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+    };
+
+    // 进页面就读一次本机状态：上次暂存过的卡片要显示出来（状态在本机，不上传也不给模型看）。
+    try {
+      const staged = zcode?.widgetState?.privateContent?.stagedAt;
+      if (typeof staged === "string" && staged) say("已暂存（本机）· " + localTime(staged));
+    } catch {
+      /* 状态读不到就当没暂存过，不影响其它按钮 */
+    }
+
+    const setBusy = (busy) => {
+      for (const button of allButtons) button.disabled = busy;
+    };
+
+    for (const button of followButtons) {
+      button.addEventListener("click", async () => {
+        const prompt = button.getAttribute("data-prompt") || "";
+        if (!zcode || typeof zcode.sendFollowUpMessage !== "function") {
+          say("这个环境发不了消息——直接回一句「" + prompt + "」就行");
+          return;
+        }
+        setBusy(true);
+        say("正在交给 agent…");
+        try {
+          await zcode.sendFollowUpMessage({
+            prompt,
+            title: document.querySelector(".uw-report .title")?.textContent || undefined,
+          });
+          say("已交给 agent，看对话里的回复");
+        } catch (error) {
+          say("没成功：" + ((error && error.message) || error));
+        } finally {
+          setBusy(false);
+        }
+      });
+    }
+
+    for (const button of localButtons) {
+      button.addEventListener("click", async () => {
+        if (!zcode || typeof zcode.setWidgetState !== "function") {
+          say("这个环境存不了：草稿本来就在本机，直接留着那个文件即可");
+          return;
+        }
+        setBusy(true);
+        try {
+          const current = zcode.widgetState ?? { modelContent: null, privateContent: null };
+          const stagedAt = new Date().toISOString();
+          // 只写 privateContent：写进 modelContent 会随上下文带给模型，那就不是"只留本地"了。
+          await zcode.setWidgetState({
+            modelContent: current.modelContent ?? null,
+            privateContent: { ...(current.privateContent ?? {}), stagedAt },
+          });
+          say("已暂存（本机，未上传）· " + localTime(stagedAt));
+        } catch (error) {
+          say("没存上：" + ((error && error.message) || error));
+        } finally {
+          setBusy(false);
+        }
+      });
+    }
+  })();
+</script>

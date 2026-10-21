@@ -1,0 +1,53 @@
+{
+  "contractVersion": 1,
+  "name": "platform.work-item-contract.v1",
+  "description": "工作项模板契约：部门可以改什么、不可以改什么。由平台维护，随模板包一起分发。",
+  "skeletonFields": [
+    { "name": "authorId", "type": "string", "label": "提交人", "readOnly": true },
+    { "name": "department", "type": "string", "label": "所属部门", "readOnly": true },
+    { "name": "projectId", "type": "string", "label": "项目编号" },
+    { "name": "projectName", "type": "string", "label": "项目名称" },
+    { "name": "engineerId", "type": "string", "label": "工程师" },
+    { "name": "managerId", "type": "string", "label": "项目经理" },
+    { "name": "occurredAt", "type": "date", "label": "开始日期" },
+    { "name": "endedAt", "type": "date", "label": "结束日期" },
+    { "name": "periodKey", "type": "period", "label": "周期", "readOnly": true },
+    { "name": "title", "type": "string", "label": "标题" },
+    { "name": "summary", "type": "string", "label": "简述" },
+    { "name": "content", "type": "string", "label": "详细内容" },
+    { "name": "problems", "type": "string", "label": "遇到的问题" },
+    { "name": "attachments", "type": "string[]", "label": "工作输出物（附件）" },
+    { "name": "tags", "type": "string[]", "label": "分类标签" },
+    { "name": "createdBy", "type": "string", "label": "创建人", "readOnly": true },
+    { "name": "createdAt", "type": "date", "label": "创建时间", "readOnly": true },
+    { "name": "updatedBy", "type": "string", "label": "最后编辑人", "readOnly": true },
+    { "name": "updatedAt", "type": "date", "label": "最后编辑时间", "readOnly": true }
+  ],
+  "validators": {
+    "required": true,
+    "oneOf": true,
+    "range": true,
+    "length": true,
+    "pattern": true,
+    "dateFormat": true,
+    "script": false,
+    "expression": false,
+    "custom": false
+  },
+  "limits": {
+    "maxFields": 40,
+    "maxFieldLabel": 40,
+    "maxFieldText": 2000,
+    "maxTags": 20,
+    "maxVocabularyValues": 200,
+    "maxPackageBytes": 1048576
+  },
+  "periodFormats": ["YYYY-MM", "YYYY-Www"],
+  "rules": {
+    "skeletonFieldsEditable": false,
+    "allowedPeriodFormatsOnly": true,
+    "newTemplateVersionOnChange": true,
+    "neverRemoveUsedVocabularyValues": true,
+    "fieldsAreDataNotCode": true
+  }
+}
