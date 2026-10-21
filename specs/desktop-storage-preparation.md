@@ -26,3 +26,7 @@ sequenceDiagram
 已确认缺陷：原 Main 只在没有历史窗口或当前项目失效时创建备用目录；当前项目有效、最近项目失效时，该目录可能不存在，Host 无法选择备用 cwd，CLI 在发送第一帧前退出。回归必须覆盖有效 active + 已删除 recent 的组合，验证备用目录存在、active 选择不变且已删除项目仍未创建。
 
 验证：真实 Coordinator + tasks/CLI Worker 集成测试覆盖失效近期项目、显式打开、全新 Host 和目录创建失败四种场景；成功场景进入 ready，失败场景不初始化服务。最终正式包在新数据根进入 Root 并通过跳过登录操作；实际安装版在原数据根正常启动且恢复企业身份。Main 启动设置仍从 homedir 的历史设置入口读取，隔离设置来源问题单独记录，不在此次 cwd 修复中更改数据根迁移规则。
+
+## 2026-10-21 Main/Host 目录所有权回归
+
+Main 的 resolveStartupWindowBootstrap 仅解析活动目标和 app-managed 备用 cwd，不执行 mkdir，也不把已删除项目重新创建；远程活动项同样只返回导航/预热声明。Host 每轮准备在解析 session cwd 前调用真实 ensureHostFallbackCwd，包括重试与全新 Host。测试必须同时验证 Main 阶段备用目录尚未创建、Host 阶段备用目录存在、失效业务路径仍不存在；不能用全量 mock 漏掉真实 mkdir 后把准备失败误判为数据库失败。基线失败重现见本轮PR审查执行日志。

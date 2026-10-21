@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, mkdir, readFile, stat } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import {
   appSettingsSchema,
   formatZodError,
@@ -126,9 +126,8 @@ export async function resolveStartupWindowBootstrap({
         agentWarmupTargets,
       };
     }
-    // 远程活动项没有本地预热目标，Host 会用此 app-owned cwd 准备会话库。
-    // 切换数据根后该目录尚不存在；必须在交给 Host 前创建，否则 CLI 在发出存储帧前即退出。
-    await mkdir(conversationWorkspaceDir, { recursive: true });
+    // 修复原因：备用 cwd 已由 Host 在所有准备分支统一 mkdir；Main 只声明导航目标，
+    // 不能为仅远端恢复另开写入路径，也不能重建已删除的历史项目。
     return unavailableWorkspacePath ? { unavailableWorkspacePath } : {};
   }
 

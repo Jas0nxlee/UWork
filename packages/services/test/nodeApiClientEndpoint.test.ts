@@ -48,7 +48,7 @@ describe("NodeApiClient endpoint rewriting", () => {
     await client.request("https://api.z.ai/v1/models");
 
     const zcodeHeaders = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
-    expect(zcodeHeaders.get("User-Agent")).toMatch(/^ZCode\//);
+    expect(zcodeHeaders.get("User-Agent")).toMatch(/^UWork\//);
     expect(zcodeHeaders.get("X-Title")).toBe(ZCODE_SOURCE_HEADERS["X-Title"]);
     expect(zcodeHeaders.get("X-OpenRouter-Title")).toBeNull();
     expect(zcodeHeaders.get("X-OpenRouter-Categories")).toBeNull();
@@ -154,7 +154,7 @@ describe("NodeApiClient endpoint rewriting", () => {
     const dataBaseDir = mkdtempSync(join(tmpdir(), "zcode-device-mid-"));
     tempDirs.push(dataBaseDir);
     setDataBaseDir(dataBaseDir);
-    const configDir = join(dataBaseDir, ".zcode", "v2");
+    const configDir = join(dataBaseDir, ".uwork", "v2");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "telemetry-state.json"),
@@ -183,7 +183,7 @@ describe("NodeApiClient endpoint rewriting", () => {
     const dataBaseDir = mkdtempSync(join(tmpdir(), "zcode-device-mid-invalid-"));
     tempDirs.push(dataBaseDir);
     setDataBaseDir(dataBaseDir);
-    const configDir = join(dataBaseDir, ".zcode", "v2");
+    const configDir = join(dataBaseDir, ".uwork", "v2");
     mkdirSync(configDir, { recursive: true });
     if (content !== null) {
       writeFileSync(join(configDir, "telemetry-state.json"), content, "utf-8");

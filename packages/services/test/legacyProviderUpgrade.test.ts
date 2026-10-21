@@ -111,9 +111,11 @@ describe("Todo 72 已发布 config.json 首次升级", () => {
         expect(provider.config.api?.baseUrl).toBe(
           builtin.providerTemplates?.get(id)?.config.api?.baseUrl,
         );
-        // Todo112 规范了当前模板的官方 ID；旧配置导入仍保留 Key 与旧文件，不沿用旧名单大小写。
-        expect(provider.models.some((model) => model.modelId === "GLM-5.3")).toBe(true);
-        expect(provider.models.find((model) => model.modelId === "GLM-5.3")?.executable).toBe(true);
+        // UWork 保留历史个人 Key 供用户恢复，但当前随包模板已退役，不能在升级测试中重新播种账号模型。
+        expect(builtin.providerTemplates?.get(id)).toBeUndefined();
+        expect(provider.config.api).toBeUndefined();
+        expect(provider.models).toEqual([]);
+        expect(resolved.registryProviders.some((item) => item.providerId === id)).toBe(false);
         expect(personal.providers.get(id)?.toJSON()).toEqual({
           group: "standard-personal",
           access: { type: "api-key", apiKey: `fake-builtin:${family}` },
