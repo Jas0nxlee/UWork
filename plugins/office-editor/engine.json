@@ -1,0 +1,5 @@
+{
+  "baseUrl": "",
+  "engineVersion": "0.22.0",
+  "note": "SuperDoc v2 引擎的内网静态地址（形如 https://<host>/superdoc）。留空＝编辑器不可用，侧栏回落到只读预览。填上后：工具描述会自动把该域名加进 CSP（connectDomains/resourceDomains），页面通过 office://superdoc/config 读取并设置 globalThis.SUPERDOC_ENGINE_CDN_BASE_URL。该地址需镜像 @superdoc/docx-engine@0.22.0/dist-cdn/ 整个目录（含 assets/*worker* 与 style.css）以及 superdoc 自身的 dist-cdn/ 资源。"
+}

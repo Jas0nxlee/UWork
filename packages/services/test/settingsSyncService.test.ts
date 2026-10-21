@@ -105,6 +105,41 @@ describe("settingsSyncService Provider 导入边界", () => {
 });
 
 describe("settingsSyncService Claude AGENTS.md migration", () => {
+  it.each([false, true])(
+    "用户根隔离：Claude 文档导入 overwrite=%s 不覆盖上游 AGENTS",
+    async (overwrite) => {
+      const home = makeTempHome();
+      process.env.HOME = home;
+      writeTextConfig(join(home, ".claude", "CLAUDE.md"), "external claude input");
+      const upstream = join(home, ".zcode", "AGENTS.md");
+      writeTextConfig(upstream, "upstream AGENTS unchanged");
+      const { createSettingsSyncService } =
+        await import("../src/settings-sync/settingsSyncService.js");
+      const service = createSettingsSyncService({ settingService: createSettingService() });
+      const result = await service.copyClaudeAgentsFileToZcodeAgentsFile({ overwrite });
+      expect(result).toMatchObject({
+        targetPath: join(home, ".uwork", "AGENTS.md"),
+        status: "copied",
+        overwritten: false,
+      });
+      expect(readFileSync(join(home, ".uwork", "AGENTS.md"), "utf8")).toBe("external claude input");
+      expect(readFileSync(upstream, "utf8")).toBe("upstream AGENTS unchanged");
+    },
+  );
+
+  it("用户根隔离：全新 Claude 文档导入不创建上游目录", async () => {
+    const home = makeTempHome();
+    process.env.HOME = home;
+    writeTextConfig(join(home, ".claude", "CLAUDE.md"), "external claude input");
+    const { createSettingsSyncService } =
+      await import("../src/settings-sync/settingsSyncService.js");
+    const service = createSettingsSyncService({ settingService: createSettingService() });
+    expect((await service.copyClaudeAgentsFileToZcodeAgentsFile({ overwrite: false })).status).toBe(
+      "copied",
+    );
+    expect(readFileSync(join(home, ".uwork", "AGENTS.md"), "utf8")).toBe("external claude input");
+    expect(existsSync(join(home, ".zcode"))).toBe(false);
+  });
   it("copies Claude user memory into a fresh default ZCode AGENTS.md", async () => {
     const home = makeTempHome();
     const workspacePath = join(home, "workspace");
@@ -116,7 +151,7 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
 
     await expect(service.getClaudeAgentsFileMigrationStatus({ workspacePath })).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       sourceExists: true,
       targetExists: false,
       supported: true,
@@ -128,11 +163,11 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
       }),
     ).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       status: "copied",
       overwritten: false,
     });
-    expect(readFileSync(join(home, ".zcode", "AGENTS.md"), "utf-8")).toBe("claude memory");
+    expect(readFileSync(join(home, ".uwork", "AGENTS.md"), "utf-8")).toBe("claude memory");
   });
 
   it("detects and overwrites default ZCode AGENTS.md from Claude user memory", async () => {
@@ -140,7 +175,7 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
     const workspacePath = join(home, "workspace");
     process.env.HOME = home;
     writeTextConfig(join(home, ".claude", "CLAUDE.md"), "claude memory");
-    writeTextConfig(join(home, ".zcode", "AGENTS.md"), "existing agents");
+    writeTextConfig(join(home, ".uwork", "AGENTS.md"), "existing agents");
     const { createSettingsSyncService } =
       await import("../src/settings-sync/settingsSyncService.js");
     const service = createSettingsSyncService({ settingService: createSettingService() });
@@ -149,7 +184,7 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
 
     expect(status).toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       sourceExists: true,
       targetExists: true,
       supported: true,
@@ -162,12 +197,12 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
       }),
     ).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       status: "skipped",
       overwritten: false,
       skippedReason: "targetExists",
     });
-    expect(readFileSync(join(home, ".zcode", "AGENTS.md"), "utf-8")).toBe("existing agents");
+    expect(readFileSync(join(home, ".uwork", "AGENTS.md"), "utf-8")).toBe("existing agents");
 
     await expect(
       service.copyClaudeAgentsFileToZcodeAgentsFile({
@@ -176,11 +211,11 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
       }),
     ).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       status: "copied",
       overwritten: true,
     });
-    expect(readFileSync(join(home, ".zcode", "AGENTS.md"), "utf-8")).toBe("claude memory");
+    expect(readFileSync(join(home, ".uwork", "AGENTS.md"), "utf-8")).toBe("claude memory");
   });
 
   it("reports missing Claude user memory as unsupported", async () => {
@@ -193,7 +228,7 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
 
     await expect(service.getClaudeAgentsFileMigrationStatus({ workspacePath })).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       sourceExists: false,
       targetExists: false,
       supported: false,
@@ -206,7 +241,7 @@ describe("settingsSyncService Claude AGENTS.md migration", () => {
       }),
     ).resolves.toEqual({
       sourcePath: join(home, ".claude", "CLAUDE.md"),
-      targetPath: join(home, ".zcode", "AGENTS.md"),
+      targetPath: join(home, ".uwork", "AGENTS.md"),
       status: "skipped",
       overwritten: false,
       skippedReason: "missingSource",
@@ -301,7 +336,7 @@ describe("settingsSyncService commands import", () => {
       selections: [{ agent: "claudeCode", category: "commands" }],
     });
 
-    const importedPath = join(home, ".zcode", "commands", "review.md");
+    const importedPath = join(home, ".uwork", "commands", "review.md");
     expect(result.successCount).toBe(2);
     expect(result.skippedCount).toBe(0);
     expect(result.failedCount).toBe(0);
@@ -327,7 +362,7 @@ describe("settingsSyncService commands import", () => {
       expect(lstatSync(importedPath).isSymbolicLink()).toBe(true);
     }
     expect(readFileSync(importedPath, "utf-8")).toContain("review body");
-    expect(existsSync(join(home, ".zcode", "commands", "Git", "commit.md"))).toBe(true);
+    expect(existsSync(join(home, ".uwork", "commands", "Git", "commit.md"))).toBe(true);
   });
 
   it("scans global Claude commands without an active workspace", async () => {
@@ -400,8 +435,8 @@ describe("settingsSyncService commands import", () => {
     });
 
     expect(result.successCount).toBe(1);
-    expect(existsSync(join(home, ".zcode", "commands", "write.md"))).toBe(true);
-    expect(existsSync(join(home, ".zcode", "commands", "review.md"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "commands", "write.md"))).toBe(true);
+    expect(existsSync(join(home, ".uwork", "commands", "review.md"))).toBe(false);
   });
 
   it("imports selected commands into the requested project target as copies", async () => {
@@ -432,7 +467,7 @@ describe("settingsSyncService commands import", () => {
     expect(existsSync(importedPath)).toBe(true);
     expect(lstatSync(importedPath).isSymbolicLink()).toBe(false);
     expect(readFileSync(importedPath, "utf-8")).toContain("review body");
-    expect(existsSync(join(home, ".zcode", "commands", "review", "code.md"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "commands", "review", "code.md"))).toBe(false);
   });
 
   it("does not scan .agents commands for import", async () => {
@@ -460,7 +495,7 @@ describe("settingsSyncService commands import", () => {
     process.env.HOME = home;
     writeCommand(join(home, ".claude", "commands"), "review.md", "source");
     writeCommand(join(home, ".codex", "commands"), "other-review.md", "source");
-    writeCommand(join(home, ".zcode", "commands"), "review.md", "existing");
+    writeCommand(join(home, ".uwork", "commands"), "review.md", "existing");
     const { createSettingsSyncService } =
       await import("../src/settings-sync/settingsSyncService.js");
     const service = createSettingsSyncService({ settingService: createSettingService() });
@@ -487,7 +522,7 @@ describe("settingsSyncService commands import", () => {
       },
     ]);
 
-    writeCommand(join(home, ".zcode", "commands"), "other-review.md", "existing");
+    writeCommand(join(home, ".uwork", "commands"), "other-review.md", "existing");
     const result = await service.importSelected({
       workspacePath,
       selections: [{ agent: "codexCli", category: "commands" }],
@@ -508,6 +543,73 @@ describe("settingsSyncService commands import", () => {
 });
 
 describe("settingsSyncService plugins import", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)(
+    "清单别名 %s / 旧清单并存=%s 可发现并实际复制导入",
+    async (manifestDirectory, mixed) => {
+      const home = makeTempHome();
+      const workspacePath = join(home, "workspace");
+      process.env.HOME = home;
+      const pluginPath = writePlugin(
+        join(home, ".claude", "plugins"),
+        "alias-plugin",
+        { name: "alias-plugin", version: "2.0.0" },
+        manifestDirectory,
+      );
+      if (mixed)
+        writePlugin(join(home, ".claude", "plugins"), "alias-plugin", {
+          name: "legacy-plugin",
+          version: "1.0.0",
+        });
+      const { createSettingsSyncService } =
+        await import("../src/settings-sync/settingsSyncService.js");
+      const service = createSettingsSyncService({ settingService: createSettingService() });
+      const discovery = await service.detect({
+        workspacePath,
+        categories: ["plugins"],
+        intent: "manualImport",
+      });
+      const discovered = discovery.agents.find((agent) => agent.agent === "claudeCode")
+        ?.categories[0]?.sourceRoots?.[0]?.plugins;
+      expect(discovered).toEqual([
+        expect.objectContaining({
+          name: "alias-plugin",
+          version: "2.0.0",
+          path: pluginPath,
+          importable: true,
+        }),
+      ]);
+      const result = await service.importSelected({
+        workspacePath,
+        selections: [
+          {
+            agent: "claudeCode",
+            category: "plugins",
+            sourceScope: "global",
+            targetScope: "project",
+            importMode: "copy",
+            pluginPaths: [pluginPath],
+          },
+        ],
+      });
+      expect(result).toMatchObject({ successCount: 1, failedCount: 0, skippedCount: 0 });
+      expect(result.taskResults[0]?.pluginResults).toEqual([
+        expect.objectContaining({ name: "alias-plugin", version: "2.0.0", status: "imported" }),
+      ]);
+      const imported = join(workspacePath, ".zcode", "plugins", "alias-plugin");
+      expect(
+        JSON.parse(readFileSync(join(imported, manifestDirectory, "plugin.json"), "utf8")).name,
+      ).toBe("alias-plugin");
+      const config = JSON.parse(readFileSync(join(workspacePath, ".zcode", "config.json"), "utf8"));
+      expect(config.plugins.dirs).toEqual([imported]);
+      expect(lstatSync(imported).isSymbolicLink()).toBe(false);
+    },
+  );
   it("does not scan external plugins during first-run detection", async () => {
     const home = makeTempHome();
     const workspacePath = join(home, "workspace");
@@ -580,9 +682,9 @@ describe("settingsSyncService plugins import", () => {
       selections: [{ agent: "claudeCode", category: "plugins" }],
     });
 
-    const importedPath = join(home, ".zcode", "plugins", "review-plugin");
+    const importedPath = join(home, ".uwork", "plugins", "review-plugin");
     const config = JSON.parse(
-      readFileSync(join(home, ".zcode", "cli", "config.json"), "utf-8"),
+      readFileSync(join(home, ".uwork", "cli", "config.json"), "utf-8"),
     ) as { plugins?: { dirs?: string[] } };
     expect(result.successCount).toBe(1);
     expect(result.skippedCount).toBe(0);
@@ -637,7 +739,7 @@ describe("settingsSyncService plugins import", () => {
     expect(lstatSync(importedPath).isSymbolicLink()).toBe(false);
     expect(existsSync(join(importedPath, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(config.plugins?.dirs).toEqual([importedPath]);
-    expect(existsSync(join(home, ".zcode", "plugins", "writer-plugin"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "plugins", "writer-plugin"))).toBe(false);
   });
 
   it("skips plugin imports when target directory or same plugin id exists", async () => {
@@ -650,15 +752,15 @@ describe("settingsSyncService plugins import", () => {
     writePlugin(join(home, ".codex", "plugins"), "other-review", {
       name: "other-review",
     });
-    writePlugin(join(home, ".zcode", "plugins"), "review-plugin", {
+    writePlugin(join(home, ".uwork", "plugins"), "review-plugin", {
       name: "review-plugin",
     });
     const configuredPluginPath = writePlugin(join(home, "configured"), "other-review", {
       name: "other-review",
     });
-    mkdirSync(join(home, ".zcode", "cli"), { recursive: true });
+    mkdirSync(join(home, ".uwork", "cli"), { recursive: true });
     writeFileSync(
-      join(home, ".zcode", "cli", "config.json"),
+      join(home, ".uwork", "cli", "config.json"),
       JSON.stringify({ plugins: { dirs: [configuredPluginPath] } }),
       "utf-8",
     );
@@ -789,7 +891,7 @@ describe("settingsSyncService MCP server import", () => {
     });
 
     const config = JSON.parse(
-      readFileSync(join(home, ".zcode", "cli", "config.json"), "utf-8"),
+      readFileSync(join(home, ".uwork", "cli", "config.json"), "utf-8"),
     ) as { mcp?: { servers?: Record<string, unknown> } };
     expect(result.successCount).toBe(1);
     expect(result.skippedCount).toBe(0);
@@ -831,7 +933,7 @@ describe("settingsSyncService MCP server import", () => {
     });
 
     const config = JSON.parse(
-      readFileSync(join(home, ".zcode", "cli", "config.json"), "utf-8"),
+      readFileSync(join(home, ".uwork", "cli", "config.json"), "utf-8"),
     ) as { mcp?: { servers?: Record<string, unknown> } };
     expect(result.successCount).toBe(1);
     expect(config.mcp?.servers?.context7).toEqual({
@@ -874,7 +976,7 @@ describe("settingsSyncService MCP server import", () => {
       command: "npx",
       args: ["-y", "@upstash/context7-mcp"],
     });
-    expect(existsSync(join(home, ".zcode", "cli", "config.json"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "cli", "config.json"))).toBe(false);
   });
 
   it("normalizes OpenCode command arrays when importing MCP servers", async () => {
@@ -900,7 +1002,7 @@ describe("settingsSyncService MCP server import", () => {
     });
 
     const config = JSON.parse(
-      readFileSync(join(home, ".zcode", "cli", "config.json"), "utf-8"),
+      readFileSync(join(home, ".uwork", "cli", "config.json"), "utf-8"),
     ) as { mcp?: { servers?: Record<string, unknown> } };
     expect(result.successCount).toBe(1);
     expect(config.mcp?.servers?.browser).toEqual({
@@ -920,7 +1022,7 @@ describe("settingsSyncService MCP server import", () => {
         browser: { command: "external" },
       },
     });
-    writeJsonConfig(join(home, ".zcode", "cli", "config.json"), {
+    writeJsonConfig(join(home, ".uwork", "cli", "config.json"), {
       mcp: {
         servers: {
           browser: { command: "existing" },
@@ -951,7 +1053,7 @@ describe("settingsSyncService MCP server import", () => {
       selections: [{ agent: "claudeCode", category: "mcpServers" }],
     });
     const config = JSON.parse(
-      readFileSync(join(home, ".zcode", "cli", "config.json"), "utf-8"),
+      readFileSync(join(home, ".uwork", "cli", "config.json"), "utf-8"),
     ) as { mcp?: { servers?: Record<string, unknown> } };
     expect(result.successCount).toBe(0);
     expect(result.skippedCount).toBe(1);
@@ -960,6 +1062,35 @@ describe("settingsSyncService MCP server import", () => {
 });
 
 describe("settingsSyncService skills import", () => {
+  it("用户根隔离：技能导入不把上游同名技能当作当前产品目标", async () => {
+    const home = makeTempHome();
+    process.env.HOME = home;
+    writeSkill(
+      join(home, ".claude", "skills"),
+      "review",
+      "---\nname: review\ndescription: external\n---\nexternal body",
+    );
+    writeSkill(
+      join(home, ".zcode", "skills"),
+      "review",
+      "---\nname: review\ndescription: upstream\n---\nupstream unchanged",
+    );
+    const { createSettingsSyncService } =
+      await import("../src/settings-sync/settingsSyncService.js");
+    const service = createSettingsSyncService({ settingService: createSettingService() });
+    const result = await service.importSelected({
+      selections: [
+        { agent: "claudeCode", category: "skills", sourceScope: "global", importMode: "copy" },
+      ],
+    });
+    expect(result).toMatchObject({ successCount: 1, skippedCount: 0, failedCount: 0 });
+    expect(readFileSync(join(home, ".uwork", "skills", "review", "SKILL.md"), "utf8")).toContain(
+      "external body",
+    );
+    expect(readFileSync(join(home, ".zcode", "skills", "review", "SKILL.md"), "utf8")).toContain(
+      "upstream unchanged",
+    );
+  });
   it("uses platform-specific directory symlink types", async () => {
     const { getSkillDirectorySymlinkType } =
       await import("../src/settings-sync/settingsSyncService.js");
@@ -968,7 +1099,6 @@ describe("settingsSyncService skills import", () => {
     expect(getSkillDirectorySymlinkType("linux")).toBe("dir");
     expect(getSkillDirectorySymlinkType("win32")).toBe("junction");
   });
-
   it("does not scan external skills during first-run detection", async () => {
     const home = makeTempHome();
     const workspacePath = join(home, "workspace");
@@ -1054,7 +1184,7 @@ describe("settingsSyncService skills import", () => {
         version: "1.2.3",
       },
     ]);
-    const importedDirectoryPath = join(home, ".zcode", "skills", "review");
+    const importedDirectoryPath = join(home, ".uwork", "skills", "review");
     const importedPath = join(importedDirectoryPath, "SKILL.md");
     expect(existsSync(importedPath)).toBe(true);
     expect(lstatSync(importedDirectoryPath).isSymbolicLink()).toBe(true);
@@ -1095,8 +1225,8 @@ describe("settingsSyncService skills import", () => {
     expect(result.successCount).toBe(1);
     expect(result.skippedCount).toBe(0);
     expect(result.failedCount).toBe(0);
-    expect(existsSync(join(home, ".zcode", "skills", "writer", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(home, ".zcode", "skills", "review", "SKILL.md"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "skills", "writer", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".uwork", "skills", "review", "SKILL.md"))).toBe(false);
   });
 
   it("imports selected skills into the requested project target", async () => {
@@ -1129,7 +1259,7 @@ describe("settingsSyncService skills import", () => {
     expect(result.skippedCount).toBe(0);
     expect(result.failedCount).toBe(0);
     expect(existsSync(join(workspacePath, ".zcode", "skills", "review", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(home, ".zcode", "skills", "review", "SKILL.md"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "skills", "review", "SKILL.md"))).toBe(false);
   });
 
   it("can import selected skills as symlinks", async () => {
@@ -1158,7 +1288,7 @@ describe("settingsSyncService skills import", () => {
       ],
     });
 
-    const targetPath = join(home, ".zcode", "skills", "linked-review");
+    const targetPath = join(home, ".uwork", "skills", "linked-review");
     expect(result.successCount).toBe(1);
     expect(lstatSync(targetPath).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(targetPath, "SKILL.md"), "utf-8")).toContain("linked-review");
@@ -1190,7 +1320,7 @@ describe("settingsSyncService skills import", () => {
       ],
     });
 
-    const targetPath = join(home, ".zcode", "skills", "copied-review");
+    const targetPath = join(home, ".uwork", "skills", "copied-review");
     expect(result.successCount).toBe(1);
     expect(lstatSync(targetPath).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(targetPath, "SKILL.md"), "utf-8")).toContain("copied-review");
@@ -1250,7 +1380,7 @@ describe("settingsSyncService skills import", () => {
     });
 
     expect(result.successCount).toBe(1);
-    expect(existsSync(join(home, ".zcode", "skills", "commit-helper", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".uwork", "skills", "commit-helper", "SKILL.md"))).toBe(true);
   });
 
   it("does not scan .agents skills for import", async () => {
@@ -1555,7 +1685,7 @@ describe("settingsSyncService skills import", () => {
       "---\nname: review\ndescription: source\n---\nsource-body",
     );
     writeSkill(
-      join(home, ".zcode", "skills"),
+      join(home, ".uwork", "skills"),
       "current-review",
       "---\nname: review\ndescription: existing\n---\nexisting-body",
     );
@@ -1611,9 +1741,9 @@ describe("settingsSyncService skills import", () => {
         skipReason: "sameNameExists",
       },
     ]);
-    expect(existsSync(join(home, ".zcode", "skills", "external-review"))).toBe(false);
+    expect(existsSync(join(home, ".uwork", "skills", "external-review"))).toBe(false);
     expect(
-      readFileSync(join(home, ".zcode", "skills", "current-review", "SKILL.md"), "utf-8"),
+      readFileSync(join(home, ".uwork", "skills", "current-review", "SKILL.md"), "utf-8"),
     ).toContain("existing-body");
   });
 
@@ -1627,7 +1757,7 @@ describe("settingsSyncService skills import", () => {
       "---\nname: external-review\ndescription: source\n---\nsource-body",
     );
     writeSkill(
-      join(home, ".zcode", "skills"),
+      join(home, ".uwork", "skills"),
       "review",
       "---\nname: existing-review\ndescription: existing\n---\nexisting-body",
     );

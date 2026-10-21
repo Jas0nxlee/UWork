@@ -20,6 +20,7 @@ import type {
   PluginSyncImportResult,
   PluginSyncRemoteStatus,
 } from "@zcode/shared";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import type { IPluginSyncService } from "./pluginSync.js";
 import {
   createPluginSyncArchive,
@@ -74,7 +75,9 @@ const DEFAULT_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024;
 const USER_CONFIG_FILE_MODE = 0o600;
 const MARKETPLACE_SOURCE_ROOT_DIRECTORY = "marketplace-sources";
 const MIRRORED_MARKETPLACE_PLUGIN_ROOT = "plugins";
+// 候选、导出与远端校验必须识别同一个优先清单，避免导入时身份不一致。
 const PLUGIN_MANIFEST_RELATIVE_PATHS = [
+  [UWORK_PLUGIN_MANIFEST_DIR, "plugin.json"],
   [".zcode-plugin", "plugin.json"],
   [".claude-plugin", "plugin.json"],
   [".codex-plugin", "plugin.json"],

@@ -19,7 +19,7 @@ import {
   type UserCommand,
   type ZCodeCommand,
 } from "@zcode/shared";
-import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
+import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS, UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import type { ICommandsService } from "./commands.js";
 import { CommandFileParser, type CommandFileFormat } from "./commandFileParser.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
@@ -46,6 +46,7 @@ const ENABLE_OVERRIDE_KEY = "enable";
 const HOME_PREFIX = "~/";
 const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE = "zcode-plugins-official";
 const ZCODE_INLINE_PLUGIN_MARKETPLACE = "inline";
+const UWORK_PLUGIN_MANIFEST_PATH = join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json");
 const ZCODE_PLUGIN_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
 const CLAUDE_PLUGIN_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
 const CODEX_PLUGIN_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
@@ -83,10 +84,7 @@ function getCommandSourceDescriptor(
 import { getUworkUserStorageRoot, getUworkUserCliConfigPath } from "#src/paths.js";
 
 function getUserCommandsRoot(agentSource?: CommandAgentSource): string {
-  const descriptor = getCommandSourceDescriptor(agentSource);
-  // UWork 自己的用户级命令目录跟随产品数据根；其它 agent（claude/codex 等）维持各自约定。
-  if (descriptor.directorySource === "zcode") return join(getUworkUserStorageRoot(), "commands");
-  return join(resolveUserHomeDir(), ...descriptor.userDirectorySegments);
+  return getUserCommandsRootForDescriptor(getCommandSourceDescriptor(agentSource));
 }
 
 function getUserCliConfigPath(): string {
@@ -205,9 +203,9 @@ function readBooleanRecord(value: unknown): Record<string, boolean> {
 
 function readStorageDirFromConfig(config: Record<string, unknown>): string {
   const storage = isRecord(config.storage) ? config.storage : {};
-  return typeof storage.dir === "string" && storage.dir.trim().length > 0
-    ? storage.dir
-    : "~/.zcode";
+  if (typeof storage.dir === "string" && storage.dir.trim().length > 0) return storage.dir;
+  // 配置与缓存必须归属同一产品根，不能读取 UWork 启停配置后再扫描上游 ZCode 缓存。
+  return getUworkUserStorageRoot();
 }
 
 function readPluginConfigFromConfig(config: Record<string, unknown>): PluginConfigSummary {
@@ -319,7 +317,9 @@ async function readPluginManifest(rootPath: string): Promise<PluginManifestSumma
 }
 
 async function findPluginManifestPath(rootPath: string): Promise<string | null> {
+  // 新旧清单并存时只消费 UWork 声明，不能把旧命令重新混入当前插件。
   for (const manifestPath of [
+    join(rootPath, UWORK_PLUGIN_MANIFEST_PATH),
     join(rootPath, ZCODE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CLAUDE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CODEX_PLUGIN_MANIFEST_PATH),
@@ -421,6 +421,8 @@ async function resolvePluginCommandRootDescriptors(): Promise<PluginCommandRootD
 }
 
 function getUserCommandsRootForDescriptor(descriptor: CommandAgentSourceDescriptor): string {
+  // 读取、写入和目录定位共用同一解析器；旧分支另拼 .zcode 导致用户命令读写跨产品。
+  if (descriptor.directorySource === "zcode") return join(getUworkUserStorageRoot(), "commands");
   return join(resolveUserHomeDir(), ...descriptor.userDirectorySegments);
 }
 

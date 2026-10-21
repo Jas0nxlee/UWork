@@ -1,0 +1,21 @@
+{
+  "name": "office-editor",
+  "version": "0.2.0",
+  "description": "In-app Office (DOCX first) revision review and editing: list/accept/reject tracked changes from a sandboxed plugin page.",
+  "description_i18n": {
+    "en": "Review and resolve Word tracked changes inside the app, with a sandboxed plugin page.",
+    "zh-CN": "在应用内审阅与处理 Word 修订（接受/拒绝），页面跑在沙箱里。"
+  },
+  "author": {
+    "name": "UWork"
+  },
+  "license": "SEE LICENSE IN README.md",
+  "skills": "skills",
+  "mcpServers": {
+    "office": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${UWORK_PLUGIN_ROOT}/server/server.py"]
+    }
+  }
+}

@@ -72,6 +72,68 @@ afterEach(async () => {
 });
 
 describe("subagent markdown helpers", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)(
+    "清单别名 %s / 旧清单并存=%s 能发现所选代理目录",
+    async (manifestDirectory, mixed) => {
+      const home = await makeTempHome();
+      const workspacePath = join(home, "workspace");
+      const pluginRoot = join(home, "local-plugin");
+      await mkdir(join(pluginRoot, manifestDirectory), { recursive: true });
+      await writeFile(
+        join(pluginRoot, manifestDirectory, "plugin.json"),
+        JSON.stringify({ name: "alias-plugin", agents: "selected-agents" }),
+      );
+      await mkdir(join(pluginRoot, "selected-agents"), { recursive: true });
+      await writeFile(
+        join(pluginRoot, "selected-agents", "selected.md"),
+        serializeSubagentMarkdown({
+          name: "selected",
+          description: "selected manifest",
+          systemPrompt: "selected",
+        }),
+      );
+      if (mixed) {
+        await mkdir(join(pluginRoot, ".zcode-plugin"), { recursive: true });
+        await writeFile(
+          join(pluginRoot, ".zcode-plugin", "plugin.json"),
+          JSON.stringify({ name: "legacy-plugin", agents: "legacy-agents" }),
+        );
+        await mkdir(join(pluginRoot, "legacy-agents"), { recursive: true });
+        await writeFile(
+          join(pluginRoot, "legacy-agents", "legacy.md"),
+          serializeSubagentMarkdown({
+            name: "legacy",
+            description: "legacy manifest",
+            systemPrompt: "legacy",
+          }),
+        );
+      }
+      const pluginStorage = join(home, ".uwork", "cli", "plugins");
+      await mkdir(pluginStorage, { recursive: true });
+      await writeFile(
+        join(pluginStorage, "installed_plugins.json"),
+        JSON.stringify({
+          plugins: [
+            { id: "alias-plugin@local-market", name: "alias-plugin", installPath: pluginRoot },
+          ],
+        }),
+      );
+      await writeFile(
+        join(home, ".uwork", "cli", "config.json"),
+        JSON.stringify({ plugins: { enabledPlugins: { "alias-plugin@local-market": true } } }),
+      );
+      const service = createSubagentsService({ homeDir: home, isDesktopRuntime: true });
+      const result = await service.list({ workspacePath });
+      expect(result.pluginAgents.map((agent) => agent.name)).toEqual(["alias-plugin:selected"]);
+      expect(result.pluginAgents[0]?.path).toBe(join(pluginRoot, "selected-agents", "selected.md"));
+    },
+  );
   it("lists only direct custom profiles while preserving recursive plugin discovery", async () => {
     const home = await makeTempHome();
     const workspacePath = join(home, "workspace");

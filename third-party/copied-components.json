@@ -23,7 +23,10 @@
     "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
     "importRevision": null,
     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
-    "roots": ["packages/ui/src/components/ai-elements", ".agents/skills/ai-elements"],
+    "roots": [
+      "packages/ui/src/components/ai-elements",
+      ".agents/skills/ai-elements"
+    ],
     "scope": "Upstream-derived UI components, skill instructions, reference documentation and example scripts only; locally adapted for ZCode imports, styling and agent workflow. Original import revision not recorded.",
     "license": "Apache-2.0",
     "modifiedFiles": [
@@ -170,7 +173,9 @@
   },
   {
     "id": "Fig autocomplete registry",
-    "roots": ["apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"],
+    "roots": [
+      "apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"
+    ],
     "license": "MIT",
     "source": "https://raw.githubusercontent.com/withfig/autocomplete/aef52acff84c45edde61ae610cc2c964802b9a38/LICENSE",
     "file": "third-party/upstream/5129f8779dca579cfcb235570688a2f15822b270575e04f27ef906aabbcc0355.txt",
@@ -199,7 +204,11 @@
     "sha256": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
     "importRevision": null,
     "provenance": "Original import revision is not recorded. This pinned upstream license/source reference is not asserted to be the original import version.",
-    "roots": [".agents/skills/agent-browser", ".agents/skills/dogfood", ".agents/skills/electron"],
+    "roots": [
+      ".agents/skills/agent-browser",
+      ".agents/skills/dogfood",
+      ".agents/skills/electron"
+    ],
     "scope": "Upstream-derived instructions, reference documents and shell templates; locally adapted for the ZCode workspace. Reference release v0.20.0 contains all three skills.",
     "license": "Apache-2.0",
     "modifiedFiles": [
@@ -250,7 +259,9 @@
     "referenceRevision": "063bee94c3f4df8453406c830b0a7df0f2860278",
     "source": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278",
     "importRevision": null,
-    "roots": [".agents/skills/react-best-practices"],
+    "roots": [
+      ".agents/skills/react-best-practices"
+    ],
     "license": "MIT",
     "scope": "Vendored React/Next.js guidance and local adaptations; local README preserves Shu Ding / Vercel attribution.",
     "reviewRequired": "Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained."
@@ -260,7 +271,9 @@
     "referenceRevision": "d5d20e5e21d64590c0e735c6bc840295cda665cd",
     "source": "https://raw.githubusercontent.com/webpro-nl/knip/d5d20e5e21d64590c0e735c6bc840295cda665cd/license",
     "file": "docs/knip/docs/LICENSE",
-    "roots": ["docs/knip/docs"],
+    "roots": [
+      "docs/knip/docs"
+    ],
     "license": "ISC",
     "provenance": "All 169 files in the original local import have identical Git blob SHA-1 hashes to packages/docs at this reference revision (Knip 6.0.6). The original import did not record a revision; this establishes a matching snapshot, not a unique original import commit.",
     "scope": "Knip-authored source and documentation. Bundled Source Sans Pro and Hack fonts retain their separately registered licenses; local mirror notes and added license materials are not attributed to Knip.",
@@ -272,7 +285,9 @@
     "referenceRevision": "778e10a3656a899e0bc9f8a54d50a1ab4ba55308",
     "source": "https://raw.githubusercontent.com/adobe-fonts/source-sans/778e10a3656a899e0bc9f8a54d50a1ab4ba55308/LICENSE.txt",
     "file": "docs/knip/docs/licenses/SourceSansPro-2.020-LICENSE.txt",
-    "roots": ["docs/knip/docs/public/fonts/SourceSansPro-Regular.otf"],
+    "roots": [
+      "docs/knip/docs/public/fonts/SourceSansPro-Regular.otf"
+    ],
     "license": "OFL-1.1",
     "provenance": "Bundled font name table identifies Source Sans Pro version 2.020, Adobe copyright 2010, 2012, 2014, and SIL OFL 1.1. License reference is the upstream 2.020R-ro/1.075R-it release.",
     "importRevision": null,
@@ -299,10 +314,84 @@
     "referenceRevision": "b47d21f808fbf4784565feccde2213ef2af924b3",
     "source": "https://raw.githubusercontent.com/source-foundry/Hack/b47d21f808fbf4784565feccde2213ef2af924b3/LICENSE.md",
     "file": "docs/knip/docs/licenses/Hack-3.003-LICENSE.md",
-    "roots": ["docs/knip/docs/src/fonts/hack-regular-subset.woff2"],
+    "roots": [
+      "docs/knip/docs/src/fonts/hack-regular-subset.woff2"
+    ],
     "license": "MIT AND Bitstream-Vera",
     "provenance": "Bundled font name table identifies Hack 3.003 and retains Source Foundry, Bitstream Vera, and DejaVu license statements. The upstream v3.003 license is retained verbatim, including the DejaVu public-domain statement.",
     "importRevision": null,
     "sha256": "1f61bb7c790c59b4b0ecdf304628b94e42ae4c8020094a8c3da73381ab212623"
+  },
+  {
+    "id": "office-editor-mcp-apps",
+    "referenceRevision": "v2.0.0",
+    "source": "https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/v2.0.0/LICENSE",
+    "file": "plugins/office-editor/ui/vendor/LICENSE-mcp-apps.txt",
+    "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a",
+    "importRevision": null,
+    "provenance": "Bundle bytes match installed @modelcontextprotocol/ext-apps@2.0.0/dist/src/app-with-deps.js; upstream license transition notice is retained.",
+    "roots": [
+      "plugins/office-editor/ui/vendor/mcp-apps-app.js"
+    ],
+    "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+    "license": "Apache-2.0 AND MIT"
+  },
+  {
+    "id": "office-editor-docx-preview",
+    "referenceRevision": "0.4.0",
+    "source": "https://registry.npmjs.org/docx-preview/-/docx-preview-0.4.0.tgz",
+    "file": "plugins/office-editor/ui/vendor/LICENSE-docx-preview.txt",
+    "sha256": "8668bf4417d161e4eb4d47d6044526e4914d9eb3c748573d9bb7e87708c1253f",
+    "importRevision": null,
+    "provenance": "Bundle bytes match installed docx-preview@0.4.0/dist/docx-preview.min.mjs; original import commit was not recorded.",
+    "roots": [
+      "plugins/office-editor/ui/vendor/docx-preview.js"
+    ],
+    "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+    "license": "Apache-2.0"
+  },
+  {
+    "id": "office-editor-jszip",
+    "referenceRevision": "v3.10.1",
+    "source": "https://raw.githubusercontent.com/Stuk/jszip/v3.10.1/LICENSE.markdown",
+    "file": "plugins/office-editor/ui/vendor/LICENSE-jszip.txt",
+    "sha256": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4",
+    "importRevision": null,
+    "provenance": "Bundle bytes match installed jszip@3.10.1/dist/jszip.min.js; its header identifies embedded pako. Original import commit was not recorded. Both JSZip license alternatives and a separate pako MIT notice are retained.",
+    "roots": [
+      "plugins/office-editor/ui/vendor/jszip.min.js"
+    ],
+    "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+    "license": "MIT OR GPL-3.0-or-later"
+  },
+  {
+    "id": "office-editor-superdoc",
+    "referenceRevision": "v2.23.0",
+    "source": "https://raw.githubusercontent.com/superdoc-dev/superdoc/v2.23.0/LICENSE",
+    "file": "plugins/office-editor/ui/vendor/superdoc/LICENSE-AGPL-3.0.txt",
+    "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+    "importRevision": null,
+    "provenance": "JS bundle contains this.version=2.23.0. Original import revision and exact upstream build provenance were not recorded; external docx engine is not bundled.",
+    "roots": [
+      "plugins/office-editor/ui/vendor/superdoc/superdoc.min.js",
+      "plugins/office-editor/ui/vendor/superdoc/superdoc.min.css"
+    ],
+    "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+    "license": "AGPL-3.0-only",
+    "reviewRequired": "Review AGPL-covered bundle distribution and corresponding-source obligations for the intended plugin packaging; this inventory does not certify them or assert an unrecorded source revision."
+  },
+  {
+    "id": "office-editor-jszip-pako",
+    "referenceRevision": "v1.0.11",
+    "source": "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz",
+    "file": "plugins/office-editor/ui/vendor/LICENSE-pako.txt",
+    "sha256": "a04665b3b2de56c66730c1f720f528175739e4104f79073614aa611da1e85539",
+    "importRevision": null,
+    "provenance": "The JSZip bundle header declares embedded pako under MIT. This retained pako@1.0.11 license is a pinned reference, not an assertion that the unrecorded embedded source revision is known.",
+    "roots": [
+      "plugins/office-editor/ui/vendor/jszip.min.js"
+    ],
+    "scope": "Pako-derived portions embedded in the unmodified JSZip browser bundle only.",
+    "license": "MIT"
   }
 ]

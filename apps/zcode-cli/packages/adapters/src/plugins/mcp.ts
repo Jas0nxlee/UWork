@@ -10,7 +10,13 @@ import type {
   PluginOptionValues,
 } from "@zcode/contracts";
 import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
-import { ZCODE_PLUGIN_ID_ENV_KEY } from "@zcode/shared";
+import {
+  UWORK_PLUGIN_DATA_ENV_KEY,
+  UWORK_PLUGIN_ID_ENV_KEY,
+  UWORK_PLUGIN_ROOT_ENV_KEY,
+  UWORK_PROJECT_DIR_ENV_KEY,
+  ZCODE_PLUGIN_ID_ENV_KEY,
+} from "@zcode/shared";
 import type { LoadedPlugin } from "./types.js";
 import { isNotFoundError, isPluginOptionValue, isRecord, resolveInside } from "./helpers.js";
 import { buildOfficialProvenance, parseZCodeOfficialAuth } from "./mcp-official-auth.js";
@@ -213,6 +219,9 @@ function resolveMcpServerConfig(
     }
     const env = resolveStringRecord(
       {
+        [UWORK_PROJECT_DIR_ENV_KEY]: context.workingDirectory,
+        [UWORK_PLUGIN_DATA_ENV_KEY]: context.dataPath,
+        [UWORK_PLUGIN_ROOT_ENV_KEY]: context.loaded.rootPath,
         CLAUDE_PROJECT_DIR: context.workingDirectory,
         ZCODE_PLUGIN_DATA: context.dataPath,
         ZCODE_PLUGIN_ROOT: context.loaded.rootPath,
@@ -228,6 +237,7 @@ function resolveMcpServerConfig(
     // registry，不是可序列化配置），不能让第三方伪造 official zcode-cua 身份后获得只应定向注入给
     // 内置插件的 broker 凭据。manifest env spread 之后覆写，确保 user/manifest 无法覆盖。
     env[ZCODE_PLUGIN_ID_ENV_KEY] = context.loaded.id;
+    env[UWORK_PLUGIN_ID_ENV_KEY] = context.loaded.id;
     return {
       ...baseConfig,
       type: "stdio",
@@ -389,12 +399,15 @@ function resolveTemplate(
     switch (name) {
       case "CLAUDE_PLUGIN_ROOT":
       case "ZCODE_PLUGIN_ROOT":
+      case "UWORK_PLUGIN_ROOT":
         return context.loaded.rootPath;
       case "CLAUDE_PLUGIN_DATA":
       case "ZCODE_PLUGIN_DATA":
+      case "UWORK_PLUGIN_DATA":
         return context.dataPath;
       case "CLAUDE_PROJECT_DIR":
       case "ZCODE_PROJECT_DIR":
+      case "UWORK_PROJECT_DIR":
         return context.workingDirectory;
       case "CLAUDE_CODE_SESSION_ID":
       case "CLAUDE_SESSION_ID":

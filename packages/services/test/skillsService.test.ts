@@ -80,10 +80,14 @@ function marketplacePluginRoot(
   return join(home, ".uwork", "cli", "plugins", "cache", marketplace, pluginName, version);
 }
 
-function writePluginManifest(pluginRoot: string, manifest: Record<string, unknown>): void {
-  mkdirSync(join(pluginRoot, ".zcode-plugin"), { recursive: true });
+function writePluginManifest(
+  pluginRoot: string,
+  manifest: Record<string, unknown>,
+  manifestDirectory = ".zcode-plugin",
+): void {
+  mkdirSync(join(pluginRoot, manifestDirectory), { recursive: true });
   writeFileSync(
-    join(pluginRoot, ".zcode-plugin", "plugin.json"),
+    join(pluginRoot, manifestDirectory, "plugin.json"),
     JSON.stringify(manifest, null, 2),
     "utf-8",
   );
@@ -155,6 +159,62 @@ afterEach(() => {
 });
 
 describe("skillsService", () => {
+  it.each([".uwork-plugin", ".zcode-plugin", ".claude-plugin", ".codex-plugin"])(
+    "%s 清单通过实际技能列表贡献插件技能",
+    async (manifestDirectory) => {
+      const home = makeTempHome();
+      const workspacePath = join(home, "workspace");
+      const pluginRoot = join(home, "local-plugin");
+      writePluginManifest(
+        pluginRoot,
+        { name: "manifest-plugin", skills: "skills", version: "0.1.0" },
+        manifestDirectory,
+      );
+      writeSkill(
+        join(pluginRoot, "skills"),
+        "manifest-skill",
+        "---\nname: manifest-skill\ndescription: manifest alias\n---\nbody",
+      );
+      writeCliConfig(home, { plugins: { dirs: [pluginRoot] } });
+      const service = await createSkillsServiceInEnv(home, { isDesktopRuntime: true });
+      const result = await service.list({ workspacePath, provider: "glm" });
+      expect(result.skills).toEqual([
+        expect.objectContaining({
+          name: "manifest-skill",
+          scope: "plugin",
+          pluginName: "manifest-plugin",
+          pluginId: "manifest-plugin@inline",
+        }),
+      ]);
+    },
+  );
+
+  it("新旧清单并存时技能列表只使用 UWork 清单", async () => {
+    const home = makeTempHome();
+    const workspacePath = join(home, "workspace");
+    const pluginRoot = join(home, "local-plugin");
+    writePluginManifest(
+      pluginRoot,
+      { name: "preferred-manifest", skills: "uwork-skills" },
+      ".uwork-plugin",
+    );
+    writePluginManifest(pluginRoot, { name: "legacy-manifest", skills: "legacy-skills" });
+    writeSkill(
+      join(pluginRoot, "uwork-skills"),
+      "preferred-skill",
+      "---\nname: preferred-skill\ndescription: preferred\n---\nbody",
+    );
+    writeSkill(
+      join(pluginRoot, "legacy-skills"),
+      "legacy-skill",
+      "---\nname: legacy-skill\ndescription: legacy\n---\nbody",
+    );
+    writeCliConfig(home, { plugins: { dirs: [pluginRoot] } });
+    const service = await createSkillsServiceInEnv(home, { isDesktopRuntime: true });
+    const result = await service.list({ workspacePath, provider: "glm" });
+    expect(result.skills.map((skill) => skill.name)).toEqual(["preferred-skill"]);
+    expect(result.skills[0]?.pluginId).toBe("preferred-manifest@inline");
+  });
   it("插件缓存缺省使用 UWork 存储根，不读取上游 ZCode 插件", async () => {
     const home = makeTempHome();
     const workspacePath = join(home, "workspace");

@@ -7,6 +7,7 @@ import {
   parsePluginSubagentModelSelectionOverrides,
   DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
   ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID,
+  UWORK_PLUGIN_MANIFEST_DIR,
   modelSelectionSchema,
   type SubagentRuntimeConfig,
   type AgentCreateParams,
@@ -84,7 +85,9 @@ interface PluginAgentDiscovery {
 }
 
 const BUILT_IN_AGENT_NAMES = new Set(["general-purpose", "Explore"]);
+// 与插件加载器同源的优先级，防止子代理目录仍绑定旧清单。
 const PLUGIN_MANIFEST_PATHS = [
+  join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json"),
   join(".zcode-plugin", "plugin.json"),
   join(".claude-plugin", "plugin.json"),
   join(".codex-plugin", "plugin.json"),

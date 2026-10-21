@@ -132,7 +132,8 @@
     ".agents/skills",
     "packages/formal-proof",
     "apps/zcode-cli",
-    "packages/zcode-cua",
-    "docs/electron"
+    "docs/electron",
+    "plugins/office-editor/ui/vendor/**",
+    "packages/zcode-cua"
   ]
 }

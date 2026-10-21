@@ -15,7 +15,7 @@
 
 - 市场固定 id `ucas-aihub`（满足 `MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/`，见 `apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts:61`），作为**默认市场**随包 seed，并计入商店的**「公司」分段**（见下）。
 - 商店分三段：**公开 / 公司 / 个人** —— 公开是 ZCode 官方市场（保留 Featured 策展），公司是内部 AIHub 技能市场（受控来源、独立成段、不可删除），个人是用户自加来源。公司技能**不混进公开列表**。
-- 技能即插件：SkillHub 的技能包在客户端包装成插件安装 —— 生成 `.zcode-plugin/plugin.json`，原始技能内容放进 `skills/<slug>/`。理由：UWork 插件**必须有 manifest**（缺了报 `plugin_manifest_not_found`），而官方市场本身就是「技能打包成插件」（`documents`/`pdf`/`presentations`/`spreadsheets`）。
+- 技能即插件：SkillHub 的技能包在客户端包装成插件安装 —— 生成 `.uwork-plugin/plugin.json`，原始技能内容放进 `skills/<slug>/`。理由：UWork 插件**必须有 manifest**（缺了报 `plugin_manifest_not_found`），而官方市场本身就是「技能打包成插件」（`documents`/`pdf`/`presentations`/`spreadsheets`）。
 - 完整性以 **SkillHub 的内容指纹**为准，不用 zip 字节摘要 —— 服务端不发布 bundle 的 sha256，只发布按文件复合的 `fingerprint`（见下）。校验失败即安装失败，不写缓存、不注册。
 - 匿名只读：公开（PUBLIC）技能匿名即可列出与下载，**本期全部请求不带任何凭据**（见 3.3）。私有/命名空间技能不在本期范围。
 - 将来若引入账号（见 3.4），凭据边界按硬规则执行：token 只发往配置的 aihub 源主机；manifest 里出现的任何 URL 一律不带 token（防止源被改写后外泄凭据）。
@@ -51,7 +51,7 @@ sequenceDiagram
     RPC->>Ad: resolvePluginSourceRoot(entry.source)
     Ad->>SH: GET {apiBase}/skills/{ns}/{slug}/versions/{v}/download
     Ad->>Ad: 解包 → 复算 fingerprint → 比对
-    Ad->>Ad: 加 .zcode-plugin/plugin.json + skills/<slug>/
+    Ad->>Ad: 加 .uwork-plugin/plugin.json + skills/<slug>/
     Ad-->>RPC: 暂存目录 → 既有管线落缓存
 ```
 
@@ -184,7 +184,7 @@ sequenceDiagram
 
 ### 实现验证记录（2026-10-07）
 
-- **真网络链路**（用实现代码直连线上，非 mock）：`discoverSkillhubApiBase` → `https://aihub.ucas.com.cn/skillhub/api/v1`；目录 29 个技能；归一化后进入市场 **26 个**（隐藏 `docx`/`pptx`/`xlsx`）；安装 `kb-search@20260920.142519` 时 `resolve` 指纹 `sha256:ad6b8a9b…` 与下载包复算值一致，包装结果为 `.zcode-plugin/plugin.json` + `skills/kb-search/SKILL.md`。
+- **真网络链路**（用实现代码直连线上，非 mock）：`discoverSkillhubApiBase` → `https://aihub.ucas.com.cn/skillhub/api/v1`；目录 29 个技能；归一化后进入市场 **26 个**（隐藏 `docx`/`pptx`/`xlsx`）；安装 `kb-search@20260920.142519` 时 `resolve` 指纹 `sha256:ad6b8a9b…` 与下载包复算值一致，包装结果为 `.uwork-plugin/plugin.json` + `skills/kb-search/SKILL.md`。
 - **这轮踩到并修掉的坑**：上面的 `downloadUrl` 前缀问题 —— 首版用 `new URL(path, baseUrl)` 拼接，线上 404（`https://aihub.ucas.com.cn/api/v1/...`），改为显式拼回前缀，并补了回归测试（应用根相对、已带前缀不重复拼、跨 origin 拒绝三种形态）。
 - 单测 14 项通过：`pnpm exec tsx --test apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts`；其中指纹算法用线上真实 fixture（`SKILL.md` 的 per-file sha256 → 复合指纹）锁定，另有「指纹不符即失败且清理临时目录」「resolve 版本与条目版本不符即失败」等负例。
 - 验证命令全部通过：`pnpm typecheck`、`pnpm exec tsc --noEmit -p apps/zcode-cli/packages/adapters/tsconfig.json`（CLI 侧 turbo 未安装依赖，故直接跑 tsc）、`pnpm lint`（0 error）、`pnpm fmt:check`、`pnpm architecture:check --changed`（0 violations）。

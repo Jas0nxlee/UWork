@@ -63,6 +63,11 @@ jobs:
           scripts/test/arms-patch-install-contract.test.mjs
           scripts/test/generate-third-party-notices.test.mjs
           scripts/third-party-notices.test.mjs
+      - name: Validate office-editor plugin and UWork plugin naming aliases
+        run: >-
+          pnpm exec tsx --test
+          apps/zcode-cli/packages/adapters/test/officeEditorPlugin.test.ts
+          apps/zcode-cli/packages/adapters/test/pluginUworkAliases.test.ts
       - name: Validate package-level Node native unit tests
         run: pnpm test:unit:node
       - name: Validate additional native CLI, identity security, and release regressions

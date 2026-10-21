@@ -1,4 +1,5 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import { join, resolve } from "node:path";
 import type {
   CustomCommandRoot,
@@ -102,6 +103,7 @@ export {
   type PluginUpdateStatus,
 } from "./version-compare.js";
 
+const UWORK_MANIFEST_PATH = join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json");
 const ZCODE_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
 const CLAUDE_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
 const CODEX_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
@@ -933,6 +935,11 @@ function loadPlugin(
 }
 
 function findManifest(rootPath: string): string | null {
+  // UWork 自身命名优先；随后按既有约定回退，保证 ZCode/Claude/Codex 插件继续可加载。
+  const uworkPath = join(rootPath, UWORK_MANIFEST_PATH);
+  if (fileExists(uworkPath)) {
+    return uworkPath;
+  }
   const zcodePath = join(rootPath, ZCODE_MANIFEST_PATH);
   if (fileExists(zcodePath)) {
     return zcodePath;

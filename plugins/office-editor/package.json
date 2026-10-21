@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@uwork/office-editor-plugin",
+  "version": "0.1.9",
+  "private": true,
+  "description": "Office (DOCX) revision review plugin: stdio MCP tools plus a sandboxed page for accepting/rejecting tracked changes.",
+  "license": "SEE LICENSE IN README.md",
+  "engines": {
+    "python3": ">=3.9"
+  }
+}
