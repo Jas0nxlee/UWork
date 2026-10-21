@@ -27,3 +27,19 @@ UI 层复用现有 tooltip 与 Markdown 渲染能力：没有 release notes 时�
 - 自动更新 main 进程测试覆盖 `update-available`、`download-progress`、`update-downloaded` 状态携带 release notes。
 - UI 单测覆盖 hover tooltip 按当前 locale 选择中文/英文 Markdown。
 - main 进程测试覆盖默认 feed 与英文 sibling feed 合并后随状态广播给 renderer。
+
+## 2026-10-21 上游整合：状态读取时序
+
+Windows 合并菜单沿用 Main updater 的单一状态所有者。Renderer 的菜单状态只是投影：订阅推送优先于更早发起的 `getUpdateState`；后发读取使旧读取失效。卸载或平台切换后，旧读取不能提交到新菜单。菜单打开或检查命令完成后仍通过同一读取路径刷新，不另建 updater 或定时补偿。
+
+```mermaid
+sequenceDiagram
+  participant M as Main updater owner
+  participant U as 菜单投影
+  U->>M: getUpdateState（读取序号 n）
+  M-->>U: onUpdateStateChanged(checking)，推进序号
+  M-->>U: 旧 idle 快照 n
+  U->>U: 丢弃失效读取，保留 checking
+```
+
+验收：组件挂载后推送 checking，迟到 idle 不回退；卸载取消订阅；缺少 updater 能力时不读取/订阅；版本与下载进度参数保持原文案合同。对应 `packages/ui/test/useDesktopUpdateMenu.test.ts` 现直接覆盖真实菜单组件，已移除的 hook 不重新引入。

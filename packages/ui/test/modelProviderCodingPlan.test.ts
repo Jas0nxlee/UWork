@@ -1,5 +1,5 @@
 import * as enterpriseProductsHook from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
-import { createElement, type ReactElement } from "react";
+import { createElement, type ReactElement, type ComponentProps } from "react";
 import { type ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,11 +14,8 @@ import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON,
 } from "@zcode/shared/test-ids";
-import {
-  resolveCodingPlanProviderSyncAttemptKey,
-  shouldRetryUnchangedCodingPlanProviderSync,
-  resolveModelProviderSideSelectionKey,
-} from "@/settings/ModelProviderSection.js";
+import { ModelProviderSection } from "@/settings/ModelProviderSection.js";
+import type { ModelProviderSectionLayout } from "@/settings/model-provider-section/SectionLayout.js";
 import {
   beginCodingPlanUpgradeLogin,
   isCodingPlanPurchaseAuthPending,
@@ -154,6 +151,40 @@ import {
 import zhCN from "@/i18n/locales/zh-CN.js";
 import { TooltipProvider } from "@/components/ui/tooltip.js";
 
+const personalSettings = vi.hoisted(() => ({
+  active: false,
+  providers: [] as ProviderSettingsFormProvider[],
+  refresh: vi.fn(async () => {}),
+  layout: null as ComponentProps<typeof ModelProviderSectionLayout> | null,
+}));
+vi.mock("@/hooks/useModelProviders.js", () => ({
+  useModelProviders: () => ({
+    modelProviders: personalSettings.providers,
+    providerTemplates: [],
+    displayOrder: {},
+    loading: false,
+    refreshing: false,
+    refresh: personalSettings.refresh,
+  }),
+}));
+vi.mock("@/settings/model-provider-section/SectionLayout.js", () => ({
+  ModelProviderSectionLayout: (props: ComponentProps<typeof ModelProviderSectionLayout>) => {
+    personalSettings.layout = props;
+    return null;
+  },
+}));
+vi.mock("@/settings/model-provider-section/InlineEditableProviderCard.js", async (original) => {
+  const actual =
+    await original<
+      typeof import("@/settings/model-provider-section/InlineEditableProviderCard.js")
+    >();
+  return {
+    ...actual,
+    InlineEditableProviderCard: (props: ComponentProps<typeof actual.InlineEditableProviderCard>) =>
+      personalSettings.active ? null : createElement(actual.InlineEditableProviderCard, props),
+  };
+});
+
 const intlMockState = vi.hoisted(() => ({ locale: "en-US" }));
 
 function renderWithTooltipProvider(element: ReactElement) {
@@ -248,6 +279,7 @@ vi.mock("@/settings/CodingPlanUpgradeDialogProvider.js", () => ({
 }));
 
 beforeEach(() => {
+  personalSettings.active = false;
   clearStartPlanPreviewCacheForTest();
   clearCodingPlanBillingDiscountCacheForTest();
   intlMockState.locale = "en-US";
@@ -656,49 +688,35 @@ describe("model provider coding plan", () => {
     },
   );
 
-  it("uses a stable provider/auth identity for Z.ai and BigModel plan transitions", () => {
-    expect(
-      resolveCodingPlanProviderSyncAttemptKey({
-        activeOAuthProvider: ZAI_PROVIDER_ID,
-        oauthProviderId: ZAI_PROVIDER_ID,
-        providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-      }),
-    ).toBe(`${BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan}:${ZAI_PROVIDER_ID}`);
-    expect(
-      resolveCodingPlanProviderSyncAttemptKey({
-        activeOAuthProvider: BIGMODEL_PROVIDER_ID,
-        oauthProviderId: BIGMODEL_PROVIDER_ID,
-        providerId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
-      }),
-    ).toBe(`${BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan}:${BIGMODEL_PROVIDER_ID}`);
-    expect(
-      resolveCodingPlanProviderSyncAttemptKey({
-        activeOAuthProvider: ZAI_PROVIDER_ID,
-        oauthProviderId: BIGMODEL_PROVIDER_ID,
-        providerId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
-      }),
-    ).toBeNull();
+  // 修复依据：设置页已退役账号 Plan，同一场景现在必须落在个人 Provider 唯一写入入口。
+  it("历史 Z.ai / BigModel 账号连接不会重新进入设置导航，个人连接仍可选择", () => {
+    const personal = createProvider({
+      id: "personal",
+      config: { ...createProvider().config, group: "standard-personal" },
+    });
+    personalSettings.providers = [
+      createProvider({ id: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan }),
+      createProvider({ id: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan }),
+      personal,
+    ];
+    personalSettings.active = true;
+    renderToStaticMarkup(createElement(ModelProviderSection));
+    expect(personalSettings.layout?.navigationGroups.map((group) => group.id)).toEqual(["custom"]);
+    expect(personalSettings.layout?.navigationGroups[0]?.items.map((item) => item.key)).toEqual([
+      "custom:personal",
+    ]);
+    expect(personalSettings.layout?.selectedNodeKey).toBe("custom:personal");
   });
 
-  it("连接项未变化但上次同步未完成时允许再次刷新 Plan", () => {
-    const attemptKey = `${BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan}:${BIGMODEL_PROVIDER_ID}`;
-
-    expect(
-      shouldRetryUnchangedCodingPlanProviderSync({
-        attemptKey,
-        attemptStatus: "failed",
-        modeUnchanged: true,
-        selectedKeyUnchanged: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRetryUnchangedCodingPlanProviderSync({
-        attemptKey,
-        attemptStatus: "succeeded",
-        modeUnchanged: true,
-        selectedKeyUnchanged: true,
-      }),
-    ).toBe(false);
+  it("连接项未变化时手动重试仍转交当前个人配置 owner，不恢复 Plan 同步", () => {
+    personalSettings.providers = [];
+    personalSettings.refresh.mockClear();
+    personalSettings.active = true;
+    renderToStaticMarkup(createElement(ModelProviderSection));
+    personalSettings.layout?.onRefresh();
+    personalSettings.layout?.onRefresh();
+    expect(personalSettings.refresh).toHaveBeenCalledTimes(2);
+    expect(personalSettings.layout?.navigationGroups[0]?.items).toEqual([]);
   });
 
   it("失效 Start 连接回到可操作的同 Family 页面，不改保存的连接", () => {
@@ -1375,30 +1393,27 @@ describe("model provider coding plan", () => {
     ]);
   });
 
-  it("套餐连接入口点击时仍映射回 provider family side key", () => {
-    expect(
-      resolveModelProviderSideSelectionKey({
-        key: "coding-plan:account:zai-individual-coding-plan",
-        type: "codingPlan",
-        presetId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-        oauthProviderId: ZAI_PROVIDER_ID,
-        label: "Z.ai - Coding Plan",
-        providerName: "Z.ai",
-        provider: createProvider({
-          id: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-          name: "Z.ai - Coding Plan",
-        }),
-        status: "purchased",
-        planLevel: "Coding Pro",
-        currentProductId: "product-zai-pro",
-        subscriptionBillingCycle: null,
-        subscriptionRenewTime: null,
-        subscriptionExpireTime: null,
-        quotaLimits: [],
-        purchaseUrl: "https://z.ai/manage-apikey/subscription",
-        statusActive: true,
+  it("旧套餐入口意图不能重建 family side key 或改写个人连接", () => {
+    personalSettings.providers = [
+      createProvider({
+        id: "personal",
+        config: { ...createProvider().config, group: "standard-personal" },
       }),
-    ).toBe("preset:account:zai-start-plan");
+    ];
+    personalSettings.active = true;
+    renderToStaticMarkup(
+      createElement(ModelProviderSection, {
+        pendingModelProviderTarget: {
+          providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+        },
+      }),
+    );
+    expect(personalSettings.layout?.selectedNodeKey).toBe("custom:personal");
+    expect(
+      personalSettings.layout?.navigationGroups
+        .flatMap((group) => group.items)
+        .every((item) => item.type === "custom"),
+    ).toBe(true);
   });
 
   it("Z.ai family 导航保持品牌图标，不借用 Start 图标", () => {

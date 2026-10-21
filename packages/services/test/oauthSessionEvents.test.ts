@@ -1,138 +1,91 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { ProxyChannel } from "@zcode/rpc";
-import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID, type OAuthTokenSet } from "@zcode/shared";
+import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID } from "@zcode/shared";
 import type { IOAuthService } from "#src/oauth/oauth.js";
-import { OAuthService } from "#src/oauth/oauthService.js";
+import { createOAuthService } from "#src/oauth/oauthService.js";
 
-const services: OAuthService[] = [];
-afterEach(async () => {
-  await Promise.all(services.splice(0).map((service) => service.cancelPending()));
-});
-
-function fixture(onProviderLogout = vi.fn(async () => {})) {
-  const credentials = new Map<string, string>();
-  const credentialService = {
-    load: async (key: string) => credentials.get(key) ?? null,
-    save: async (key: string, value: string) => {
+function fixture() {
+  const credentials = new Map([
+    ["oauth:active_provider", ZAI_PROVIDER_ID],
+    ["zcodejwttoken", "historical-token"],
+    ["custom-api-key", "personal-key"],
+  ]);
+  const before = new Map(credentials);
+  const store = {
+    load: vi.fn(async (key: string) => credentials.get(key) ?? null),
+    save: vi.fn(async (key: string, value: string) => {
       credentials.set(key, value);
-    },
-    delete: async (key: string) => {
-      credentials.delete(key);
-    },
-  };
-  const exchangeToken = vi.fn(
-    async (): Promise<OAuthTokenSet> => ({
-      accessToken: "access",
-      zcodeJwtToken: "jwt",
     }),
-  );
-  const service = new OAuthService(credentialService, {
-    onProviderLogout,
-    adapters: [
-      {
-        providerId: ZAI_PROVIDER_ID,
-        apiClient: { request: vi.fn<typeof fetch>() },
-        meta: { id: ZAI_PROVIDER_ID, displayName: "Z.ai", enabled: true, order: 1 },
-        redirectUri: "zcode://oauth/callback",
-        buildAuthorizeUrl: ({ state }) => `https://example.com/authorize?state=${state}`,
-        parseCallbackParams: (url) => ({
-          state: new URL(url).searchParams.get("state") ?? "",
-          code: new URL(url).searchParams.get("code") ?? "",
-        }),
-        exchangeToken,
-        fetchUserInfo: async () => ({ id: "user", username: "User", displayName: "User" }),
-        normalizeError: (error) => (error instanceof Error ? error : new Error(String(error))),
-      },
-    ],
-  });
-  services.push(service);
+    delete: vi.fn(async (key: string) => {
+      credentials.delete(key);
+    }),
+  };
+  const request = vi.fn<typeof fetch>();
+  const onProviderLogout = vi.fn(async () => {});
+  const service = createOAuthService(store, { apiClient: { request }, onProviderLogout });
   const server = ProxyChannel.fromService(service);
   const client = ProxyChannel.toService<IOAuthService>({
     call: (command, args) => server.call(undefined, command, args),
     listen: (event, args) => server.listen(undefined, event, args),
   });
-  async function login() {
-    const { state } = await client.startOAuth(ZAI_PROVIDER_ID);
-    return client.handleCallback(`zcode://oauth/callback?state=${state}&code=code`);
-  }
-  return { service, client, credentials, credentialService, exchangeToken, login };
+  const changed = vi.fn();
+  const subscription = client.onDidChangeSession(changed);
+  return { client, changed, subscription, credentials, before, store, request, onProviderLogout };
 }
 
-it("同账号每次凭据落盘均经 RPC 发布完成事件，先于调用结果及 UI 后处理", async () => {
+// 修复依据：UWork 退役 OAuth 合同禁止恢复上游账号链路，RPC 事件测试必须验证同一边界。
+it("历史凭据恢复经 RPC 保持 signed-out，不发布已登录事件或接触凭据", async () => {
   const f = fixture();
-  const changes: string[] = [];
-  const subscription = f.client.onDidChangeSession((state) => {
-    expect(f.credentials.get("zcodejwttoken")).toBe("jwt");
-    expect(f.credentials.get("oauth:active_provider")).toBe(ZAI_PROVIDER_ID);
-    changes.push(state);
-  });
-  await f.login();
-  await f.login();
-  expect(changes).toEqual(["signed-in", "signed-in"]);
-  subscription.dispose();
+  try {
+    expect(await f.client.restoreCachedSessionState()).toEqual({ status: "signed-out" });
+    expect(await f.client.restoreCachedSession()).toBeNull();
+    expect(await f.client.restoreSession()).toBeNull();
+    expect(f.changed).not.toHaveBeenCalled();
+    expect(f.store.load).not.toHaveBeenCalled();
+    expect(f.credentials).toEqual(f.before);
+  } finally {
+    f.subscription.dispose();
+  }
 });
 
-it.each(["active", "provider", "all"] as const)(
-  "%s 登出清凭据后立即通知，即使派生 provider 清理失败",
-  async (mode) => {
-    const onProviderLogout = vi.fn(async () => {
-      throw new Error("derived settings failed");
-    });
-    const f = fixture(onProviderLogout);
-    await f.login();
-    const changes: string[] = [];
-    const subscription = f.client.onDidChangeSession((state) => {
-      expect(f.credentials.has("zcodejwttoken")).toBe(false);
-      expect(onProviderLogout).not.toHaveBeenCalled();
-      changes.push(state);
-    });
-    const logout =
-      mode === "all"
-        ? f.client.logoutAll()
-        : f.client.logout(mode === "provider" ? ZAI_PROVIDER_ID : undefined);
-    await expect(logout).rejects.toThrow("derived settings failed");
-    expect(changes).toEqual(["signed-out"]);
-    subscription.dispose();
+it.each([ZAI_PROVIDER_ID, BIGMODEL_PROVIDER_ID])(
+  "%s 登录和刷新经 RPC 明确失败，不发布 signed-in",
+  async (provider) => {
+    const f = fixture();
+    try {
+      await expect(f.client.startOAuth(provider)).rejects.toThrow("应用登录已移除");
+      await expect(f.client.startOAuthWithPolling(provider)).rejects.toThrow("应用登录已移除");
+      await expect(f.client.refreshToken(provider)).rejects.toThrow("应用登录已移除");
+      expect(
+        await f.client.handleCallback("zcode://oauth/callback?state=test&code=test"),
+      ).toBeNull();
+      expect(await f.client.pollPendingOAuth()).toBeNull();
+      await f.client.cancelPending(provider);
+      expect(f.changed).not.toHaveBeenCalled();
+      expect(f.request).not.toHaveBeenCalled();
+      expect(f.credentials).toEqual(f.before);
+    } finally {
+      f.subscription.dispose();
+    }
   },
 );
 
-it("取消中的登录和非当前 provider 的 unlink 不发布会话变更", async () => {
-  const f = fixture();
-  const changed = vi.fn();
-  const subscription = f.client.onDidChangeSession(changed);
-  const exchange = Promise.withResolvers<OAuthTokenSet>();
-  f.exchangeToken.mockReturnValue(exchange.promise);
-  const login = f.login();
-  await vi.waitFor(() => expect(f.exchangeToken).toHaveBeenCalled());
-  await f.client.cancelPending();
-  exchange.resolve({ accessToken: "cancelled", zcodeJwtToken: "cancelled" });
-  await login;
-  await f.client.logout(BIGMODEL_PROVIDER_ID);
-  expect(changed).not.toHaveBeenCalled();
-  subscription.dispose();
-});
-
-it("active provider 落盘期间取消并回滚的登录不发布 signed-in", async () => {
-  const f = fixture();
-  const saving = Promise.withResolvers<void>();
-  const continueSave = Promise.withResolvers<void>();
-  const save = f.credentialService.save;
-  vi.spyOn(f.credentialService, "save").mockImplementation(async (key, value) => {
-    await save(key, value);
-    if (key === "oauth:active_provider") {
-      saving.resolve();
-      await continueSave.promise;
+it.each(["active", "provider", "all"] as const)(
+  "%s 登出经 RPC 发布 signed-out，保留历史凭据与个人 Key",
+  async (mode) => {
+    const f = fixture();
+    try {
+      if (mode === "all") await f.client.logoutAll();
+      else await f.client.logout(mode === "provider" ? BIGMODEL_PROVIDER_ID : undefined);
+      expect(f.changed.mock.calls).toEqual([["signed-out"]]);
+      expect(f.credentials).toEqual(f.before);
+      expect(f.onProviderLogout).not.toHaveBeenCalled();
+      expect(f.request).not.toHaveBeenCalled();
+      f.subscription.dispose();
+      await f.client.logoutAll();
+      expect(f.changed).toHaveBeenCalledTimes(1);
+    } finally {
+      f.subscription.dispose();
     }
-  });
-  const changed = vi.fn();
-  const subscription = f.client.onDidChangeSession(changed);
-  const login = f.login();
-  const rejected = expect(login).rejects.toThrow("OAuth flow 已取消");
-  await saving.promise;
-  await f.client.cancelPending();
-  continueSave.resolve();
-  await rejected;
-  expect(f.credentials.has("zcodejwttoken")).toBe(false);
-  expect(changed).not.toHaveBeenCalled();
-  subscription.dispose();
-});
+  },
+);
