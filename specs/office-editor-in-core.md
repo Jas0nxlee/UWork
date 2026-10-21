@@ -223,3 +223,36 @@ docx 解出 2.35 MB document.xml（12 倍），按文件大小限流会放进几
 - 字体栈只在 macOS 上人工确认过可切换，Windows 字体名的回退顺序未实测；
 - **打印对话框**：只验证到"引擎把每页渲成图片、建好打印 iframe 并调用 `print()`"，Electron 里弹不弹对话框要真机看；
 - 查找/替换只覆盖**纯文字元素**（表格单元格靠引擎自带的行列坐标，控件/域内文字未验证）。
+
+## 12 模块治理边界（2026-10-21）
+
+`packages/ui/src/officeEditor` 作为独立 `office-editor` managed 模块登记。外层只通过
+`CanvasOfficeEditorPane`、`ExcelEditorPane`、`PptxEditorPane` 三个面板入口及 `contract.ts`
+交付文件端口和生命周期回调；引擎、格式补丁、导出校验与 hook 均是模块内部实现。
+文件端口仅包含现有 `IFileService` 的 `readBinaryPreview`、`stat`、`writeBinaryFile`，
+由预览宿主注入，UI 不接触 Repo、具体 Service 或新的文件缓存。
+
+```text
+PreviewPane 注入文件端口 → 单个文档 hook 持有草稿/基线/revision
+  → 导出及格式护栏 → 文件端口按 expectedRevision 写回并备份
+  → 成功后 hook 更新基线并通知 dirty=false
+```
+
+`onDirtyChange` 只提供派生脏标记，外壳不得以此另存文档事实。文件持久状态属于现有文件服务，
+不因编辑器治理而迁移到 Renderer。契约回归实际执行既有导出护栏：损坏 DOCX 拒绝通过、
+PPTX 非编辑部件修改拒绝通过、版本冲突与校验失败不成功写回；沿用已有格式专项检查。
+
+## 2026-10-21 依赖归档兼容验收
+
+ExcelJS 4.4.0 的旧流式解包依赖引入了已无法取得完整原始许可的 binary/buffers/chainsaw。定向将 ExcelJS 使用的 unzipper 固定为 0.12.5，保持 `Parse`/`Open`/`Extract` API；不更换 ExcelJS 或修改文件所有者。
+
+验收先覆盖实际 ExcelJS 生成、载入与流式遍历 XLSX；恶意 ZIP 中与目标目录共享前缀的兄弟路径必须在流式和目录两种解包 API 均无法落盘，合法成员正常写入。使用真实归档及临时目录，不用版本号断言代替行为验证。许可清单必须从安装后的生产图重生成，不能以缺失材料豁免取代来源核对。
+
+流式 ZIP 中 `workbook.xml` 允许晚于工作表到达。ExcelJS 4.4.0 的读取屏障必须同时等待 shared strings、关系和 workbook model；缺少任一项时复用它已有的待解析工作表队列，在元数据齐备后解析，不通过延时或重试掩盖顺序问题。用固定 workbook.xml 最后到达的真实 XLSX 覆盖值、公式与行顺序。
+
+解包器 `forceStream` 模式的 `end` 事实必须由可读侧完成（central directory 解析后 `push(null)`）发布，不能把可写侧 `finish` 伪装为可读侧结束；否则缓冲区内尚未消费的最后一批元数据会丢失。该修复仅影响 forceStream，保留旧 entry 事件模式兼容，并由同一固定乱序档案验证。
+
+该 forceStream 终结边界另外固化真实 ZIP 回归：单块与 7 字节分块输入都完整交付首尾成员，
+只发出一次可读 end；截断 central directory 和非法签名必须明确失败，不能成功结束；
+消费首项后显式 destroy 必须以取消错误终结，不交付余项。错误/取消断言只验证既有错误语义，
+不增加定时器、重试或另一个业务状态 owner。

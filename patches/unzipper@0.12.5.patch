@@ -1,0 +1,18 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 0921f4ac27ae1a2cb01e4ee709eabff84187b902..b560fcbfe7d71fe2c59ffd54902155b2121eaee2 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -21,8 +21,11 @@ function Parse(opts) {
+ 
+   PullStream.call(self, self._opts);
+   self.on('finish', function() {
+-    self.emit('end');
+-    self.emit('close');
++    // 修复依据：forceStream 的可写侧结束不能提前宣告可读侧 end，否则尾部 entry 丢失。
++    if (!self._opts.forceStream) {
++      self.emit('end');
++      self.emit('close');
++    }
+   });
+   self._readRecord().catch(function(e) {
+     if (!self.__emittedError || self.__emittedError !== e)

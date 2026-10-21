@@ -13,8 +13,8 @@ allowBuilds:
   geckodriver: true
   koffi: true
   msw: true
-  node-pty: true
   node-forge: false
+  node-pty: true
   protobufjs: true
   ssh2: true
   unsafe-pointer: true
@@ -25,6 +25,7 @@ overrides:
   brace-expansion@^5: ^5.0.9
   browserslist: ^4.28.7
   builder-util-runtime: ^9.7.0
+  "exceljs@4.4.0>unzipper": 0.12.5
   extract-zip: workspace:@uwork/safe-extract-zip@*
   fast-uri: ^3.1.7
   form-data@^4: ^4.0.6
@@ -40,18 +41,24 @@ overrides:
   react: 19.2.7
   react-dom: 19.2.7
   shell-quote: ^1.9.0
-  source-map-js: 1.2.2
   smol-toml: ^1.7.1
+  source-map-js: 1.2.2
   undici@^6: ^6.28.1
   undici@^7: ^7.29.0
   ws@8.18.0: ^8.21.0
   ws@^8: ^8.21.0
+packageExtensions:
+  "playwright-core@1.59.1":
+    dependencies:
+      "@uwork/safe-extract-zip": workspace:*
 patchedDependencies:
-  "@radix-ui/react-collapsible@1.1.12": patches/@radix-ui__react-collapsible@1.1.12.patch
   "@ai-sdk/anthropic@3.0.81": patches/@ai-sdk__anthropic@3.0.81.patch
   "@ai-sdk/openai-compatible@2.0.60": patches/@ai-sdk__openai-compatible@2.0.60.patch
   "@arms/rum-electron@0.0.3": patches/@arms__rum-electron@0.0.3.patch
+  "@radix-ui/react-collapsible@1.1.12": patches/@radix-ui__react-collapsible@1.1.12.patch
+  exceljs@4.4.0: patches/exceljs@4.4.0.patch
   playwright-core@1.59.1: patches/playwright-core@1.59.1.patch
+  unzipper@0.12.5: patches/unzipper@0.12.5.patch
   vitest@4.1.7: patches/vitest@4.1.7.patch
   wdio-electron-service@9.2.1: patches/wdio-electron-service@9.2.1.patch
 supportedArchitectures:
@@ -67,7 +74,3 @@ supportedArchitectures:
     - darwin
     - linux
     - win32
-packageExtensions:
-  "playwright-core@1.59.1":
-    dependencies:
-      "@uwork/safe-extract-zip": workspace:*
