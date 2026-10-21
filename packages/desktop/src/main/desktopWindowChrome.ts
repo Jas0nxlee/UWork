@@ -505,6 +505,9 @@ function buildTextContextMenuTemplate(
   params: ContextMenuParams,
   locale: Locale,
 ): MenuItemConstructorOptions[] {
+  // 原生右键过来的 params **不保证每个字段都在**（实测 modifiers 就会是 undefined；
+  // 一次 "Cannot read properties of undefined" 就够把右键整个打断）。这里统一取默认值。
+  const editFlags = params.editFlags ?? {};
   if (params.isEditable) {
     const getLabel = (id: (typeof desktopMenuMessageIds)[keyof typeof desktopMenuMessageIds]) =>
       getDesktopMenuMessage(locale, id);
@@ -513,45 +516,45 @@ function buildTextContextMenuTemplate(
       {
         label: getLabel(desktopMenuMessageIds.editUndo),
         role: "undo",
-        enabled: params.editFlags.canUndo,
+        enabled: editFlags.canUndo,
       },
       {
         label: getLabel(desktopMenuMessageIds.editRedo),
         role: "redo",
-        enabled: params.editFlags.canRedo,
+        enabled: editFlags.canRedo,
       },
       { type: "separator" },
       {
         label: getLabel(desktopMenuMessageIds.editCut),
         role: "cut",
-        enabled: params.editFlags.canCut,
+        enabled: editFlags.canCut,
       },
       {
         label: getLabel(desktopMenuMessageIds.editCopy),
         role: "copy",
-        enabled: params.editFlags.canCopy,
+        enabled: editFlags.canCopy,
       },
       {
         label: getLabel(desktopMenuMessageIds.editPaste),
         role: "paste",
-        enabled: params.editFlags.canPaste,
+        enabled: editFlags.canPaste,
       },
       {
         label: getLabel(desktopMenuMessageIds.editDelete),
         role: "delete",
-        enabled: params.editFlags.canDelete,
+        enabled: editFlags.canDelete,
       },
       { type: "separator" },
       {
         label: getLabel(desktopMenuMessageIds.editSelectAll),
         role: "selectAll",
-        enabled: params.editFlags.canSelectAll,
+        enabled: editFlags.canSelectAll,
       },
     ];
   }
 
-  if (params.selectionText.trim().length > 0) {
-    return [{ role: "copy", enabled: params.editFlags.canCopy }];
+  if ((params.selectionText ?? "").trim().length > 0) {
+    return [{ role: "copy", enabled: editFlags.canCopy }];
   }
 
   return [];
@@ -776,10 +779,15 @@ export function createBrowserWindow(options: {
       options.currentApplicationLocale?.() ?? DEFAULT_LOCALE,
     );
 
-    if (!app.isPackaged) {
-      if (template.length > 0) {
-        template.push({ type: "separator" });
-      }
+    // 开发期的 Inspect Element **只跟在已有的原生菜单后面**（可编辑区/选中文本）。
+    //
+    // 为什么不做成"右键永远都能检查元素"：应用自己的右键菜单（消息/会话/附件）是 DOM 菜单，
+    // 原生菜单只要有项就会弹出来，两个菜单会叠在一起——用户看到的就是"右键全是 Inspect Element"。
+    // 而消息区那些目标本来就没有原生菜单（非编辑、无选中 → template 为空），
+    // 所以这里保持"有文本菜单才补 Inspect"，就不可能出现两个菜单。
+    // 需要检查其他区域时走应用菜单里的开发者工具（DevTools 里可以右键检查）。
+    if (!app.isPackaged && template.length > 0) {
+      template.push({ type: "separator" });
       template.push({
         label: "Inspect Element",
         click: () => {
