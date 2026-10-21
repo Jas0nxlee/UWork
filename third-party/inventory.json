@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputHashEncoding": "UTF-8 with CRLF normalized to LF; notice and source snapshot hashes remain byte-exact",
   "scope": "Production dependency union across current workspace projects, copied source/assets and native tools; not a per-installer SBOM or a certification of all licensing obligations.",
-  "noticesSha256": "bf99c409bd77226e202edfe78565fb6b804da2ff487d3bf8471ec50a7478af5f",
+  "noticesSha256": "0c9bb8704725756725b4234f882b4ba776973626c111978cd4355988e448e3b6",
   "inputs": {
     ".agents/skills/agent-browser/references/authentication.md": "e2c3b0f4a1dc1368dee821f03c000d818a48421d09f3872525dddffe73f2112b",
     ".agents/skills/agent-browser/references/commands.md": "17522fc56d742663f47231ff06c4811abc87e12c7f78e11f94d253ddd540a909",
@@ -2890,8 +2890,8 @@
     "patches/unzipper@0.12.5.patch": "cf48a31a76251b667aa270f62edbb475c143273d975d44e392a485110a475583",
     "patches/vitest@4.1.7.patch": "11fdb66aa985e1d77e68752deeb7c1130ae33c9a4e2968f23aae8adaf8bc9ba0",
     "patches/wdio-electron-service@9.2.1.patch": "52481dae5e76772fcb8c2a9ff42feb3d0e1478e28815a4b975c81b9287e3385f",
-    "pnpm-lock.yaml": "3916f89d4a6ba436a3b54b11a292e051fa841835ad2bb2ccd0824ece091b36b5",
-    "pnpm-workspace.yaml": "2fee835232f1398556a6390f412cbdb0850f9c6515c128ac10ac8b84cc522707",
+    "pnpm-lock.yaml": "bad6a42ed201fa0e9c48f18376a241e3a13e65e2272b58c465e9976626b05eeb",
+    "pnpm-workspace.yaml": "b4d4c2b5c2163f735a46932878577048ae0b6de3b91f557925d78407c8e0f463",
     "scripts/license-texts/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "scripts/native-search-tools-config.mjs": "06e9d2b066a22f4bb731fb7356d786b52cf08e20dd6faf91e1a82b167d7462e8",
     "scripts/remote-native-search-tools-config.mjs": "2ddb7054e219ea487596cbdcb83d5c7eac9f239cfe169cfac22e3759d95d7c35",
@@ -4687,8 +4687,8 @@
     },
     {
       "name": "@modelcontextprotocol/client",
-      "version": "2.2.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -4699,20 +4699,8 @@
     },
     {
       "name": "@modelcontextprotocol/core",
-      "version": "2.0.0",
-      "license": "MIT",
-      "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a"
-        }
-      ]
-    },
-    {
-      "name": "@modelcontextprotocol/core",
-      "version": "2.2.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -4735,8 +4723,8 @@
     },
     {
       "name": "@modelcontextprotocol/server",
-      "version": "2.0.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -7934,7 +7922,7 @@
     },
     {
       "name": "brace-expansion",
-      "version": "1.1.14",
+      "version": "1.1.20",
       "license": "MIT",
       "repository": "git://github.com/juliangruber/brace-expansion.git",
       "notices": [
@@ -7950,7 +7938,7 @@
     },
     {
       "name": "brace-expansion",
-      "version": "2.1.0",
+      "version": "2.1.6",
       "license": "MIT",
       "repository": "git://github.com/juliangruber/brace-expansion.git",
       "notices": [
@@ -10014,7 +10002,7 @@
     },
     {
       "name": "follow-redirects",
-      "version": "1.16.0",
+      "version": "1.16.1",
       "license": "MIT",
       "repository": "git+ssh://git@github.com/follow-redirects/follow-redirects.git",
       "notices": [
@@ -15250,7 +15238,7 @@
     },
     {
       "name": "tmp",
-      "version": "0.2.5",
+      "version": "0.2.7",
       "license": "MIT",
       "repository": "https://github.com/raszi/node-tmp.git",
       "notices": [

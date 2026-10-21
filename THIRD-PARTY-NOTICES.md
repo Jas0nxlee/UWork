@@ -258,15 +258,13 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - @mermaid-js/parser@1.1.0 — MIT
 
-- @modelcontextprotocol/client@2.2.0 — MIT
+- @modelcontextprotocol/client@2.3.0 — Apache-2.0
 
-- @modelcontextprotocol/core@2.0.0 — MIT
-
-- @modelcontextprotocol/core@2.2.0 — MIT
+- @modelcontextprotocol/core@2.3.0 — Apache-2.0
 
 - @modelcontextprotocol/ext-apps@2.0.0 — MIT
 
-- @modelcontextprotocol/server@2.0.0 — MIT
+- @modelcontextprotocol/server@2.3.0 — Apache-2.0
 
 - @napi-rs/canvas-darwin-arm64@0.1.100 — MIT
 
@@ -762,9 +760,9 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - border-beam@1.0.1 — MIT
 
-- brace-expansion@1.1.14 — MIT
+- brace-expansion@1.1.20 — MIT
 
-- brace-expansion@2.1.0 — MIT
+- brace-expansion@2.1.6 — MIT
 
 - buffer-crc32@0.2.13 — MIT
 
@@ -1068,7 +1066,7 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - find-up@4.1.0 — MIT
 
-- follow-redirects@1.16.0 — MIT
+- follow-redirects@1.16.1 — MIT
 
 - form-data@4.0.6 — MIT
 
@@ -1800,7 +1798,7 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - tinyexec@1.1.1 — MIT
 
-- tmp@0.2.5 — MIT
+- tmp@0.2.7 — MIT
 
 - token-types@6.1.2 — MIT
 
@@ -4363,15 +4361,13 @@ SOFTWARE.
 
 ### Notice 0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a
 
-- @modelcontextprotocol/client@2.2.0: LICENSE
+- @modelcontextprotocol/client@2.3.0: LICENSE
 
-- @modelcontextprotocol/core@2.0.0: LICENSE
-
-- @modelcontextprotocol/core@2.2.0: LICENSE
+- @modelcontextprotocol/core@2.3.0: LICENSE
 
 - @modelcontextprotocol/ext-apps@2.0.0: LICENSE
 
-- @modelcontextprotocol/server@2.0.0: LICENSE
+- @modelcontextprotocol/server@2.3.0: LICENSE
 
 
 
@@ -7801,9 +7797,9 @@ SOFTWARE.
 
 - balanced-match@1.0.2: README.md (license section)
 
-- brace-expansion@1.1.14: README.md (license section)
+- brace-expansion@1.1.20: README.md (license section)
 
-- brace-expansion@2.1.0: README.md (license section)
+- brace-expansion@2.1.6: README.md (license section)
 
 - isarray@1.0.0: README.md (license section)
 
@@ -8306,9 +8302,9 @@ SOFTWARE.
 
 ### Notice 68f12f6e2c33688699249c01d8f9623c534da20aa71989c57b061b7bc1676d14
 
-- brace-expansion@1.1.14: LICENSE
+- brace-expansion@1.1.20: LICENSE
 
-- brace-expansion@2.1.0: LICENSE
+- brace-expansion@2.1.6: LICENSE
 
 
 
@@ -14436,7 +14432,7 @@ and organizations as noted below:
 
 ### Notice bfa8a54bb952ccda79f0f1889721d108f5b605babbb2b8a3705ffb52f4132eb7
 
-- follow-redirects@1.16.0: LICENSE
+- follow-redirects@1.16.1: LICENSE
 
 
 
@@ -14464,7 +14460,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### Notice abd3792ba3b4f3da7f4ed431de50254c3e748bba1596bc7f36937b97767e02d2
 
-- follow-redirects@1.16.0: README.md (license section)
+- follow-redirects@1.16.1: README.md (license section)
 
 
 
@@ -31374,7 +31370,7 @@ SOFTWARE.
 
 ### Notice 162413c61e0982abe89a06bf7a02ec760dc49a7364d838bd9f01daebb5b95954
 
-- tmp@0.2.5: LICENSE
+- tmp@0.2.7: LICENSE
 
 
 

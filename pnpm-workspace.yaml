@@ -19,15 +19,20 @@ allowBuilds:
   ssh2: true
   unsafe-pointer: true
 overrides:
-  "@modelcontextprotocol/client": "2.2.0"
+  "@modelcontextprotocol/client": "2.3.0"
+  "@modelcontextprotocol/core": "2.3.0"
+  "@modelcontextprotocol/server": "2.3.0"
   axios: ^1.16.0
   basic-ftp: 6.2.1
+  brace-expansion@^1: 1.1.20
+  brace-expansion@^2: 2.1.6
   brace-expansion@^5: ^5.0.9
   browserslist: ^4.28.7
   builder-util-runtime: ^9.7.0
   "exceljs@4.4.0>unzipper": 0.12.5
   extract-zip: workspace:@uwork/safe-extract-zip@*
   fast-uri: ^3.1.7
+  follow-redirects@1.16.0: 1.16.1
   form-data@^4: ^4.0.6
   hono: ^4.12.25
   ip-address: ^10.3.1
@@ -43,6 +48,7 @@ overrides:
   shell-quote: ^1.9.0
   smol-toml: ^1.7.1
   source-map-js: 1.2.2
+  tmp@^0.2: 0.2.7
   undici@^6: ^6.28.1
   undici@^7: ^7.29.0
   ws@8.18.0: ^8.21.0

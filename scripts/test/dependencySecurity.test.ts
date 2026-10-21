@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { constants, generateKeyPairSync, privateEncrypt, sign } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { createRequire } from "node:module";
 import test from "node:test";
 
@@ -78,4 +82,184 @@ test("vendored shadcn variants still compile Radix state and orientation selecto
   assert.match(output, /data-orientation=["']?horizontal/);
   assert.match(output, /data-orientation=["']?vertical/);
   assert.match(output, /scrollbar-width: none/);
+});
+
+const fromExcel = createRequire(require.resolve("exceljs"));
+const fromArchiver = createRequire(fromExcel.resolve("archiver"));
+const fromGlob = createRequire(
+  createRequire(fromArchiver.resolve("archiver-utils")).resolve("glob"),
+);
+const fromGlobMatcher = createRequire(fromGlob.resolve("minimatch"));
+const fromReaddirMatcher = createRequire(
+  createRequire(fromArchiver.resolve("readdir-glob")).resolve("minimatch"),
+);
+
+for (const [field, value] of [
+  ["prefix", "../escaped"],
+  ["postfix", "/../../escaped"],
+] as const) {
+  test(`ExcelJS tmp rejects traversal in ${field}`, async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "uwork-tmp-security-")));
+    const base = join(parent, "base");
+    await mkdir(base);
+    let created: ReturnType<typeof import("tmp").fileSync> | undefined;
+    try {
+      assert.throws(() => {
+        created = fromExcel("tmp").fileSync({ tmpdir: base, [field]: value });
+      }, /Relative value not allowed/);
+    } finally {
+      created?.removeCallback();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+}
+
+test("ExcelJS tmp still creates and cleans normal temporary files", async () => {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), "uwork-tmp-normal-")));
+  let created: ReturnType<typeof import("tmp").fileSync> | undefined;
+  try {
+    created = fromExcel("tmp").fileSync({ tmpdir: parent, prefix: "worksheet", postfix: ".xml" });
+    assert.equal((await readFile(created!.name)).length, 0);
+    assert.ok(created!.name.startsWith(parent + "/") || created!.name.startsWith(parent + "\\"));
+  } finally {
+    created?.removeCallback();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+for (const [line, scopedRequire] of [
+  ["1.x", fromGlobMatcher],
+  ["2.x", fromReaddirMatcher],
+] as const) {
+  test(`archiver brace-expansion ${line} preserves normal output and bounds nesting/results`, () => {
+    const expand = scopedRequire("brace-expansion");
+    assert.deepEqual(expand("report-{a,b}.xlsx"), ["report-a.xlsx", "report-b.xlsx"]);
+    const nested = "{".repeat(3200) + "a,b" + "}".repeat(3200);
+    let result: string[] = [];
+    assert.doesNotThrow(() => {
+      result = expand(nested);
+    });
+    assert.ok(result.length <= 2);
+    assert.ok(expand("{1..100}", { max: 5 }).length <= 5);
+  });
+}
+
+async function redirectHeaders(headers: object | string[], sensitiveHeaders?: string[]) {
+  const destination = createServer((req, res) => {
+    req.resume();
+    res.end(JSON.stringify(req.headers));
+  });
+  destination.listen(0, "127.0.0.1");
+  await once(destination, "listening");
+  const destinationPort = (destination.address() as import("node:net").AddressInfo).port;
+  const source = createServer((req, res) => {
+    req.resume();
+    res.writeHead(302, { Location: `http://127.0.0.1:${destinationPort}/destination` });
+    res.end();
+  });
+  source.listen(0, "127.0.0.1");
+  await once(source, "listening");
+  try {
+    const port = (source.address() as import("node:net").AddressInfo).port;
+    // 原始数组头必须显式带 Host；Node 不会像对象头那样自动填充它。
+    const requestHeaders = Array.isArray(headers)
+      ? [...headers, "Host", `127.0.0.1:${port}`]
+      : headers;
+    return await new Promise<Record<string, string>>((resolve, reject) => {
+      createRequire(new URL("../../packages/server/package.json", import.meta.url))(
+        "follow-redirects",
+      )
+        .http.get(
+          `http://127.0.0.1:${port}/source`,
+          { headers: requestHeaders, sensitiveHeaders },
+          (response: import("node:http").IncomingMessage) => {
+            let body = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk) => {
+              body += chunk;
+            });
+            response.on("error", reject);
+            response.on("end", () => {
+              try {
+                resolve(JSON.parse(body));
+              } catch (error) {
+                reject(error);
+              }
+            });
+          },
+        )
+        .on("error", reject);
+    });
+  } finally {
+    await Promise.all(
+      [source, destination].map(
+        (server) =>
+          new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve())),
+          ),
+      ),
+    );
+  }
+}
+
+test("cross-origin redirects strip credentials from array-form headers", async () => {
+  const headers = await redirectHeaders([
+    "Authorization",
+    "fixture-token",
+    "Cookie",
+    "fixture=session",
+    "Proxy-Authorization",
+    "fixture-proxy",
+    "X-Public",
+    "kept",
+  ]);
+  assert.equal(headers.authorization, undefined);
+  assert.equal(headers.cookie, undefined);
+  assert.equal(headers["proxy-authorization"], undefined);
+  assert.equal(headers["x-public"], "kept");
+});
+
+test("cross-origin redirects treat regex metacharacters in sensitive header names literally", async () => {
+  const headers = await redirectHeaders(
+    { "X-Api^Key": "fixture-secret", "X-Token|Secret": "fixture-other", "X-Public": "kept" },
+    ["X-Api^Key", "X-Token|Secret"],
+  );
+  assert.equal(headers["x-api^key"], undefined);
+  assert.equal(headers["x-token|secret"], undefined);
+  assert.equal(headers["x-public"], "kept");
+});
+
+for (const shape of ["array", "object"] as const) {
+  test(`ExcelJS tmp rejects non-string ${shape} prefixes before path coercion`, async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "uwork-tmp-type-security-")));
+    const base = join(parent, "base");
+    await mkdir(base);
+    let created: ReturnType<typeof import("tmp").fileSync> | undefined;
+    const prefix =
+      shape === "array" ? ["../escaped"] : { includes: () => false, toString: () => "../escaped" };
+    try {
+      assert.throws(() => {
+        created = fromExcel("tmp").fileSync({ tmpdir: base, prefix });
+      }, /prefix option must be a string/);
+    } finally {
+      created?.removeCallback();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+}
+
+test("the existing tmp-promise wrapper preserves async file creation and cleanup", async () => {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), "uwork-tmp-promise-")));
+  let created: Awaited<ReturnType<typeof import("tmp-promise").file>> | undefined;
+  try {
+    created = await require("tmp-promise").file({ tmpdir: parent, prefix: "wrapper" });
+    assert.equal((await readFile(created!.path)).length, 0);
+    const path = created!.path;
+    await created!.cleanup();
+    created = undefined;
+    await assert.rejects(readFile(path), { code: "ENOENT" });
+  } finally {
+    await created?.cleanup();
+    await rm(parent, { recursive: true, force: true });
+  }
 });
