@@ -6,7 +6,7 @@
   <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">Source</a> · <a href="https://github.com/Jas0nxlee/UWork/releases">Downloads</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). It offers UCAS and custom model providers, Assistant / Developer modes, optional multi-organization WeCom sign-in and gateway usage stats, plus files, terminal, Git, MCP, skills, and subagents. It also supports Office files and mobile remote control through a relay you configure. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
+UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). It offers UCAS and custom model providers, Office / Coding modes, optional multi-organization WeCom sign-in and gateway usage stats, plus files, terminal, Git, MCP, skills, and subagents. It also supports Office files and mobile remote control through a relay you configure. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
 
 This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization. The current code base tracks the upstream ZCode v3.16.2 snapshot (2026-10-19).
 
@@ -14,13 +14,15 @@ The sign-in page footer shows the current client build version. See [package.jso
 
 ## Features
 
+New to UWork? The [Chinese illustrated guide](docs/user-guide/README.md) covers version checks, WeCom sign-in and usage, project development, validation, and the prerequisites for Office and mobile remote control. It distinguishes current captures from historical screenshots and includes a standalone [offline edition](docs/user-guide/index.html).
+
 | Feature                | Description                                                                                                                                                                                                                       |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Default UCAS provider  | Six initial models with a fixed name, endpoint, and Chat Completions format. Edit the API key, model parameters, and enabled states, or fetch more models.                                                                        |
 | Custom model providers | Unlock the add-provider entry to configure a Base URL, API key, and API format: Chat Completions, Responses, or Anthropic Messages.                                                                                               |
 | Model discovery        | Fetch model IDs and add new entries in a batch. Existing parameters, enabled states, and ordering are preserved.                                                                                                                  |
 | Model configuration    | Edit context windows, output limits, input types, and reasoning options. The missing revision that prevented saving imported model settings has been fixed.                                                                       |
-| Assistant / Developer  | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Assistant emphasizes summaries and results; Developer shows more code, commands, and change details.                |
+| Office / Coding        | A single button beside the UWork logo shows the current mode and switches on click. The choice is remembered. Office emphasizes operation summaries and results; Coding shows commands, output, and code changes.                 |
 | WeCom identity         | Scan inside the desktop login card or skip login. Verified users see their name, department, and position below UWork. Windows on the same device share one enterprise account; workspaces and unsent drafts remain window-local. |
 | Enterprise gateway     | Reuses the enterprise backend (ucas-proxy): after sign-in it writes the UCAS gateway endpoint and API key, appends models allowed by the plan, and shows plan quota and request / cost / token usage under Usage stats.           |
 | Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                                              |
@@ -176,7 +178,7 @@ See the [CLI usage guide (Chinese)](apps/zcode-cli/docs/usage/README.md) for mod
 - Historical Zhipu / Z.ai model-account credentials are no longer used to restore login. Optional enterprise identity uses separate credentials and a device session. Remote connections and MCP retain their own authentication.
 - This is not a fully offline edition. Model requests go to your configured provider; plugins, remote workspaces, diagnostics, and other services have their own network behavior. Never commit real API keys, configuration, logs, or conversations to a public repository.
 
-See [NOTICE.md](NOTICE.md) for execution and data-handling details. Assistant / Developer modes are not operating-system sandboxes or permission levels.
+See [NOTICE.md](NOTICE.md) for execution and data-handling details. Office / Coding modes are not operating-system sandboxes or permission levels.
 
 ## Development checks
 

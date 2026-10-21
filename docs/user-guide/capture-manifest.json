@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 2,
+  "date": "2026-10-21",
+  "product": "UWork",
+  "version": "3.16.7",
+  "branch": "uwork",
+  "textSourceCommit": "a4485d6d",
+  "release": {
+    "tag": "v3.16.7",
+    "commit": "36e049f73ea922b13297c1524039a18baeebea09",
+    "url": "https://github.com/Jas0nxlee/UWork/releases/tag/v3.16.7"
+  },
+  "scope": "Text checked against current uwork source; two new login-layout captures, eleven explicitly historical screenshots",
+  "screenshots": [
+    {
+      "file": "images/02-model-settings.png",
+      "sha256": "68c01b0b8a27efd41a066035d67c556e15275c998d3b5320b52df71b2af00486",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Personal/account/endpoint/usage values redacted; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/04-new-project-prompt.png",
+      "sha256": "db34489e6b3a96208bc62fe1e1c0aeac63bdf21e0d10c92a607f78a9dfe0a79a",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/05-permission-modes.png",
+      "sha256": "34918939d28a8cc047b08e49aa6d428cbf2c84942de0ce177092950f2f4000d6",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/06-add-existing-project.png",
+      "sha256": "80e8ba14e5bf8c27bca503b6ec8e994c8046a9932fc2e28a1a8ff5ee5dbd18fc",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/07-existing-project.png",
+      "sha256": "2bab9b56f2761a3c3bd2934692ca9401a0111eb858bcdc51ce8cbac22f03e069",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/08-review-changes.png",
+      "sha256": "0567caf0a4dd9b7afa0d97ab2389e68604f68523003b8a6fa826056acbbfead6",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/09-run-tests.png",
+      "sha256": "df213ec3e48c42029f2ec5737a902de4c4ea4aaf889593e745db05522378faf9",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/11-preview-and-iterate.png",
+      "sha256": "1adf28a5e112e36db02d301ec26d2aa7c66939904a073d084bab574391c3a17d",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Unaltered UI screenshot; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/12-login-company.png",
+      "sha256": "f79378194383c7c0cf59e21aa78bb88ad827fdb8f5c4aa5ea17724dbc7924998",
+      "source": "Current shared UI rendered in isolated Chromium at localhost:15494 with the repository enterprise-identity test adapter",
+      "note": "Synthetic organization examples; no real account, credential or authorization QR. Capture uses build version 3.16.7.",
+      "capturedForVersion": "3.16.7",
+      "sourceCommit": "a4485d6d",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "current-shared-ui-test-adapter",
+      "componentSha256": "5333f356e6bd8b4d058cef407081034aae6416d3bdb17bbefc72c4a62cd83b28"
+    },
+    {
+      "file": "images/13-wecom-qr.png",
+      "sha256": "e1287ab511ba55057eb83d4837c8a348408e34c100197dacb01c5f8199edb9c1",
+      "source": "Current shared UI rendered in isolated Chromium at localhost:15494 with the repository enterprise-identity test adapter",
+      "note": "Synthetic organization examples; no real account, credential or authorization QR. Capture uses build version 3.16.7.",
+      "capturedForVersion": "3.16.7",
+      "sourceCommit": "a4485d6d",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "current-shared-ui-test-adapter",
+      "componentSha256": "5333f356e6bd8b4d058cef407081034aae6416d3bdb17bbefc72c4a62cd83b28"
+    },
+    {
+      "file": "images/14-identity-menu.png",
+      "sha256": "08164c511e68b68213593f5b15414ac4f3ddcde2fa37ffbfcc16b554eed0c369",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Personal/account/endpoint/usage values redacted; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/15-enterprise-account.png",
+      "sha256": "4c87fb0758a5da816ce9266eb1a657ecf4b39ceb01745e13da306db494c82715",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Personal/account/endpoint/usage values redacted; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    },
+    {
+      "file": "images/16-enterprise-usage.png",
+      "sha256": "f4a18c6fe0da75c59f59025f6a2c0e28af37aaea489238da9350c57e20ce1f27",
+      "source": "Live Electron renderer, macOS, localhost:5174",
+      "note": "Personal/account/endpoint/usage values redacted; retained as a historical operation-location reference, not recaptured in this update",
+      "capturedForVersion": "3.16.6",
+      "sourceCommit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+      "captureDate": "2026-10-21",
+      "evidenceKind": "historical-desktop-capture"
+    }
+  ],
+  "currentCapture": {
+    "fixture": "packages/ui/test/enterprise-identity/",
+    "viewport": {
+      "width": 1440,
+      "height": 960,
+      "deviceScaleFactor": 1
+    },
+    "versionDefine": "3.16.7",
+    "realEnterpriseLogin": false,
+    "realQrIncluded": false,
+    "modelRequests": 0
+  },
+  "historicalCapture": {
+    "version": "3.16.6",
+    "commit": "b122e4e76f6e4d4490a889d3930e68034a4d2ca1",
+    "demo": "Author-prepared local projects. All composer prompts are unsent drafts. A nonfunctional placeholder key was used only to display model selection and removed afterward. User completed real WeCom QR login; automatic identity and gateway account/usage hydration observed. No live LLM inference tested.",
+    "runtime": "Built current working tree in isolated data and Electron userData directories; existing production bundled provider template selected explicitly because test template lacks UCAS. Existing unrelated working tree changes preserved.",
+    "reportedChecks": {
+      "typecheck": "passed",
+      "lint": "0 errors, 303 warnings",
+      "demoTests": "node --test: 3 passed, 0 failed",
+      "node": "24.14.0",
+      "html": "Desktop 1440px and mobile 390px checked, images loaded, zoom works"
+    },
+    "attribution": "Original capture record retained for provenance; historical real login and gateway state were not repeated in this update"
+  },
+  "currentValidation": {
+    "markdownVersion": "3.16.7",
+    "newCaptures": 2,
+    "retainedHistoricalCaptures": 11,
+    "runtimeAndOfflineChecks": "passed; no real enterprise authentication or model inference performed",
+    "offlineChecks": {
+      "offlineReload": true,
+      "viewports": [1440, 390],
+      "loadedEmbeddedImages": 13,
+      "horizontalOverflow": false,
+      "zoomOpenClose": true,
+      "printStyles": true
+    },
+    "repositoryChecks": {
+      "typecheck": "passed",
+      "lint": {
+        "errors": 0,
+        "warnings": 330
+      },
+      "architectureViolations": 0
+    },
+    "armsGeneratedArtifactTests": 5,
+    "existingArmsRegressionTests": 30,
+    "contentConsistency": "HTML text, code samples, captions and embedded source hash match Markdown"
+  }
+}
