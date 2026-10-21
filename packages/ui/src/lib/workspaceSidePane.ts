@@ -5,7 +5,12 @@ import {
   type BrowserViewRestoredTabShell,
 } from "@zcode/shared";
 import type { PluginUiSidePaneTab } from "@/plugin-ui/contract.js";
-import { inferMediaPreview, isPptxPreviewPath, type CodeViewerSource } from "@/lib/codeViewer.js";
+import {
+  inferMediaPreview,
+  isModelPreviewPath,
+  isPptxPreviewPath,
+  type CodeViewerSource,
+} from "@/lib/codeViewer.js";
 import { normalizeCodeViewerSource } from "@/lib/codeViewerSource.js";
 
 export interface BrowserSidePaneTab {
@@ -1010,21 +1015,25 @@ function getCodeViewerTabSourceKey(source: CodeViewerSource): string | null {
     ? source.workspaceIdentity.trim()
     : (source.workspacePath ?? "");
   const scopedKeyPrefix = workspaceScope ? `${workspaceScope}:` : "";
-  // 文件树把 PPTX 表示为通用 `file` source，引用反向打开则使用带导航意图的
-  // `pptx` source。旧 key 直接包含 source.type，导致同一 workspace 路径被拆成两个 tab。
-  // source type 只是入口表示，不是文件身份；这里只归一 PPTX，避免扩大其它预览类型的语义。
+  // 文件树把 PPTX / 3D 模型表示为通用 `file` source，专用入口（引用反向打开、模型卡片）
+  // 则使用带意图的 `pptx` / `model` source。旧 key 直接包含 source.type，导致同一 workspace
+  // 路径被拆成两个 tab。source type 只是入口表示，不是文件身份；这里只归一已经存在
+  // 双入口的类型（PPTX 与 3D 模型），避免扩大其它预览类型的语义。
   const resourceType =
     source.type === "pptx" || (source.type === "file" && isPptxPreviewPath(source.path))
       ? "pptx"
-      : source.type === "media" || (source.type === "file" && inferMediaPreview(source.path))
-        ? "media"
-        : source.type;
+      : source.type === "model" || (source.type === "file" && isModelPreviewPath(source.path))
+        ? "model"
+        : source.type === "media" || (source.type === "file" && inferMediaPreview(source.path))
+          ? "media"
+          : source.type;
 
   if (
     source.type === "file" ||
     source.type === "code-review" ||
     source.type === "image" ||
     source.type === "media" ||
+    source.type === "model" ||
     source.type === "pdf" ||
     source.type === "pptx"
   ) {

@@ -3,6 +3,8 @@
 export const DEFAULT_FILE_ICON_NAME = "document";
 
 const ICON_COLOR_MAP: Record<string, { accent: string; background: string }> = {
+  // 3D 模型沿用 material-icons 的 `3d.svg`（desktop 与 web 的 public 目录都有该资产）。
+  "3d": { accent: "#0891B2", background: "#CFFAFE" },
   audio: { accent: "#7C3AED", background: "#EDE9FE" },
   css: { accent: "#1572B6", background: "#E0F2FE" },
   database: { accent: "#7C3AED", background: "#EDE9FE" },
@@ -77,6 +79,14 @@ const EXTENSION_ICON_ALIASES: Record<string, string> = {
   cjs: "javascript",
   cts: "typescript",
   css: "css",
+  // 3D 模型都要收敛到 `3d` 图标：直接拿扩展名拼路径会让 .glb/.stl 这类图标 404，
+  // 退化成通用文档图标（与"这个文件能转着看"这件事完全不像）。
+  "3mf": "3d",
+  glb: "3d",
+  gltf: "3d",
+  obj: "3d",
+  ply: "3d",
+  stl: "3d",
   // Office 扩展名与 Material Icons 素材名不一致，直接用扩展名拼路径会选错图标；
   // 这里显式收敛到同一套产品语义，旧版与新版 Word 文件也共用 word 图标。
   doc: "word",

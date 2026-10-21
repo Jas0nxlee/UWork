@@ -22,6 +22,7 @@ export type AssistantPreviewFileKind =
   | "xlsx"
   | "pptx"
   | "pdf"
+  | "model"
   | "video"
   | "audio";
 
@@ -32,6 +33,7 @@ export type AssistantPreviewFileSubtitleId =
   | "chat.previewCards.xlsx"
   | "chat.previewCards.pptx"
   | "chat.previewCards.pdf"
+  | "chat.previewCards.model"
   | "chat.previewCards.video"
   | "chat.previewCards.audio";
 
@@ -63,6 +65,13 @@ const ASSISTANT_PREVIEW_FILE_TYPES: readonly AssistantPreviewFileTypeDefinition[
   { extensions: [".xlsx"], kind: "xlsx", subtitleId: "chat.previewCards.xlsx" },
   { extensions: [".pptx"], kind: "pptx", subtitleId: "chat.previewCards.pptx" },
   { extensions: [".pdf"], kind: "pdf", subtitleId: "chat.previewCards.pdf" },
+  {
+    // 3D 模型：界内有只读预览（glb/gltf/obj/stl/ply/3mf），正文里提到就应该能点开看，
+    // 而不是只留一段不可点的路径文本。
+    extensions: [".glb", ".gltf", ".obj", ".stl", ".ply", ".3mf"],
+    kind: "model",
+    subtitleId: "chat.previewCards.model",
+  },
   ...MEDIA_PREVIEW_FORMATS.map(
     ({ extension, kind }): AssistantPreviewFileTypeDefinition => ({
       extensions: [extension],
@@ -75,9 +84,9 @@ const ASSISTANT_PREVIEW_FILE_TYPES: readonly AssistantPreviewFileTypeDefinition[
 const FILE_URL_RE = /\bfile:\/\/[^\s<>()\]`"'*“”‘’，。！？；：、]+/gi;
 const MARKDOWN_LINK_RE = /\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const DELIMITED_FILE_PATH_RE =
-  /([`"'“”‘’])([^`"'“”‘’\r\n]+?\.(?:md|html?|docx|xlsx|pptx|pdf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)([`"'“”‘’])/giu;
+  /([`"'“”‘’])([^`"'“”‘’\r\n]+?\.(?:md|html?|docx|xlsx|pptx|pdf|glb|gltf|obj|stl|ply|3mf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)([`"'“”‘’])/giu;
 const FILE_PATH_RE =
-  /(?:^|[\s("'`“”‘’,.;:!?，。！？；：、])((?:(?:\.{1,2}[\\/]|[a-zA-Z]:[\\/]|\/|[\p{L}\p{N}\p{M}\p{S}_.@()-]+[\\/])[\p{L}\p{N}\p{M}\p{S}_.@() -]+?(?:[\\/][\p{L}\p{N}\p{M}\p{S}_.@() -]+?)*|[\p{L}\p{N}\p{M}\p{S}_.@()-]+)\.(?:md|html?|docx|xlsx|pptx|pdf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)(?=$|[\s)"'`“”‘’,.;:!?，。！？；：、])/giu;
+  /(?:^|[\s("'`“”‘’,.;:!?，。！？；：、])((?:(?:\.{1,2}[\\/]|[a-zA-Z]:[\\/]|\/|[\p{L}\p{N}\p{M}\p{S}_.@()-]+[\\/])[\p{L}\p{N}\p{M}\p{S}_.@() -]+?(?:[\\/][\p{L}\p{N}\p{M}\p{S}_.@() -]+?)*|[\p{L}\p{N}\p{M}\p{S}_.@()-]+)\.(?:md|html?|docx|xlsx|pptx|pdf|glb|gltf|obj|stl|ply|3mf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)(?=$|[\s)"'`“”‘’,.;:!?，。！？；：、])/giu;
 
 export function cleanAssistantFilePathCandidate(candidate: string): string {
   return candidate

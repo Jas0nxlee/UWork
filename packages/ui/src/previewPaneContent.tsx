@@ -23,6 +23,8 @@ import type { CodeCommentPreview, CodeCommentRange } from "@/lib/codeCommentCont
 import type { Theme } from "@/useTheme.js";
 import type { OfficeFilePreviewKind } from "@/lib/officeFilePreview.js";
 import { PreviewPaneOfficeContent } from "@/previewPaneOfficeContent.js";
+import { PreviewPaneModelContent } from "@/previewPaneModelContent.js";
+import type { ModelPreviewViewerLabels } from "@/modelPreview/ModelPreviewViewer.js";
 import type { PptxElementReferenceSource } from "@/lib/pptxElementReference.js";
 import type { MediaCodeViewerSource, PptxReferencePreviewNavigation } from "@/lib/codeViewer.js";
 import { resolveCodeReviewContentProjection } from "@/previewPaneCodeReview.js";
@@ -44,6 +46,10 @@ interface PreviewPaneContentProps {
   loadingPdfPreview: boolean;
   pdfViewerSource: PdfViewerSource | null;
   pdfViewerLabels: PdfViewerLabels;
+  loadingModelPreview: boolean;
+  modelPreviewData: Uint8Array | null;
+  modelViewerLabels: ModelPreviewViewerLabels;
+  readModelAssetBytes: (path: string) => Promise<Uint8Array>;
   loadingOfficePreview: boolean;
   officePreview: FileBinaryPreview | null;
   officePreviewKind: OfficeFilePreviewKind | null;
@@ -107,6 +113,10 @@ export function PreviewPaneContent({
   loadingPdfPreview,
   pdfViewerSource,
   pdfViewerLabels,
+  loadingModelPreview,
+  modelPreviewData,
+  modelViewerLabels,
+  readModelAssetBytes,
   loadingOfficePreview,
   officePreview,
   officePreviewKind,
@@ -332,6 +342,22 @@ export function PreviewPaneContent({
         preview={officePreview}
         resolvedTheme={resolvedTheme}
         sourcePath={source.path}
+      />
+    );
+  }
+
+  // 3D 模型：字节已在 PreviewPane 用分段通道读完（含大小与完整性校验），这里只负责渲染与状态。
+  if (source.type === "model") {
+    return (
+      <PreviewPaneModelContent
+        data={modelPreviewData}
+        error={error}
+        format={source.format}
+        labels={modelViewerLabels}
+        loading={loadingModelPreview}
+        modelPath={source.path}
+        readBytes={readModelAssetBytes}
+        resolvedTheme={resolvedTheme}
       />
     );
   }

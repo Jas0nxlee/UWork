@@ -453,3 +453,34 @@ describe("buildAssistantPreviewCards", () => {
     ]);
   });
 });
+
+describe("3D 模型卡片", () => {
+  it("正文里提到 .glb / .stl 时生成可点开的文件卡片", () => {
+    const cards = buildAssistantPreviewCards(
+      "模型已生成：/workspace/models/torus-knot.glb\n垫圈在这里 /workspace/models/hex-washer.stl",
+      "/workspace",
+    );
+
+    // 卡片顺序由内部排序决定，这里只断言"两个路径都成了 3D 卡片"。
+    expect(cards.map((card) => (card.type === "file" ? card.path : "")).sort()).toEqual([
+      "/workspace/models/hex-washer.stl",
+      "/workspace/models/torus-knot.glb",
+    ]);
+    expect(cards.every((card) => card.type === "file" && card.kind === "model")).toBe(true);
+    expect(cards.map((card) => card.subtitleId)).toEqual([
+      "chat.previewCards.model",
+      "chat.previewCards.model",
+    ]);
+
+    // 点卡片要落到只读预览：`{type:"file"}` 由 PreviewPane 按扩展名升级成 3D 查看器。
+    const glbCard = cards.find(
+      (card) => card.type === "file" && card.path.endsWith("torus-knot.glb"),
+    )!;
+    expect(
+      buildAssistantPreviewCardFileSource(glbCard, { workspacePath: "/workspace" }),
+    ).toMatchObject({
+      type: "file",
+      path: "/workspace/models/torus-knot.glb",
+    });
+  });
+});

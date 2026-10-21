@@ -47,6 +47,18 @@ describe("conversation preview artifact candidates", () => {
     expect(candidates.map((candidate) => candidate.sourceRef)).toEqual(["/workspace/report.pdf"]);
   });
 
+  it("把 3D 模型当预览卡片候选，且不进分享 manifest 的 artifact 类型", () => {
+    const candidates = buildConversationPreviewArtifactCandidates({
+      productTurnId: "turn-1",
+      assistantText:
+        "模型在 /workspace/models/torus-knot.glb，垫圈 /workspace/models/hex-washer.stl",
+      workspacePath,
+    });
+
+    expect(candidates.map((candidate) => candidate.previewKind)).toEqual(["model", "model"]);
+    expect(candidates.map((candidate) => candidate.artifactType)).toEqual(["model", "model"]);
+  });
+
   it("allows Office/PDF references without fileChanges", () => {
     const candidates = buildConversationPreviewArtifactCandidates({
       productTurnId: "turn-1",
