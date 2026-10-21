@@ -23,7 +23,7 @@ import {
   readLayout,
   type LayoutHistory,
 } from "./engineLayoutHistory.js";
-import type { IElement } from "./engineTypes.js";
+import type { FindSession, IElement } from "./engineTypes.js";
 
 /**
  * 功能区命令入口：把 ribbon 的语义命令映射到引擎命令。
@@ -60,12 +60,8 @@ export interface CommandContext {
   comments?: { prev: () => void; next: () => void };
 }
 
-export interface FindSession {
-  keyword: string;
-  /** 命中范围：由引擎 `getKeywordRangeList` 给出（含表格单元格坐标），我们不自己算下标。 */
-  ranges: Array<Record<string, unknown>>;
-  current: number;
-}
+// 类型下沉到引擎形状层，避免查找实现反向依赖命令聚合入口。
+export type { FindSession } from "./engineTypes.js";
 
 export function createFindSession(): FindSession {
   return { keyword: "", ranges: [], current: -1 };

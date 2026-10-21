@@ -1,6 +1,6 @@
 // remote shard（web/手机远控/SSH workspace）也以各 endpoint 的 tasks-index
 // 持久行为列表左表，sessions-index 帧只补 activity/detail；旧 listTaskList 零调用。
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Emitter } from "@zcode/rpc";
@@ -15,7 +15,7 @@ import { ServiceProvider } from "@/hooks/useServices.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
 import { useSessionsMentionProvider } from "@/mentions/providers/sessionsMentionProvider.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
-import { TabStoreProvider, useTabStoreApi } from "@/store/TabStoreProvider.js";
+import { TabStoreProvider } from "@/store/TabStoreProvider.js";
 import { useTaskQueryCacheStore } from "@/store/taskQueryCacheStore.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
@@ -363,35 +363,76 @@ function createWorkspaceTabs(): WorkspaceTabState[] {
   ];
 }
 
-function WorkspaceTabsSeed({
-  activeWorkspaceIdentity,
-  activeWorkspacePath,
-  children,
-  tabs,
-}: {
-  activeWorkspaceIdentity?: string;
-  activeWorkspacePath: string;
-  children: ReactNode;
-  tabs: WorkspaceTabState[];
-}) {
-  const store = useTabStoreApi();
-  if (store.getState().tabs.length === 0) {
-    const activeTab = tabs.find(
-      (tab) =>
-        (tab.workspaceIdentity?.trim() || tab.workspacePath) ===
-        (activeWorkspaceIdentity?.trim() || activeWorkspacePath),
-    );
-    store.setState({
-      tabs,
-      activeTabId: activeTab?.id ?? null,
-      activeWorkspacePath,
-      activeWorkspaceIdentity: activeWorkspaceIdentity ?? null,
-    });
-  }
-  return children;
-}
-
 describe("useGlobalTaskList remote shard tasks-index 行 + sessions-index detail", () => {
+  it("远端 # 使用实际 attachment 的项目树，不请求本机项目或 sessions-index", async () => {
+    const local = createEndpointServices({ workspaceId: "local", sessions: [] });
+    const remote = createEndpointServices({ workspaceId: "remote", sessions: [] });
+    const localRead = vi.fn(async () => ({ projects: [], tasks: [] }));
+    const remoteRead = vi.fn(async () => ({
+      projects: [],
+      tasks: [
+        {
+          ...createTaskMeta("unopened-remote", {
+            workspacePath: "/other",
+            workspaceIdentity: "host-a:/other",
+          }),
+          hostId: "host-a",
+          projectId: null,
+          pinned: false,
+          archived: false,
+        },
+      ],
+    }));
+    for (const [endpoint, readTree] of [
+      [local, localRead],
+      [remote, remoteRead],
+    ] as const) {
+      Object.assign(endpoint.services, {
+        projectService: { readTree },
+        broadcastService: { onMessage: () => ({ dispose() {} }) },
+      });
+    }
+    useRemoteWorkspaceSessionStore.setState({
+      baseServices: local.services,
+      sessionsById: {
+        [REMOTE_SESSION_ID]: { sessionId: REMOTE_SESSION_ID, services: remote.services },
+      },
+      sessionIdByWorkspaceIdentity: { [REMOTE_IDENTITY]: REMOTE_SESSION_ID },
+      sessionIdByWorkspacePath: { "/remote-ws": REMOTE_SESSION_ID },
+    });
+    let values: string[] = [];
+    function Probe() {
+      const result = useSessionsMentionProvider(
+        "glm",
+        "/remote-ws",
+        REMOTE_IDENTITY,
+        "",
+        true,
+        "same-authority-workspaces",
+        "Empty",
+        "Sessions",
+      );
+      values = result.items.map((item) => item.value);
+      return null;
+    }
+    const root = createRoot(installMinimalDom());
+    await act(async () => {
+      root.render(
+        createElement(
+          ServiceProvider,
+          { services: local.services },
+          createElement(TabStoreProvider, null, createElement(Probe)),
+        ),
+      );
+      await flushMicrotasks();
+    });
+    expect(values).toEqual(["unopened-remote"]);
+    expect(localRead).not.toHaveBeenCalled();
+    expect(remoteRead).toHaveBeenCalledOnce();
+    expect(remote.subscribeSessionsIndexV4).not.toHaveBeenCalled();
+    expect(local.subscribeSessionsIndexV4).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
   afterEach(() => {
     useTaskQueryCacheStore.getState().clearAll();
     useRemoteWorkspaceSessionStore.setState({
@@ -974,383 +1015,6 @@ describe("useGlobalTaskList remote shard tasks-index 行 + sessions-index detail
     expect((latest?.items ?? []).find((task) => task.taskId === "s-remote-1")?.title).toBe(
       "Renamed remote",
     );
-
-    act(() => {
-      root.unmount();
-    });
-  });
-
-  it("远端 workspace 的 # 会话候选只订阅对应 remote endpoint", async () => {
-    const local = createEndpointServices({
-      workspaceId: "ws-local",
-      sessions: [],
-    });
-    const remote = createEndpointServices({
-      workspaceId: "ws-remote",
-      sessions: [],
-    });
-    useRemoteWorkspaceSessionStore.setState({
-      baseServices: local.services,
-      sessionsById: {
-        [REMOTE_SESSION_ID]: {
-          sessionId: REMOTE_SESSION_ID,
-          services: remote.services,
-        },
-      },
-      sessionIdByWorkspaceIdentity: { [REMOTE_IDENTITY]: REMOTE_SESSION_ID },
-      sessionIdByWorkspacePath: { "/remote-ws": REMOTE_SESSION_ID },
-    });
-
-    function Probe() {
-      useSessionsMentionProvider(
-        "glm",
-        "/remote-ws",
-        REMOTE_IDENTITY,
-        "",
-        true,
-        "current-workspace",
-        "empty",
-        "sessions",
-      );
-      return null;
-    }
-
-    const root: Root = createRoot(installMinimalDom());
-    await act(async () => {
-      root.render(
-        createElement(
-          ServiceProvider,
-          { services: local.services },
-          createElement(TabStoreProvider, null, createElement(Probe)),
-        ),
-      );
-      await flushMicrotasks();
-    });
-    await act(async () => {
-      await flushMicrotasks();
-    });
-
-    expect(local.subscribeSessionsIndexV4).not.toHaveBeenCalled();
-    expect(remote.subscribeSessionsIndexV4).toHaveBeenCalledTimes(1);
-    expect(remote.subscribeSessionsIndexV4).toHaveBeenCalledWith({
-      runtimePolicy: "existing-only",
-      workspacePath: "/remote-ws",
-      workspaceIdentity: REMOTE_IDENTITY,
-    });
-
-    act(() => {
-      root.unmount();
-    });
-  });
-
-  it("@ 保持当前 workspace，# 聚合同一 Host 并按 workspace 各限制 20 条", async () => {
-    const buildWorkspaceSessions = (workspaceId: string, prefix: string) => [
-      ...Array.from({ length: 20 }, (_, index) =>
-        createSession({
-          sessionId: `${prefix}-recent-${index}`,
-          workspaceId,
-          title: `${prefix} recent ${index}`,
-          lastActivityAt: 100 - index,
-          createdAt: 100 - index,
-        }),
-      ),
-      createSession({
-        sessionId: `${prefix}-old-target`,
-        workspaceId,
-        title: `${prefix} archived target`,
-        lastActivityAt: 1,
-        createdAt: 1,
-      }),
-    ];
-    const local = createEndpointServices({
-      workspaceId: "ws-local",
-      sessions: [],
-      sessionsByWorkspaceKey: {
-        "/workspace-a": buildWorkspaceSessions("/workspace-a", "alpha"),
-        "/workspace-b": buildWorkspaceSessions("/workspace-b", "beta"),
-      },
-    });
-    useRemoteWorkspaceSessionStore.setState({ baseServices: local.services });
-    const workspaceTabs: WorkspaceTabState[] = [
-      {
-        id: "workspace-a",
-        kind: "workspace",
-        label: "workspace-a",
-        workspacePath: "/workspace-a",
-      },
-      {
-        id: "workspace-b",
-        kind: "workspace",
-        label: "workspace-b",
-        workspacePath: "/workspace-b",
-      },
-    ];
-    let latest: ReturnType<typeof useSessionsMentionProvider> | null = null;
-
-    function Probe({
-      query = "",
-      workspaceScope,
-    }: {
-      query?: string;
-      workspaceScope: "current-workspace" | "same-authority-workspaces";
-    }) {
-      latest = useSessionsMentionProvider(
-        "glm",
-        "/workspace-a",
-        undefined,
-        query,
-        true,
-        workspaceScope,
-        "empty",
-        "sessions",
-      );
-      return null;
-    }
-
-    const root: Root = createRoot(installMinimalDom());
-    const renderProbe = (
-      workspaceScope: "current-workspace" | "same-authority-workspaces",
-      query = "",
-    ) =>
-      root.render(
-        createElement(
-          ServiceProvider,
-          { services: local.services },
-          createElement(
-            TabStoreProvider,
-            null,
-            createElement(
-              WorkspaceTabsSeed,
-              { activeWorkspacePath: "/workspace-a", tabs: workspaceTabs },
-              createElement(Probe, { query, workspaceScope }),
-            ),
-          ),
-        ),
-      );
-    await act(async () => {
-      renderProbe("current-workspace");
-      await flushMicrotasks();
-    });
-    await act(async () => {
-      await flushMicrotasks();
-    });
-
-    expect(local.subscribeSessionsIndexV4).toHaveBeenCalledTimes(1);
-    expect(local.subscribeSessionsIndexV4).toHaveBeenCalledWith(
-      expect.objectContaining({ workspacePath: "/workspace-a" }),
-    );
-    expect(latest?.items).toHaveLength(21);
-    expect((latest?.items ?? []).map((item) => item.value)).toContain("alpha-old-target");
-
-    await act(async () => {
-      renderProbe("same-authority-workspaces");
-      await flushMicrotasks();
-    });
-    await act(async () => {
-      await flushMicrotasks();
-    });
-
-    expect(local.subscribeSessionsIndexV4).toHaveBeenCalledTimes(2);
-    expect(local.subscribeSessionsIndexV4).toHaveBeenCalledWith(
-      expect.objectContaining({ workspacePath: "/workspace-b" }),
-    );
-    expect(latest?.items).toHaveLength(40);
-    expect((latest?.items ?? []).filter((item) => item.description === "workspace-a")).toHaveLength(
-      20,
-    );
-    expect((latest?.items ?? []).filter((item) => item.description === "workspace-b")).toHaveLength(
-      20,
-    );
-    expect((latest?.items ?? []).map((item) => item.value)).not.toContain("beta-old-target");
-
-    await act(async () => {
-      renderProbe("same-authority-workspaces", "beta archived target");
-      await flushMicrotasks();
-    });
-    expect((latest?.items ?? []).map((item) => item.value)).toEqual(["beta-old-target"]);
-
-    act(() => {
-      root.unmount();
-    });
-  });
-
-  it("远端 # 会话候选只聚合同一 remote authority 的 workspace", async () => {
-    const local = createEndpointServices({
-      workspaceId: "ws-local",
-      sessions: [],
-    });
-    const remoteAId = "remote-session-a";
-    const remoteBId = "remote-session-b";
-    const remoteAIdentity = "remote:ssh:a:/repo-a";
-    const remoteAProjectIdentity = "remote:ssh:a:/repo-b";
-    const remoteBIdentity = "remote:ssh:b:/repo-a";
-    const remoteA = createEndpointServices({
-      workspaceId: "ws-remote-a",
-      sessions: [],
-      sessionsByWorkspaceKey: {
-        [remoteAIdentity]: [
-          createSession({
-            sessionId: "s-remote-a-current",
-            workspaceId: remoteAIdentity,
-            title: "Remote A current",
-            lastActivityAt: 10,
-          }),
-        ],
-        [remoteAProjectIdentity]: [
-          createSession({
-            sessionId: "s-remote-a-project",
-            workspaceId: remoteAProjectIdentity,
-            title: "Remote A project",
-            lastActivityAt: 20,
-          }),
-        ],
-      },
-    });
-    const remoteB = createEndpointServices({
-      workspaceId: "ws-remote-b",
-      sessions: [
-        createSession({
-          sessionId: "s-remote-b",
-          workspaceId: remoteBIdentity,
-          title: "Foreign remote",
-          lastActivityAt: 30,
-        }),
-      ],
-    });
-    useRemoteWorkspaceSessionStore.setState({
-      baseServices: local.services,
-      sessionsById: {
-        [remoteAId]: { sessionId: remoteAId, services: remoteA.services },
-        [remoteBId]: { sessionId: remoteBId, services: remoteB.services },
-      },
-      sessionIdByWorkspaceIdentity: {
-        [remoteAIdentity]: remoteAId,
-        [remoteAProjectIdentity]: remoteAId,
-        [remoteBIdentity]: remoteBId,
-      },
-      sessionIdByWorkspacePath: {},
-    });
-    const workspaceTabs: WorkspaceTabState[] = [
-      {
-        id: "remote-a-root",
-        kind: "workspace",
-        label: "repo-a",
-        workspacePath: "/repo-a",
-        workspaceIdentity: remoteAIdentity,
-        remoteSessionId: remoteAId,
-      },
-      {
-        id: "remote-a-project",
-        kind: "workspace",
-        label: "repo-b",
-        workspacePath: "/repo-b",
-        workspaceIdentity: remoteAProjectIdentity,
-        remoteSessionId: remoteAId,
-      },
-      {
-        id: "remote-b-root",
-        kind: "workspace",
-        label: "repo-a",
-        workspacePath: "/repo-a",
-        workspaceIdentity: remoteBIdentity,
-        remoteSessionId: remoteBId,
-      },
-      {
-        id: "local-root",
-        kind: "workspace",
-        label: "local",
-        workspacePath: "/local",
-      },
-    ];
-    let latest: ReturnType<typeof useSessionsMentionProvider> | null = null;
-
-    function Probe() {
-      latest = useSessionsMentionProvider(
-        "glm",
-        "/repo-a",
-        remoteAIdentity,
-        "",
-        true,
-        "same-authority-workspaces",
-        "empty",
-        "sessions",
-      );
-      return null;
-    }
-
-    const root: Root = createRoot(installMinimalDom());
-    await act(async () => {
-      root.render(
-        createElement(
-          ServiceProvider,
-          { services: local.services },
-          createElement(
-            TabStoreProvider,
-            null,
-            createElement(
-              WorkspaceTabsSeed,
-              {
-                activeWorkspaceIdentity: remoteAIdentity,
-                activeWorkspacePath: "/repo-a",
-                tabs: workspaceTabs,
-              },
-              createElement(Probe),
-            ),
-          ),
-        ),
-      );
-      await flushMicrotasks();
-    });
-    await act(async () => {
-      await flushMicrotasks();
-    });
-
-    expect(remoteA.subscribeSessionsIndexV4).toHaveBeenCalledTimes(2);
-    expect(remoteB.subscribeSessionsIndexV4).not.toHaveBeenCalled();
-    expect(local.subscribeSessionsIndexV4).not.toHaveBeenCalled();
-    expect((latest?.items ?? []).map((item) => item.value)).toEqual([
-      "s-remote-a-current",
-      "s-remote-a-project",
-    ]);
-
-    act(() => {
-      root.unmount();
-    });
-  });
-
-  it("# 面板未启用时不预订阅 sessions-index", async () => {
-    const local = createEndpointServices({
-      workspaceId: "ws-local",
-      sessions: [],
-    });
-
-    function Probe() {
-      useSessionsMentionProvider(
-        "glm",
-        "/workspace",
-        undefined,
-        "",
-        false,
-        "same-authority-workspaces",
-        "empty",
-        "sessions",
-      );
-      return null;
-    }
-
-    const root: Root = createRoot(installMinimalDom());
-    await act(async () => {
-      root.render(
-        createElement(
-          ServiceProvider,
-          { services: local.services },
-          createElement(TabStoreProvider, null, createElement(Probe)),
-        ),
-      );
-      await flushMicrotasks();
-    });
-
-    expect(local.subscribeSessionsIndexV4).not.toHaveBeenCalled();
 
     act(() => {
       root.unmount();

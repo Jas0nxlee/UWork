@@ -9,6 +9,18 @@
  * 两边一配就能"点画布上的那个框 → 改 XML 里的那个 sp"。名字重复时退化为"第一个同名"。
  */
 import { patchTxBody } from "./pptText.js";
+// XML 原语不依赖形状聚合入口，格式/插入实现因此无需反向导入本文件。
+import {
+  A_NS,
+  P_NS,
+  EMU_PER_INCH,
+  shapeNodes,
+  shapeByName,
+  writeBack,
+  type ShapeRunFormat,
+} from "./pptShapeXml.js";
+export { A_NS, P_NS, EMU_PER_INCH, shapeNodes, shapeByName, writeBack } from "./pptShapeXml.js";
+export type { ShapeRunFormat } from "./pptShapeXml.js";
 import {
   setShapeParagraphFormat,
   setShapeTextFormat,
@@ -19,11 +31,6 @@ export { setShapeParagraphFormat, setShapeTextFormat };
 export type { ShapeParagraphFormat };
 export { insertTextBox } from "./pptShapeInsert.js";
 
-export const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-export const P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-/** 幻灯片尺寸在 OOXML 里是 EMU：1 英寸 = 914400 EMU（渲染器的几何单位也是它）。 */
-export const EMU_PER_INCH = 914400;
-
 export interface ShapeBounds {
   /** 是否从 XML 里读到了显式几何（缺省时继承版式，需要写的时候再补 a:xfrm）。 */
   explicit: boolean;
@@ -32,17 +39,6 @@ export interface ShapeBounds {
   width: number;
   height: number;
   rotation?: number;
-}
-
-export interface ShapeRunFormat {
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strike?: boolean;
-  /** 字号：磅（PPT 里 `sz` 是"百分之一磅"）。 */
-  size?: number;
-  color?: string;
-  font?: string;
 }
 
 export interface PptxShape {
@@ -80,16 +76,6 @@ export function usedShapeIdentity(document: Document): { maxId: number; names: S
     nodes.map((node) => node.getElementsByTagNameNS(P_NS, "cNvPr")[0]?.getAttribute("name") ?? ""),
   );
   return { maxId: Math.max(0, ...ids), names };
-}
-
-export function shapeNodes(document: Document): Element[] {
-  const tree = document.getElementsByTagNameNS(P_NS, "spTree")[0];
-  if (!tree) return [];
-  return Array.from(tree.children).filter(
-    (child) =>
-      child.namespaceURI === P_NS &&
-      (child.localName === "sp" || child.localName === "pic" || child.localName === "graphicFrame"),
-  );
 }
 
 /** 形状的几何容器元素：`a:xfrm`（sp/pic）或 **`p:xfrm`**（graphicFrame 表格/图表）。 */
@@ -220,16 +206,6 @@ export function readSlideShapes(xml: string): PptxShape[] {
       runFormat: runFormatOf(shape),
     } satisfies PptxShape;
   });
-}
-
-export function writeBack(document: Document): string {
-  return new XMLSerializer().serializeToString(document);
-}
-
-export function shapeByName(document: Document, name: string): Element | undefined {
-  return shapeNodes(document).find(
-    (shape) => shape.getElementsByTagNameNS(P_NS, "cNvPr")[0]?.getAttribute("name") === name,
-  );
 }
 
 /** 该形状的几何容器：`p:spPr` / `p:grpSpPr` / `p:xfrm`（图片在 `p:spPr` 里）。 */

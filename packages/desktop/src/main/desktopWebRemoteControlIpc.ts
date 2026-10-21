@@ -5,6 +5,8 @@ import {
   classifyRemoteUsageError,
   parseRemoteWorkspaceIdentity,
   PlatformChannels,
+  webRemoteControlAuthStateChangeSchema,
+  type WebRemoteControlAuthStateChange,
   type TelemetryEventPayload,
   type WebRemoteControlContext,
   type WebRemoteControlStartResult,
@@ -22,11 +24,12 @@ export interface WebRemoteControlIpcManager {
     context: WebRemoteControlContext,
     authorization: WebRemoteControlStartAuthorization,
   ) => Promise<WebRemoteControlStartResult>;
-  resetPairingAuthorized: (
+  resetPairingAuthorized?: (
     windowId: number,
     context: WebRemoteControlContext,
     authorization: WebRemoteControlStartAuthorization,
   ) => Promise<WebRemoteControlStartResult>;
+  notifyAuthStateChanged(windowId: number, change: WebRemoteControlAuthStateChange): Promise<void>;
   stop(windowId: number): Promise<void>;
   getStatus(windowId: number): WebRemoteControlStatus;
 }
@@ -70,7 +73,7 @@ async function runStartOperation(input: {
     if (!win) {
       throw new Error(input.missingWindowMessage);
     }
-    // 交互边界：远控面板和二维码刷新已有显式用户操作，main 只校验窗口并绑定目标，
+    // 交互边界：远控面板已有显式用户操作，main 只校验窗口并绑定目标，
     // 不再叠加原生确认弹窗，避免一次操作出现两层确认。
     const response = await input.operation(win.id);
     reportRemoteUsageEventSafely(
@@ -101,6 +104,15 @@ async function runStartOperation(input: {
 export function registerWebRemoteControlIpcHandlers(
   dependencies: WebRemoteControlIpcDependencies,
 ): void {
+  ipcMain.on(PlatformChannels.WebRemoteControlAuthStateChanged, (event, payload: unknown) => {
+    const parsed = webRemoteControlAuthStateChangeSchema.safeParse(payload);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!parsed.success || !win) return;
+    // 单向通知不把异步异常泄漏到 Electron；下次通知或 workspace sync 可重试恢复。
+    void dependencies.webRemoteControlManager
+      .notifyAuthStateChanged(win.id, parsed.data)
+      .catch(() => {});
+  });
   ipcMain.handle(
     PlatformChannels.StartWebRemoteControl,
     async (event, context: WebRemoteControlContext) =>
@@ -127,6 +139,7 @@ export function registerWebRemoteControlIpcHandlers(
         operation: (windowId) => {
           const manager = dependencies.webRemoteControlManager;
           const authorization = manager.authorizeStart(windowId, context);
+          if (!manager.resetPairingAuthorized) throw new Error("Pairing rotation unavailable");
           return manager.resetPairingAuthorized(windowId, context, authorization);
         },
         reportRemoteUsageEvent: dependencies.reportRemoteUsageEvent,

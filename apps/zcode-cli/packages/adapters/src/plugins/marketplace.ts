@@ -10,6 +10,7 @@ import {
   DEFAULT_PLUGIN_MARKETPLACES,
   isCuratedStoreMarketplaceId,
   sanitizeZCodeRuntimeEnv,
+  UWORK_PLUGIN_MANIFEST_DIR,
 } from "@zcode/shared";
 import { loadPluginMcpServerDefinitions, resolvePluginMcpServers } from "./mcp.js";
 import {
@@ -68,6 +69,8 @@ const MARKETPLACE_JSON_MAX_REDIRECTS = 5;
 const MARKETPLACE_JSON_TIMEOUT_MS = 180_000;
 const claudeIconMigrationAttempts = new Set<string>();
 const CLAUDE_MARKETPLACE_FILE = join(".claude-plugin", "marketplace.json");
+// UWork 自身命名优先；随后按既有约定回退，保证 ZCode/Claude/Codex 插件继续可加载。
+const UWORK_MANIFEST_PATH = join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json");
 const ZCODE_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
 const CLAUDE_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
 const CODEX_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
@@ -1032,6 +1035,8 @@ export async function describeMarketplacePlugin(input: {
   marketplace: string;
   name: string;
   storageRoot: string;
+  /** 只包住会写 known/manifest 的懒加载分支；其余只读路径不进锁。 */
+  withWriteLock?: <T>(write: () => Promise<T>) => Promise<T>;
 }): Promise<DescribeMarketplacePluginResult> {
   const diagnostics: PluginValidationDiagnostic[] = [];
   const pluginId = `${input.name}@${input.marketplace}`;
@@ -1059,11 +1064,19 @@ export async function describeMarketplacePlugin(input: {
 
   let manifest: PluginMarketplaceManifest | null = null;
   try {
-    await ensureMarketplaceManifestAvailable({
-      marketplace: input.marketplace,
-      storageRoot: input.storageRoot,
-    });
     manifest = loadMarketplaceManifestSync(input.storageRoot, input.marketplace);
+    if (!manifest) {
+      // Bugfix：describe 曾整体持 storage lock，安装下载期间所有详情都排在锁后。
+      // 只有 manifest 缺失时才写 known/manifest，此时必须与安装、市场刷新串行。
+      const withWriteLock = input.withWriteLock ?? ((write) => write());
+      await withWriteLock(() =>
+        ensureMarketplaceManifestAvailable({
+          marketplace: input.marketplace,
+          storageRoot: input.storageRoot,
+        }),
+      );
+      manifest = loadMarketplaceManifestSync(input.storageRoot, input.marketplace);
+    }
   } catch (error) {
     diagnostics.push(toValidationDiagnostic(error, pluginId));
     return { components: [], diagnostics };
@@ -2374,6 +2387,9 @@ export function parseEntryStoreListing(
   };
 
   const listing: PluginStoreListing = {};
+  if (entry.publisherType === "official" || entry.publisherType === "community") {
+    listing.publisherType = entry.publisherType;
+  }
   const displayName = readString("displayName");
   if (displayName) listing.displayName = displayName;
   const displayNameI18n = readStringMap("displayName_i18n");
@@ -2447,7 +2463,12 @@ function findMarketplaceManifestPath(rootPath: string, explicitPath?: string): s
 }
 
 function findPluginManifestPath(rootPath: string): string | null {
-  for (const candidate of [ZCODE_MANIFEST_PATH, CLAUDE_MANIFEST_PATH, CODEX_MANIFEST_PATH]) {
+  for (const candidate of [
+    UWORK_MANIFEST_PATH,
+    ZCODE_MANIFEST_PATH,
+    CLAUDE_MANIFEST_PATH,
+    CODEX_MANIFEST_PATH,
+  ]) {
     const path = join(rootPath, candidate);
     if (fileExists(path)) return path;
   }

@@ -3,14 +3,19 @@ import type {
   OAuthCallbackResult,
   OAuthProviderId,
   OAuthProviderMeta,
+  OAuthSessionState,
   OAuthStartResponse,
   UserInfo,
 } from "@zcode/shared";
 import { ServiceChannels } from "@zcode/shared";
+import type { Event } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 /** 登录退役后的兼容 RPC。读取恒为 signed-out；登录和刷新明确报错，不执行网络 IO。 */
 export interface IOAuthService {
+  /** 凭据变更完成后发布，早于 provider 清理及调用方的 UI/设置后处理。 */
+  readonly onDidChangeSession: Event<OAuthSessionState>;
+
   getProviders(): Promise<OAuthProviderMeta[]>;
   getActiveProvider(): Promise<OAuthProviderId | null>;
   restoreCachedSession(): Promise<UserInfo | null>;

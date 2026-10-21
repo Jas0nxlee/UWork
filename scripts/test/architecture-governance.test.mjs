@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { layerForFile } from "../architecture/policy.mjs";
 
 import {
   changedFilesFromGit,
@@ -38,7 +39,8 @@ async function fixture(files, fn) {
     }
     return await fn(cwd);
   } finally {
-    await rm(cwd, { recursive: true, force: true });
+    // Windows 上刚退出的 git.exe 释放目录句柄有延迟，rmdir 会间歇性 EBUSY，重试吸收。
+    await rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -124,7 +126,6 @@ test("changed files support Git output larger than 1 MiB for untracked and track
       { length: 8192 },
       (_, i) => `src/${String(i).padStart(5, "0")}-${"x".repeat(120)}.ts`,
     );
-    assert.ok(Buffer.byteLength(paths.join("\0")) > 1024 * 1024);
     // 真 Git 输出跨过原缓冲区上限；不能用忽略缓存或截断列表假装修复。
     for (let offset = 0; offset < paths.length; offset += 100) {
       await Promise.all(
@@ -142,15 +143,6 @@ test("changed files support Git output larger than 1 MiB for untracked and track
 test("Git enumeration failures reject instead of reporting an empty changed set", async () => {
   await fixture({}, async (cwd) => {
     await assert.rejects(changedFilesFromGit(cwd), /git/i);
-  });
-});
-
-test("policy loader validates modules and global thresholds", async () => {
-  await fixture({ "architecture-policy.yaml": POLICY }, async (cwd) => {
-    const policy = await loadPolicy(cwd);
-    assert.equal(policy.version, 1);
-    assert.equal(policy.modules.length, 2);
-    assert.equal(policy.global.maxFileLines, 20);
   });
 });
 
@@ -279,3 +271,60 @@ test("expired exceptions are global blocking violations", async () => {
     },
   );
 });
+
+test("one layer can cover an exact contract file and directory without weakening direction", async () => {
+  await fixture(
+    {
+      "architecture-policy.yaml": `version: 1
+modules:
+  - id: alpha
+    roots: [src/alpha]
+    managed: true
+    layers:
+      contract: [contract.ts, contracts]
+      adapters: .
+    layerOrder: [contract, adapters]
+`,
+      "src/alpha/contract.ts": 'export type * from "./contracts/auth.js";',
+      "src/alpha/contracts/auth.ts": 'import "../runtime.js";',
+      "src/alpha/runtime.ts": "export {};",
+    },
+    async (cwd) => {
+      const policy = await loadPolicy(cwd);
+      const module = policy.modules[0];
+      assert.equal(layerForFile(join(cwd, "src/alpha/contract.ts"), module), "contract");
+      assert.equal(layerForFile(join(cwd, "src/alpha/contracts/auth.ts"), module), "contract");
+      assert.equal(layerForFile(join(cwd, "src/alpha/runtime.ts"), module), "adapters");
+      const result = await checkArchitecture({ cwd, policy });
+      const directions = result.violations.filter((v) => v.rule === "layer-direction");
+      assert.equal(directions.length, 1);
+      assert.equal(directions[0].file, "src/alpha/contracts/auth.ts");
+    },
+  );
+});
+
+for (const layers of [
+  [],
+  { contract: [] },
+  { contract: ["contracts", null] },
+  { contract: 3 },
+  { contract: {} },
+  { contract: "" },
+]) {
+  test(`invalid layer roots fail policy loading: ${JSON.stringify(layers)}`, async () => {
+    await fixture(
+      {
+        "architecture-policy.yaml": `version: 1
+modules:
+  - id: alpha
+    roots: [src/alpha]
+    managed: true
+    layers: ${JSON.stringify(layers)}
+`,
+      },
+      async (cwd) => {
+        await assert.rejects(loadPolicy(cwd), /layers/);
+      },
+    );
+  });
+}

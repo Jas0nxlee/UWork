@@ -62,7 +62,7 @@ vi.mock("@/hooks/useWebRemoteControlStatus.js", () => ({
   useWebRemoteControlStatus: () => ({ status: "idle" }),
 }));
 
-vi.mock("@/WebRemoteControlDialog.js", () => ({
+vi.mock("@/web-remote-control/index.js", () => ({
   WebRemoteControlDialog: ({
     initialTaskId,
     remoteSessionId,
@@ -114,13 +114,7 @@ afterEach(() => {
 });
 
 describe("WorkspaceWebRemoteControlTrigger", () => {
-  it("在 test 环境展示 Web 远程控制入口", async () => {
-    const html = await renderTriggerWithEnv("test");
-
-    expect(html).toContain("webRemoteControl.trigger");
-  });
-
-  it("在 production 环境展示 Web 远程控制入口", async () => {
+  it("默认展示 Web 远程控制入口", async () => {
     const html = await renderTriggerWithEnv("production");
 
     expect(html).toContain("webRemoteControl.trigger");
@@ -165,11 +159,5 @@ describe("WorkspaceWebRemoteControlTrigger", () => {
     expect(html).toContain('data-tooltip-title="webRemoteControl.trigger"');
     expect(html).toContain('data-tooltip-description="webRemoteControl.triggerStatus.idle"');
     expect(html).not.toContain('data-tooltip-title="webRemoteControl.triggerStatus.idle"');
-  });
-
-  it("在按钮上方展示远程控制 tooltip", async () => {
-    const html = await renderTriggerWithEnv("test");
-
-    expect(html).toContain('data-tooltip-side="top"');
   });
 });

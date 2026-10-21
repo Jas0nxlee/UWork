@@ -1,14 +1,16 @@
 <div align="center">
   <img src="packages/desktop/build/uwork.svg" alt="UWork" width="96" height="96" />
   <h1>UWork</h1>
-  <p>Bring your own model service to everyday tasks and software development.</p>
+  <p>Connect your own model service for coding, document work, and everyday tasks.</p>
   <p><a href="README.md">简体中文</a> · English</p>
-  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">Source</a> · <a href="LICENSE">Apache-2.0</a></p>
+  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">Source</a> · <a href="https://github.com/Jas0nxlee/UWork/releases">Downloads</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). This version includes a default UCAS model provider, custom model services, Assistant / Developer modes, and optional WeCom identity login. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
+UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). It offers UCAS and custom model providers, Assistant / Developer modes, optional multi-organization WeCom sign-in and gateway usage stats, plus files, terminal, Git, MCP, skills, and subagents. It also supports Office files and mobile remote control through a relay you configure. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
 
-This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization.
+This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization. The current code base tracks the upstream ZCode v3.16.2 snapshot (2026-10-19).
+
+The sign-in page footer shows the current client build version. See [package.json](package.json) for the source version and [GitHub Releases](https://github.com/Jas0nxlee/UWork/releases) for published installers and versions.
 
 ## Features
 
@@ -22,9 +24,11 @@ This fork is maintained independently and is not an official upstream distributi
 | WeCom identity         | Scan inside the desktop login card or skip login. Verified users see their name, department, and position below UWork. Windows on the same device share one enterprise account; workspaces and unsent drafts remain window-local. |
 | Enterprise gateway     | Reuses the enterprise backend (ucas-proxy): after sign-in it writes the UCAS gateway endpoint and API key, appends models allowed by the plan, and shows plan quota and request / cost / token usage under Usage stats.           |
 | Workspaces and tasks   | Retains upstream projects, conversations, files, terminal, Git, plugins, MCP, skills, and subagents.                                                                                                                              |
-| Updated interface      | UWork SVG wordmark, U app icon, fading UCAS background, light and dark themes, and a top-right Help menu containing only Resource Manager.                                                                                        |
+| Office files           | Preview Word, Excel, and PPT; edit supported documents in the app with backups. Complex structures remain read-only under format guards. A separate plugin handles Word revision review.                                          |
+| Mobile remote control  | Pair through your configured relay and attach to the existing desktop Host, workspaces, and tasks. Self-hosted HMAC pairing does not require model-provider OAuth.                                                                |
+| Updated interface      | UWork wordmark and icon, UCAS background, light and dark themes, and the client version in the sign-in footer.                                                                                                                    |
 
-Interface modes do not change tool permissions or model-service access. Official automatic updates are disabled; update this customized version by rebuilding and installing it.
+Interface modes do not change tool permissions or model-service access. Download updates from this repository’s Releases. Automatic updates depend on the build-time `ZCODE_AUTO_UPDATE` flag and are disabled by default. Upstream ZCode installers are not an update source for this customized edition.
 
 ## Connect a model service
 
@@ -60,9 +64,15 @@ Set the complete API prefix required by your custom provider, such as `https://a
 
 Unauthenticated desktop users can scan inside the login card or skip login and continue. Skipping applies only to the current window; login remains available after restarting. Use the entry below the UWork wordmark to reopen login, or click your verified name to view its source and sign out.
 
-This identity provides a local name label. It does not add account-based data isolation, cloud sync, or extra permissions. Gateway provisioning is driven by the same sign-in: the service address comes from `apiBaseUrl` in the WeCom configuration, and after sign-in the client writes the UCAS gateway endpoint, reuses or creates an enterprise API key, appends models allowed by the plan, and reads plan and usage data. An existing local API key is never overwritten automatically; use the Enterprise gateway panel to replace it explicitly. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
+Enterprise identity provides a name label and enterprise gateway access. It does not add account-based data isolation, cloud sync, or extra local permissions. Gateway provisioning is driven by the same sign-in: the service address comes from `apiBaseUrl` in the WeCom configuration, and after sign-in the client writes the UCAS gateway endpoint, reuses or creates an enterprise API key, appends models allowed by the plan, and reads plan and usage data. An existing local API key is never overwritten automatically; use the Enterprise gateway panel to replace it explicitly. Signing in or out does not migrate, claim, or delete existing workspaces, conversations, or model settings. Sign-out clears the device identity session; the current integration does not promise server-side token revocation.
 
 Official GitHub installers include the default public WeCom login parameters. Windows, macOS, and Linux users can scan after installation without copying a configuration file. A verified scan also provisions the gateway configuration automatically; the skippable UCAS API key dialog appears only when the enterprise backend returns no usable key. The client includes no WeCom Secret, user Token, or UCAS API key. Administrators can override the defaults with a local configuration; see [WeCom integration](docs/enterprise-identity-integration.md) for its location, interface requirements, and provisioning rules. The native scan adapter is loaded by the Desktop Local Host; ordinary Web does not enable it automatically, and mobile remote control only displays the identity of the existing desktop Host.
+
+## Office and mobile remote control
+
+- Built-in Office tools handle supported Word, Excel, and PPT files. Format and size guards determine editing or read-only access; saves check file revisions and create backups. Arbitrary complex documents are not guaranteed a lossless round trip. See [Office preview and editing](specs/office-editors-triad.md).
+- The [office-editor plugin](plugins/office-editor/README.md) provides Word revision and comment review. Without an external editor engine configured, it uses a read-only preview. Full engine editing requires separate configuration; the plugin docs and third-party inventory record bundled-component license obligations.
+- Mobile remote control requires trusted relay and mobile-page addresses configured by an administrator. It reuses the desktop Host, sessions, and tasks. Self-hosted HMAC pairing is preserved; missing configuration never sends pairing credentials to the official relay. See [self-hosted relay](specs/web-remote-control-relay.md) and [UWork remote assembly](specs/web-remote-uwork-integration.md).
 
 ## Data directory
 
@@ -157,10 +167,12 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 
 Output defaults to `dist/zcode/`. The distribution command is still `zcode`: no arguments start the TUI, and `zcode --web` starts Web mode. Building does not install or replace a system CLI. Run `pnpm build:zcode --help` for options.
 
+See the [CLI usage guide (Chinese)](apps/zcode-cli/docs/usage/README.md) for model configuration, non-interactive runs, tools and extensions, batch evaluation, and trajectory capture.
+
 ## Data and network boundaries
 
-- Internal names such as `@zcode/*`, `ZCODE_*`, the `zcode` command, and `.zcode` data directories are retained for compatibility.
-- The packaged macOS application preserves the previous Electron userData location. Renaming the app does not intentionally migrate or clear provider and conversation data.
+- Internal `@zcode/*` package names, some `ZCODE_*` environment variables, the `zcode` command, and project-level `.zcode` conventions remain. UWork user data lives in `~/.uwork`, separate from upstream’s user-level `~/.zcode`.
+- Electron browser storage uses separate `UWork` / `UWork Dev` / `UWork Preview` userData directories. This is a separate storage layer from `~/.uwork`; startup does not migrate upstream user directories.
 - Historical Zhipu / Z.ai model-account credentials are no longer used to restore login. Optional enterprise identity uses separate credentials and a device session. Remote connections and MCP retain their own authentication.
 - This is not a fully offline edition. Model requests go to your configured provider; plugins, remote workspaces, diagnostics, and other services have their own network behavior. Never commit real API keys, configuration, logs, or conversations to a public repository.
 
@@ -173,6 +185,7 @@ pnpm typecheck
 pnpm lint
 pnpm fmt:check
 pnpm architecture:check --changed
+pnpm verify:pre-push
 pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
 pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
@@ -180,7 +193,7 @@ pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
 
 Test entry points and environment dependencies are defined by each package's `package.json` and test files. The Node tests above use local test data to check model discovery, UCAS configuration, enterprise gateway provisioning, and identity lifecycle; they do not establish real inference or WeCom authentication.
 
-The [enterprise identity Electron E2E script](packages/desktop/test/enterpriseIdentity.e2e.mjs) targets an isolated source instance without authentication-service configuration. It covers startup, skipping, reopening, Esc, mode switching, and reload. Launch that instance separately and set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The [shared UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs) uses a test adapter and requires browser-harness. Real scanning and server-side session refresh need separate validation.
+The [enterprise identity Electron E2E script](packages/desktop/test/enterpriseIdentity.e2e.mjs) targets an isolated source instance without authentication-service configuration. It covers startup, skipping, reopening, Esc, mode switching, and reload. Launch that instance separately and set `ZCODE_E2E_CDP_URL` to its local debugging endpoint. The [shared UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs) uses a test adapter and requires browser-harness. The [sign-in version E2E](packages/ui/test/enterpriseLoginVersion.e2e.mjs) checks injected build versions, both languages and themes, narrow windows, and the footer during QR scanning. Real scanning and server-side session refresh need separate validation.
 
 ## Source layout and design notes
 

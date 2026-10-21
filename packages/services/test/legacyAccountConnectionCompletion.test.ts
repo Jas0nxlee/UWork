@@ -17,7 +17,7 @@ async function setup(raw: unknown = oldFields) {
   const home = await mkdtemp(join(tmpdir(), "zcode-team-migration-"));
   homes.push(home);
   process.env.HOME = home;
-  const dir = join(home, ".zcode", "v2");
+  const dir = join(home, ".uwork", "v2");
   await mkdir(dir, { recursive: true });
   const file = join(dir, "setting.json");
   await writeFile(file, JSON.stringify(raw));
@@ -88,10 +88,16 @@ describe("旧 Team 连接组织补齐的实际设置边界", () => {
   it.each(["connection", "domain"])("等待期间用户修改 %s，迟到迁移不能覆盖", async (field) => {
     const { service, prepareLegacyAccountConnections, read } = await setup();
     await prepareLegacyAccountConnections(async () => {
+      const before = await service.get();
       await service.update(
         field === "connection"
           ? { providerFamilyConnectionSelections: { bigmodel: { kind: "individual-coding-plan" } } }
           : { providerFamilyDomain: "zai" },
+        {
+          providerFamilyDomain: before.providerFamilyDomain,
+          providerFamilyConnectionSelections: before.providerFamilyConnectionSelections,
+          providerFamilyDomainUpdatedAt: before.providerFamilyDomainUpdatedAt ?? 0,
+        },
       );
       return "old-organization";
     });

@@ -1,6 +1,7 @@
 import type { Locale } from "@zcode/shared";
 import { memo, useCallback, useEffect, useState } from "react";
-import { DesktopCommandIds, TID_TASK_SETTINGS_BUTTON } from "@zcode/shared";
+import { DesktopCommandIds } from "@zcode/shared";
+import { TID_TASK_SETTINGS_BUTTON } from "@zcode/shared/test-ids";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
@@ -16,21 +17,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import {
-  PencilRuler,
-  Globe,
-  Maximize,
-  MessagesSquare,
-  Palette,
-  Settings,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { PencilRuler, Globe, Maximize, Palette, Settings, ZoomIn, ZoomOut } from "lucide-react";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { useImNotifications } from "@/im/useImNotifications.js";
-import { useImUnread } from "@/im/useImSidebar.js";
-import { useOptionalBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
@@ -46,7 +35,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onLocaleChange,
   onThemeChange,
   onSettingsButtonClick,
-  onMessagesButtonClick,
   settingsButtonMode = "settings",
   isDesktop = false,
   workspacePath,
@@ -60,8 +48,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onLocaleChange: (value: string) => void;
   onThemeChange: (value: string) => void;
   onSettingsButtonClick?: () => void;
-  /** 打开 IM 侧边面板；Host 没注册消息服务时由外层不传（按钮自动隐藏）。 */
-  onMessagesButtonClick?: () => void;
   settingsButtonMode?: "settings" | "back";
   isDesktop?: boolean;
   /** 当前 workspace 的远控入口参数；只透传，状态所有者仍在 Host。 */
@@ -89,18 +75,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
     settingsButtonMode === "back"
       ? intl.formatMessage({ id: "workspace.backToWorkspace" })
       : intl.formatMessage({ id: "settings.title" });
-  // 未读来自服务端视图（见 useImUnread）；有未读时把数字也放进提示语，鼠标悬停即可知道有几条。
-  const imUnread = useImUnread();
-  // 系统通知挂在页脚这一层：它常驻挂载，消息面板没打开时也要能弹（用户可能整天不开面板）
-  useImNotifications(useOptionalBaseWorkspaceServices()?.imService ?? null);
-  // 角标推给宿主（macOS Dock / Windows 任务栏）：未读在渲染层算（要排静音），宿主只负责显示
-  useEffect(() => {
-    void platform.setImBadgeCount?.({ count: imUnread });
-  }, [platform, imUnread]);
-  const messagesLabel =
-    imUnread > 0
-      ? `${intl.formatMessage({ id: "im.title" })} (${imUnread})`
-      : intl.formatMessage({ id: "im.title" });
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [desktopZoomLevel, setDesktopZoomLevel] = useState(0);
   const runDesktopZoomCommand = useCallback(
@@ -159,7 +133,11 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
             </Button>
           </DropdownMenuTrigger>
           {/* 菜单内容保持挂载，避免每次点击头像菜单都重建 footer 内部状态。*/}
-          <DropdownMenuContent align="start" className="w-max min-w-50" forceMount>
+          <DropdownMenuContent
+            align="start"
+            className="w-max min-w-50 max-w-[calc(100vw-2rem)]"
+            forceMount
+          >
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Globe className="size-4" />
@@ -230,9 +208,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             {/* 快捷键设置：缩放子菜单 label 读生效表，设置页改绑后即时跟随 */}
-            {/* 收口重复缩放子菜单时误留了语言之后的那份，导致菜单顺序变成
-                语言→缩放→主题；账户菜单分组顺序固定为 语言→主题→界面模式→缩放→用量→登录/登出，
-                这里把唯一一份（读生效表）挪回用量摘要之前，不要再补第二份缩放子菜单。 */}
             {isDesktop ? (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
@@ -278,29 +253,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
               initialTaskId={activeTaskId ?? undefined}
               compact
             />
-          ) : null}
-          {onMessagesButtonClick ? (
-            <ControlHintTooltip title={messagesLabel}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-lg"
-                className="relative"
-                data-testid="sidebar-messages-button"
-                aria-label={messagesLabel}
-                onClick={onMessagesButtonClick}
-              >
-                <MessagesSquare className="size-4" />
-                {imUnread > 0 ? (
-                  <span
-                    data-testid="sidebar-messages-unread"
-                    className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-primary px-1 text-[9px] leading-4 text-primary-foreground"
-                  >
-                    {imUnread > 99 ? "99+" : imUnread}
-                  </span>
-                ) : null}
-              </Button>
-            </ControlHintTooltip>
           ) : null}
           <ControlHintTooltip title={settingsButtonLabel}>
             <Button

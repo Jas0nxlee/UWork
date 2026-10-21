@@ -10,7 +10,7 @@
  * exceljs 认得"的东西会原样留在文件里。
  */
 import type { Sheet } from "@fortune-sheet/core";
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
@@ -33,7 +33,7 @@ export interface ExcelGuardState {
 }
 
 export interface UseExcelDocumentInput {
-  fileService: IFileService;
+  fileService: OfficeEditorFilePort;
   path: string;
   /** 远端工作区：载入前先探一次写能力。 */
   remote?: boolean;

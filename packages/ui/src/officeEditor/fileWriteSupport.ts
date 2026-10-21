@@ -7,10 +7,10 @@
  * `packages/services/src/file/fileService.ts` 的实现顺序），老服务端则抛 `Method not found`。
  * 两者可区分，而且探测本身不会改动文件。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 
 export async function probeWriteSupport(
-  fileService: IFileService,
+  fileService: OfficeEditorFilePort,
   path: string,
 ): Promise<{ supported: boolean; reason?: string }> {
   try {

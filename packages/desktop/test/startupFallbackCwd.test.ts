@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, writeFile, stat, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, stat, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { resolveStartupWindowBootstrap } from "../src/main/startupWorkspace.js";
-import { ensureHostFallbackCwd } from "../src/host/storagePreparationProcesses.js";
+import { ensureHostFallbackCwd } from "../src/host/database-startup/storagePreparationProcesses.js";
 import { resolveZCodeAgentSpawnCwd } from "@zcode/services/storage-startup";
 
 test("valid active workspace and deleted recent workspace use an existing managed fallback", async () => {
@@ -28,7 +28,9 @@ test("valid active workspace and deleted recent workspace use an existing manage
       conversationWorkspaceDir: fallback,
     });
     assert.equal(bootstrap.agentWarmupTargets?.[0]?.workspacePath, active);
-    assert.ok(bootstrap.agentWarmupTargets?.some((target) => target.workspacePath === deleted));
+    // 当前 Main 只声明活动目标，失效 recent 不再拥有预热/创建入口；备用 cwd 由 Host 创建。
+    assert.deepEqual(bootstrap.agentWarmupTargets, [{ workspacePath: active }]);
+    await assert.rejects(stat(fallback), { code: "ENOENT" });
     await ensureHostFallbackCwd(fallback);
     const selection = await resolveZCodeAgentSpawnCwd({
       requestedCwd: deleted,
@@ -55,6 +57,19 @@ test("fresh Host and repeated window startup create only the canonical backing d
       spawnFallbackCwd: fallback,
     });
     assert.equal(selection.cwdExists, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Host rejects a fallback path occupied by a file without replacing its contents", async () => {
+  const root = await mkdtemp(join(tmpdir(), "uwork-cwd-blocked-"));
+  try {
+    const fallback = join(root, "existing-file");
+    await writeFile(fallback, "preserve-existing-file");
+    await assert.rejects(ensureHostFallbackCwd(fallback), { code: "EEXIST" });
+    assert.equal((await stat(fallback)).isFile(), true);
+    assert.equal(await readFile(fallback, "utf8"), "preserve-existing-file");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

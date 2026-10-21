@@ -74,34 +74,6 @@ function resolvePersistedActiveSession(
   return sessions[activeIndex];
 }
 
-export function resolveStartupAgentWarmupTargets(
-  settings: Pick<ReturnType<typeof appSettingsSchema.parse>, "recentProjects">,
-  activeTarget: StartupWorkspaceWarmupTarget,
-): StartupWorkspaceWarmupTarget[] {
-  const candidates: StartupWorkspaceWarmupTarget[] = [
-    activeTarget,
-    ...(settings.recentProjects ?? []).map((workspacePath) => ({
-      workspacePath,
-    })),
-  ];
-  const seen = new Set<string>();
-  const targets: StartupWorkspaceWarmupTarget[] = [];
-
-  for (const candidate of candidates) {
-    const workspaceKey = candidate.workspaceIdentity?.trim() || candidate.workspacePath;
-    if (!workspaceKey || seen.has(workspaceKey)) {
-      continue;
-    }
-    seen.add(workspaceKey);
-    targets.push(candidate);
-    if (targets.length === STARTUP_AGENT_WARMUP_LIMIT) {
-      break;
-    }
-  }
-
-  return targets;
-}
-
 export function createOpenWorkspaceStartupBootstrap(workspacePath: string): StartupWindowBootstrap {
   return {
     initialWorkspacePath: workspacePath,
@@ -120,13 +92,16 @@ export async function resolveStartupWindowBootstrap({
   logger?: StartupWorkspaceLogger;
 }): Promise<StartupWindowBootstrap> {
   const settings = await readStartupSettings(settingsFile, logger);
-  const sessions = settings.lastWorkspaceSession ?? [];
+  const sessions =
+    settings.lastActiveWorkspace === undefined
+      ? (settings.lastWorkspaceSession ?? [])
+      : settings.lastActiveWorkspace
+        ? [settings.lastActiveWorkspace]
+        : [];
+  const activeIndex = settings.lastActiveWorkspace === undefined ? settings.lastActiveTabIndex : 0;
 
   if (sessions.length > 0) {
-    const persistedActiveSession = resolvePersistedActiveSession(
-      sessions,
-      settings.lastActiveTabIndex,
-    );
+    const persistedActiveSession = resolvePersistedActiveSession(sessions, activeIndex);
     const unavailableWorkspacePath =
       persistedActiveSession?.kind === "local" &&
       !(await isAvailableWorkspaceDirectory(persistedActiveSession.workspacePath))
@@ -140,24 +115,19 @@ export async function resolveStartupWindowBootstrap({
         unavailableWorkspacePath,
       );
     }
-    const localActiveSessionIndex = resolveStartupLocalWorkspaceSessionIndex(
-      sessions,
-      settings.lastActiveTabIndex,
-    );
+    const localActiveSessionIndex = resolveStartupLocalWorkspaceSessionIndex(sessions, activeIndex);
     const activeSession =
       localActiveSessionIndex == null ? undefined : sessions[localActiveSessionIndex];
     if (activeSession?.kind === "local") {
-      // 被动 sessions-index 全量恢复不能启动全部 workspace；Main 在唯一启动边界固定只选
-      // active workspace（STARTUP_AGENT_WARMUP_LIMIT），Host 走原 initializeWorkspace 路径；
-      // recentProjects 保持 dormant，预热失败也不扫描其它 workspace 补位。
-      const agentWarmupTargets = resolveStartupAgentWarmupTargets(settings, {
-        workspacePath: activeSession.workspacePath,
-      });
+      // 项目/最近目录不再决定 Agent 生命周期，只预热上次活动执行目录。
+      const agentWarmupTargets = [{ workspacePath: activeSession.workspacePath }];
       return {
         ...(unavailableWorkspacePath ? { unavailableWorkspacePath } : {}),
         agentWarmupTargets,
       };
     }
+    // 修复原因：备用 cwd 已由 Host 在所有准备分支统一 mkdir；Main 只声明导航目标，
+    // 不能为仅远端恢复另开写入路径，也不能重建已删除的历史项目。
     return unavailableWorkspacePath ? { unavailableWorkspacePath } : {};
   }
 
@@ -169,22 +139,4 @@ export async function resolveStartupWindowBootstrap({
     initialWorkspacePurpose: "conversation",
     agentWarmupTargets: [{ workspacePath: conversationWorkspaceDir }],
   };
-}
-
-export async function resolveStartupWorkspacePath({
-  settingsFile,
-  conversationWorkspaceDir,
-  logger,
-}: {
-  settingsFile: string;
-  conversationWorkspaceDir: string;
-  logger?: StartupWorkspaceLogger;
-}): Promise<string | undefined> {
-  return (
-    await resolveStartupWindowBootstrap({
-      settingsFile,
-      conversationWorkspaceDir,
-      logger,
-    })
-  ).initialWorkspacePath;
 }

@@ -1,6 +1,6 @@
 // 以 Chromium CDP 验证未改写的正式包，保持 Windows 的 Node Inspector fuse 关闭。
 import assert from "node:assert/strict";
-import { mkdtemp, access, rm } from "node:fs/promises";
+import { mkdtemp, access, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,6 +8,9 @@ import { resolvePackagedDesktopExecutable } from "../scripts/packaged-desktop-ex
 import { launchPackagedDesktopCdp } from "../scripts/packaged-desktop-cdp.mjs";
 
 const [platform, arch] = process.argv.slice(2);
+const { version } = JSON.parse(
+  await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
+);
 const executablePath = resolvePackagedDesktopExecutable(
   platform,
   arch,
@@ -59,6 +62,16 @@ try {
   page.setDefaultTimeout(60_000);
   const button = page.getByTestId("enterprise-wecom-login");
   await button.waitFor();
+  // 只检查源码夹具会漏掉构建常量丢失或旧资源混包；正式包必须显示本次根版本。
+  const versionFooter = page.getByTestId("enterprise-login-version");
+  assert.equal(await versionFooter.isVisible(), true);
+  assert.ok(
+    [`客户端版本 v${version}`, `Client version v${version}`].includes(
+      await versionFooter.innerText(),
+    ),
+    "Packaged login footer does not match this release version",
+  );
+  stage(`client version ${version} verified in the packaged Renderer`);
   await page.waitForFunction(() => {
     const button = document.querySelector('[data-testid="enterprise-wecom-login"]');
     return button instanceof HTMLButtonElement && !button.disabled;

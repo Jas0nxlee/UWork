@@ -95,3 +95,17 @@ sequenceDiagram
     Migration-->>Settings: 成功；失败抛错且旧根保留
     Settings->>Disk: 成功后保存 bootstrap dataBaseDir
 ```
+
+## 技能面板的插件缓存读取（2026-10-21）
+
+技能面板读取的 CLI 配置、插件缓存与安装记录必须使用同一 UWork 用户级存储根。`storage.dir` 未显式配置时，`SkillsService` 使用既有 `getUworkUserStorageRoot()` 解析器，不再独立回退 `~/.zcode`；显式 `storage.dir` 与 `~/` 展开仍按现有规则生效。用户级 `.uwork/skills` 与共享 `.agents/skills` 保留原来源语义，项目级 `.zcode/skills` 不改名。
+
+验收同时布置 `.uwork` 与 `.zcode` 插件缓存：只展示已配置产品根内的插件，不能读取上游插件；显式存储根只展示该根的安装。技能启停仍由同一 CLI 配置拥有，不新增持久化状态。
+
+## 命令与显式导入的用户根（2026-10-21）
+
+CommandsService 的用户命令读取、写入、目录定位和默认插件缓存统一使用现有 `getUworkUserStorageRoot()`；描述符只决定项目目录与共享 `.agents` 来源，不能绕过解析器另拼用户 `.zcode`。显式 `storage.dir` 继续优先，项目 `.zcode/commands` 不变。
+
+SettingsSyncService 的用户技能导入和 Claude `CLAUDE.md`→`AGENTS.md` 目标也从同一公开解析器派生为 `.uwork/skills` 与 `.uwork/AGENTS.md`。外部 Claude/Codex 路径仍为来源；用户的 `.zcode` 内容既不参与目标重名判断，也不能被覆盖或新建。项目级导入继续使用项目 `.zcode`，不自动迁移任何上游用户数据。
+
+验收同时构造上游与产品根：命令列表/新建只使用产品根，插件默认缓存不读上游；技能同名导入不会因上游文件被误判已存在；Claude 文档在 overwrite=false/true 下均仅写产品目标，上游原文不变，空环境不创建 `.zcode`。

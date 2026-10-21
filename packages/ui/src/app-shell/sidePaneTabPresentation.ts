@@ -2,6 +2,7 @@ import { getSidePaneTabTitle } from "@/app-shell/SidePaneTabTrigger.js";
 import type { WorkspaceSidePaneTab } from "@/lib/workspaceSidePane.js";
 
 export interface SidePaneTabPresentationLabels {
+  fileManagerTitle?: string;
   browserTitle: string;
   reviewTitle: string;
   codeViewerTitle: string;
@@ -9,13 +10,14 @@ export interface SidePaneTabPresentationLabels {
   whiteboardTitle: string;
   modelTrajectoryTitle: string;
   developerToolsTitle: string;
+  pluginMarketTitle: string;
+  newTabTitle?: string;
   browserPermissionsTitle: string;
   terminalTitle: string;
   subagentTypeLabel: string;
   subagentDirectoryTitle: string;
   selectionChatTitle: string;
   planTitle: string;
-  imTitle: string;
   workflowRunTitle: string;
   workflowDirectoryTitle: string;
   workflowActorTitle: string;
@@ -61,20 +63,22 @@ export function getSidePaneTabSearchHint(tab: WorkspaceSidePaneTab): string {
   if (tab.type === "browser-use") {
     return `${tab.title ?? ""} ${tab.sessionId} browser use`;
   }
+  if (tab.type === "new-tab") return "new tab launcher";
   if (tab.type === "git") return "git diff";
   if (tab.type === "treemapping") return "file activity diff map treemapping";
   if (tab.type === "whiteboard") return `${tab.title} whiteboard canvas draw sketch`;
   if (tab.type === "model-trajectory") {
     return `${tab.title ?? ""} ${tab.taskId} model trajectory call io`;
   }
+  if (tab.type === "plugin-market") return "plugin marketplace store plugins";
   if (tab.type === "developer-tools") {
     return "developer tools token debug network status request response headers";
   }
   if (tab.type === "terminal" || tab.type === "bash-output")
     return `${tab.title} terminal shell command`;
-  if (tab.type === "messages") return "im messages chat conversation 消息";
+  if (tab.type === "file-manager") return `${tab.target.workspacePath} ${tab.source?.path ?? ""}`;
   // 兜底只对真有 source 的 tab 成立：无 source 的新类型走到这里会读 undefined.path 抛错
-  // （browser-use 与本轮的 messages 都踩过同一个坑），所以这里必须防御。
+  // （browser-use 就踩过这个坑），所以这里必须防御。
   if ("source" in tab && tab.source) return tab.source.path ?? tab.source.title;
   return "";
 }
@@ -85,6 +89,8 @@ export function getLocalizedSidePaneTabTitle(
 ): string {
   return getSidePaneTabTitle(tab, (descriptor) => {
     const titleByMessageId: Record<string, string> = {
+      "sidePane.newTab": labels.newTabTitle ?? "New tab",
+      "fileManager.title": labels.fileManagerTitle ?? labels.codeViewerTitle,
       "browser.title": labels.browserTitle,
       "browser.permission.settings": labels.browserPermissionsTitle,
       "sidePane.review": labels.reviewTitle,
@@ -93,11 +99,11 @@ export function getLocalizedSidePaneTabTitle(
       "whiteboard.title": labels.whiteboardTitle,
       "modelTrajectory.title": labels.modelTrajectoryTitle,
       "developerTools.title": labels.developerToolsTitle,
+      "workspace.openPluginsSettings": labels.pluginMarketTitle,
       "terminal.title": labels.terminalTitle,
       "sidePane.subagent": labels.subagentTypeLabel,
       "sidePane.subagentDirectory": labels.subagentDirectoryTitle,
       "sidePane.selectionChat": labels.selectionChatTitle,
-      "im.title": labels.imTitle,
       "planTool.panel.planTab": labels.planTitle,
       "sidePane.workflowRun": labels.workflowRunTitle,
       "sidePane.workflowActor": labels.workflowActorTitle,
@@ -112,6 +118,7 @@ export function getSidePaneTabTypeLabel(
   tab: WorkspaceSidePaneTab,
   labels: SidePaneTabPresentationLabels,
 ): string {
+  if (tab.type === "new-tab") return labels.newTabTitle ?? "New tab";
   if (tab.type === "plan-detail") return labels.planTitle;
   if (tab.type === "plugin-ui") return tab.title;
   if (tab.type === "workflow-run") return labels.workflowRunTitle;
@@ -126,12 +133,12 @@ export function getSidePaneTabTypeLabel(
   if (tab.type === "subagent-directory") return labels.subagentDirectoryTitle;
   if (tab.type === "browser" || tab.type === "browser-use") return labels.browserTitle;
   if (tab.type === "browser-permissions") return labels.browserPermissionsTitle;
+  if (tab.type === "file-manager") return labels.fileManagerTitle ?? labels.codeViewerTitle;
   if (tab.type === "git") return labels.reviewTitle;
   if (tab.type === "treemapping") return labels.treemappingTitle;
   if (tab.type === "whiteboard") return labels.whiteboardTitle;
   if (tab.type === "model-trajectory") return labels.modelTrajectoryTitle;
   if (tab.type === "developer-tools") return labels.developerToolsTitle;
   if (tab.type === "terminal" || tab.type === "bash-output") return labels.terminalTitle;
-  if (tab.type === "messages") return labels.imTitle;
   return labels.codeViewerTitle;
 }

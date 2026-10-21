@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>office-editor 修订审阅 / 编辑</title>
+    <!--__STYLE__-->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #6b7280;
+        --border: #d8dee4;
+        --insert: #1a7f37;
+        --insert-bg: #dafbe1;
+        --delete: #cf222e;
+        --delete-bg: #ffebe9;
+        --accent: #0969da;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #8b949e;
+          --border: #30363d;
+          --insert: #3fb950;
+          --insert-bg: #12261e;
+          --delete: #f85149;
+          --delete-bg: #2d1214;
+          --accent: #4493f8;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 12px 14px 16px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          13px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      header h1 {
+        font-size: 14px;
+        margin: 0;
+      }
+      #file {
+        color: var(--muted);
+        font-size: 12px;
+        word-break: break-all;
+      }
+      #toolbar {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 12px;
+      }
+      button {
+        font: inherit;
+        padding: 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      button[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+      .kind {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .kind.insert {
+        color: var(--insert);
+      }
+      .kind.delete {
+        color: var(--delete);
+      }
+      .loc {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 4px 0 2px;
+      }
+      .text mark {
+        background: transparent;
+        color: inherit;
+        font-weight: 600;
+        padding: 0 1px;
+      }
+      .insert .text mark {
+        border-bottom: 1.5px solid var(--insert);
+      }
+      .delete .text mark {
+        text-decoration: line-through;
+      }
+      .text {
+        margin: 6px 0 8px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .insert .text {
+        background: var(--insert-bg);
+      }
+      .delete .text {
+        background: var(--delete-bg);
+        text-decoration: line-through;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      #empty,
+      #totals {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      #pager,
+      .comments-pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 0 10px;
+        font-size: 12px;
+      }
+      #page-label {
+        color: var(--muted);
+      }
+      #comments {
+        margin-top: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      .comments-head {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .comment {
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+      }
+      .comment-text {
+        margin-bottom: 6px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #notice {
+        color: var(--muted);
+        padding: 8px 0;
+      }
+      #notice {
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        padding: 10px;
+      }
+      #preview-bar {
+        margin: -4px 0 8px;
+        min-height: 16px;
+      }
+      /* 窄（对话卡片）：审阅优先，动作只有接受/拒绝；宽（侧栏）：Office 式编辑页，文档是唯一主角。 */
+      #grid {
+        display: grid;
+        gap: 12px;
+      }
+      body.wide #grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      body.wide #rail,
+      body.wide #toolbar,
+      body.wide #preview-toggle {
+        display: none;
+      }
+      body.wide #editor-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 6px 0 8px;
+      }
+      #editor-bar .sep {
+        color: var(--border);
+      }
+      /* 修复原因：面板显示由 applyLayout 的 hidden 唯一决定；fullscreen 的 display
+         会覆盖 hidden，导致默认只读预览被隐藏、空 SuperDoc 容器反而可见。 */
+      body.wide #superdoc-host {
+        min-height: 78vh;
+      }
+      #superdoc-host {
+        background: #eef1f4;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: auto;
+      }
+      /* 编辑态：段落悬停有边界提示，正在编辑的段落有焦点环（像编辑器的编辑区）。 */
+      #doc-body p[contenteditable] {
+        border-radius: 3px;
+      }
+      #doc-body p[contenteditable]:hover {
+        outline: 1px dashed var(--border);
+        outline-offset: 1px;
+      }
+      #doc-body p[contenteditable]:focus {
+        outline: 2px solid #0969da;
+        outline-offset: 2px;
+        background: #f6f8fa;
+      }
+      #doc-preview {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #eef1f4;
+        max-height: 62vh;
+        overflow: auto;
+        padding: 10px;
+        margin-bottom: 12px;
+      }
+      #doc-body {
+        transform-origin: top left;
+      }
+      /* docx-preview 出的是白纸黑字（不跟随暗色主题）：纸张区固定用浅色，避免暗色下看不清 */
+      #doc-body .docx-wrapper {
+        background: transparent;
+        padding: 0;
+      }
+      #doc-body .docx-wrapper > section.docx {
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+        margin-bottom: 12px;
+      }
+      #doc-body ins {
+        background: #e6ffec;
+        color: #1a7f37;
+        text-decoration: none;
+        border-bottom: 1.5px solid #1a7f37;
+      }
+      #doc-body del {
+        background: #ffebe9;
+        color: #b42318;
+        text-decoration: line-through;
+      }
+      #doc-body ins[data-rev-active],
+      #doc-body del[data-rev-active] {
+        outline: 2px solid #0969da;
+        outline-offset: 1px;
+      }
+      li[data-rev-id] {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Word 修订审阅</h1>
+      <span id="file">（等待宿主传入文件）</span>
+    </header>
+    <div id="toolbar">
+      <button id="accept-all" disabled>全部接受</button>
+      <button id="reject-all" disabled>全部拒绝</button>
+      <button id="comments-toggle" disabled>加载批注</button>
+      <button id="preview-toggle" disabled>显示文档</button>
+      <button id="open-side" disabled>在侧栏编辑</button>
+      <button id="refresh" disabled>刷新</button>
+    </div>
+    <div id="editor-bar" hidden>
+      <button id="editor-save">保存到文件</button>
+      <button id="editor-reload">重新加载</button>
+      <span class="sep">|</span>
+      <span class="meta" id="editor-status">正在加载 Office 编辑器…</span>
+    </div>
+    <div id="preview-bar"><span id="preview-status"></span></div>
+    <div id="grid">
+      <div id="main">
+        <div id="notice" hidden>
+          宿主桥（MCP Apps）不可用：当前页面只能显示静态信息。请在客户端内打开本页面。
+        </div>
+        <div id="superdoc-host" hidden></div>
+        <div id="doc-preview" hidden>
+          <div id="doc-styles"></div>
+          <div id="doc-body"></div>
+        </div>
+      </div>
+      <div id="rail">
+        <div id="totals"></div>
+        <div id="pager" hidden>
+          <button id="prev">上一页</button>
+          <span id="page-label"></span>
+          <button id="next">下一页</button>
+        </div>
+        <ul id="list"></ul>
+        <div id="empty" hidden>没有待处理的修订。</div>
+        <div id="comments"></div>
+      </div>
+    </div>
+    <!--__SCRIPT__-->
+  </body>
+</html>

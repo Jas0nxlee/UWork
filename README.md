@@ -1,14 +1,14 @@
 <div align="center">
   <img src="packages/desktop/build/uwork.svg" alt="UWork" width="96" height="96" />
   <h1>UWork</h1>
-  <p>使用自己的模型服务，在同一个工作区中处理日常任务与代码开发。</p>
+  <p>连接自己的模型服务，在同一个工作区中完成代码开发、文档处理与日常任务。</p>
   <p>简体中文 · <a href="README.en.md">English</a></p>
-  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">源码</a> · <a href="LICENSE">Apache-2.0</a></p>
+  <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">源码</a> · <a href="https://github.com/Jas0nxlee/UWork/releases">下载安装</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。当前版本预置 UCAS 模型供应商，支持自定义模型服务、助理 / 开发模式切换，以及可跳过的企业微信身份登录。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
+UWork 是定制的 AI 工作台。提供 UCAS 与自定义模型服务、助理 / 开发模式、可跳过的多企业微信登录与网关用量统计，并保留文件、终端、Git、MCP、技能和子智能体。支持 Office 文件处理，以及需自行配置 relay 的手机远程控制。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
 
-本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。
+客户端登录页底部显示当前构建的版本号。源码版本见 [package.json](package.json)，已发布安装包及其对应版本见 [GitHub Releases](https://github.com/Jas0nxlee/UWork/releases)。
 
 ## 当前功能
 
@@ -22,9 +22,11 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 | 企业微信身份     | 桌面登录卡片内扫码，可跳过；认证后在 UWork 字标下显示姓名、部门与职位。同一设备各窗口共享企业账号，工作区和未提交草稿仍由各窗口管理。      |
 | 企业网关自动配置 | 复用企业后台（ucas-proxy）：登录后自动写入 UCAS 网关地址与 API Key、按套餐补齐模型，并在使用统计中展示套餐额度、请求 / 费用 / Token 用量。 |
 | 工作区与任务     | 保留项目、会话、文件、终端、Git，以及插件、MCP、技能和子智能体等上游能力。                                                                 |
-| 定制界面         | UWork SVG 字标与 U 图标、UCAS 渐隐背景、深浅主题；右上角帮助菜单仅保留资源管理器。                                                         |
+| Office 文件      | 预览 Word、Excel 和 PPT，受支持文档可在应用内编辑并保存备份；复杂结构按格式护栏保持只读。Word 修订审阅另有插件入口。                       |
+| 手机远控         | 通过自行配置的 relay 配对并连接桌面已有 Host，复用工作区和任务；保留 HMAC 配对，不要求模型供应商 OAuth 登录。                              |
+| 定制界面         | UWork 字标与图标、UCAS 背景、深浅主题，以及登录页底部的客户端版本信息。                                                                    |
 
-模式切换只改变界面呈现，不改变工具权限或模型服务权限。官方自动更新已停用，更新本定制版需要重新构建安装。
+模式切换只改变界面呈现，不改变工具权限或模型服务权限。安装包可从本仓库 Releases 下载并更新；自动更新是否启用由构建时的 `ZCODE_AUTO_UPDATE` 决定，默认关闭。不要将上游 ZCode 安装包作为本定制版的更新来源。
 
 ## 配置模型并开始使用
 
@@ -60,9 +62,15 @@ UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI �
 
 桌面启动时，未认证用户可以在登录卡片内扫码，也可以跳过并继续使用。跳过只对当前窗口生效，重启后仍可选择登录；工作区内可通过 UWork 字标下的入口再次打开登录页，认证后点击姓名查看来源或退出。
 
-此身份用于本地姓名展示，不引入账号数据隔离、云同步或额外操作权限。企业网关自动配置由身份登录驱动：服务地址取自企微配置的 `apiBaseUrl`，登录后自动写入 UCAS 供应商的网关地址、复用或生成企业内部 API Key、按套餐补齐模型，并读取套餐与用量。已有本地 API Key 不会被自动覆盖，可在「企业网关」面板显式替换。登录或退出不会迁移、认领或删除已有工作区、会话与模型配置；退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
+企业身份用于姓名展示与企业网关接入，不引入账号数据隔离、云同步或额外本地操作权限。企业网关自动配置由身份登录驱动：服务地址取自企微配置的 `apiBaseUrl`，登录后自动写入 UCAS 供应商的网关地址、复用或生成企业内部 API Key、按套餐补齐模型，并读取套餐与用量。已有本地 API Key 不会被自动覆盖，可在「企业网关」面板显式替换。登录或退出不会迁移、认领或删除已有工作区、会话与模型配置；退出清除设备上的身份会话，当前接入不承诺吊销认证服务端的 Token。
 
 GitHub 正式安装包已携带默认企业微信公开登录参数，Windows、macOS 和 Linux 安装后可直接扫码，无需复制配置文件。扫码认证成功后会自动完成网关配置；只有企业后台没有返回可用 Key 时才弹出可跳过的输入对话框。客户端不内置企业微信 Secret、用户 Token 或 UCAS Key；管理员可使用本机配置覆盖默认参数，位置、接口与自动配置规则见 [企业微信登录对接](docs/enterprise-identity-integration.md)。该原生扫码适配器由 Desktop Local Host 加载；普通 Web 不自动启用，手机远控只展示桌面已有 Host 的身份。
+
+## Office 与手机远控
+
+- 应用内 Office 功能处理支持的 Word、Excel、PPT 文件，按格式保真范围与大小限制决定可编辑或只读；保存有版本冲突检查及备份，不承诺任意复杂文档完整往返保真。范围见 [Office 预览与编辑](specs/office-editors-triad.md)。
+- [office-editor 插件](plugins/office-editor/README.md)提供 Word 修订与批注审阅。默认未配置外部编辑引擎时显示只读预览；完整引擎编辑需要单独配置，复制组件的许可义务见插件文档与第三方清单。
+- 手机远控需管理员配置可信 relay 和手机页面地址，复用桌面已有 Host、会话与任务；仓库保留自建 HMAC 配对协议，配置缺失时不会向官方 relay 发送配对凭据。配置及协议见 [自建 relay](specs/web-remote-control-relay.md) 与 [UWork 远控装配](specs/web-remote-uwork-integration.md)。
 
 ## 数据目录
 
@@ -157,10 +165,12 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 
 产物默认写入 `dist/zcode/`。发行包命令仍为 `zcode`：无参数进入 TUI，`zcode --web` 启动 Web。构建本身不会安装或替换系统中的 CLI。查看参数可运行 `pnpm build:zcode --help`。
 
+CLI 的模型配置、非交互调用、工具与扩展、批量评测和轨迹记录见 [CLI 使用指南](apps/zcode-cli/docs/usage/README.md)。
+
 ## 数据与网络边界
 
-- 为兼容原有数据，内部包名 `@zcode/*`、`ZCODE_*` 环境变量、`zcode` 命令和 `.zcode` 数据目录继续保留。
-- macOS 正式版沿用原 Electron userData 路径；更改显示名称不会主动搬迁或清空供应商与会话配置。
+- 内部包名 `@zcode/*`、部分 `ZCODE_*` 环境变量、`zcode` 命令及项目级 `.zcode` 约定继续保留；UWork 用户数据根是 `~/.uwork`，不复用上游用户级 `~/.zcode`。
+- Electron 浏览器存储使用独立的 `UWork` / `UWork Dev` / `UWork Preview` userData 目录，与 `~/.uwork` 业务数据根是两层存储；启动不会自动迁移上游用户目录。
 - 历史智谱 / Z.ai 模型账号凭据不再用于登录恢复；可选企业身份使用独立凭据与设备会话，远程连接和 MCP 仍保留各自的鉴权。
 - 本项目并非完全离线版本。模型请求会发送到配置的供应商，插件、远程工作区、诊断等能力仍有各自的网络行为。不要在公开仓库中提交 API Key、真实配置、日志或会话数据。
 
@@ -173,6 +183,7 @@ pnpm typecheck
 pnpm lint
 pnpm fmt:check
 pnpm architecture:check --changed
+pnpm verify:pre-push
 pnpm exec tsx --test packages/services/test/providerModelDiscovery.test.ts packages/services/test/customProvidersOnly.test.ts
 pnpm exec tsx --test packages/services/test/enterpriseIdentity*.test.ts
 pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
@@ -180,7 +191,7 @@ pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
 
 测试入口与环境依赖以目标包的 `package.json` 和实际测试文件为准。上述 Node 测试使用本地测试数据验证模型发现、UCAS 配置、企业网关自动配置及身份生命周期，不代表真实模型推理或企业微信认证通过。
 
-[企业身份 Electron E2E 脚本](packages/desktop/test/enterpriseIdentity.e2e.mjs)用于未配置认证服务的隔离源码实例，覆盖启动、跳过、再次打开、Esc、模式切换和重载。运行前需单独启动该实例，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点。[共享 UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs)使用测试适配器，并依赖 browser-harness。真实扫码与服务端续期需要另行验证。
+[企业身份 Electron E2E 脚本](packages/desktop/test/enterpriseIdentity.e2e.mjs)用于未配置认证服务的隔离源码实例，覆盖启动、跳过、再次打开、Esc、模式切换和重载。运行前需单独启动该实例，并通过 `ZCODE_E2E_CDP_URL` 指定本机调试端点。[共享 UI E2E](packages/ui/test/enterpriseIdentity.e2e.mjs)使用测试适配器，并依赖 browser-harness。[登录页版本 E2E](packages/ui/test/enterpriseLoginVersion.e2e.mjs)覆盖构建版本、中英文、深浅主题、窄屏与扫码时的页脚布局。真实扫码与服务端续期需要另行验证。
 
 ## 源码与设计说明
 

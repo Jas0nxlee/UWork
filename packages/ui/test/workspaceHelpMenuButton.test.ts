@@ -2,7 +2,8 @@ import { createElement } from "react";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { DesktopCommandIds, TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER } from "@zcode/shared";
+import { DesktopCommandIds } from "@zcode/shared";
+import { TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER } from "@zcode/shared/test-ids";
 
 vi.mock("@/i18n/IntlProvider.js", () => ({
   useZCodeIntl: () => ({
@@ -115,44 +116,37 @@ describe("WorkspaceHelpMenuButton", () => {
     return renderToStaticMarkup(createElement(WorkspaceHelpMenuButton, { isDesktop }));
   }
 
-  it("桌面和 Web 的漏洞入口紧跟问题上报，打开配置地址；缺失时隐藏", async () => {
-    for (const desktop of [true, false]) {
-      captured.zsrcUrl = "https://security.example.test/report";
-      captured.openExternal.mockClear();
-      try {
-        await render(desktop);
-        const index = captured.menuItems.findIndex(
-          (item) => item.label === "workspaceHeader.help.reportVulnerability",
-        );
-        expect(index).toBeGreaterThan(0);
-        expect(captured.menuItems[index - 1]?.label).toBe("workspaceHeader.help.issueReport");
-        await captured.menuItems[index]?.onSelect?.();
-        expect(captured.openExternal).toHaveBeenCalledExactlyOnceWith(captured.zsrcUrl);
-      } finally {
-        captured.zsrcUrl = null;
+  it("已配置漏洞地址也不恢复已裁剪入口", async () => {
+    captured.zsrcUrl = "https://security.example.test/report";
+    try {
+      for (const desktop of [true, false]) {
+        const html = await render(desktop);
+        expect(html).not.toContain("workspaceHeader.help.reportVulnerability");
+        expect(captured.menuItems).toHaveLength(desktop ? 1 : 0);
+        if (desktop) await captured.menuItems[0]!.onSelect?.();
+        expect(captured.openExternal).not.toHaveBeenCalled();
       }
-      expect(await render(desktop)).not.toContain("workspaceHeader.help.reportVulnerability");
+    } finally {
+      captured.zsrcUrl = null;
     }
   });
 
-  it("冷缓存加载项不可触发外链，有效配置到达时保留原位置与文案", async () => {
+  it("旧漏洞配置从加载到可用都不会改变唯一菜单项", async () => {
     captured.loading = true;
     captured.openExternal.mockClear();
     try {
       await render(true);
       const before = captured.menuItems.map((item) => item.label);
-      const item = captured.menuItems.find(
-        (item) => item.label === "workspaceHeader.help.reportVulnerability",
-      );
-      expect(item).toMatchObject({ disabled: true, onSelect: undefined });
       captured.loading = false;
       captured.zsrcUrl = "https://security.example.test/report";
       await render(true);
       expect(captured.menuItems.map((item) => item.label)).toEqual(before);
-      expect(
-        captured.menuItems.find((item) => item.label === "workspaceHeader.help.reportVulnerability")
-          ?.disabled,
-      ).toBe(false);
+      expect(before).toEqual(["titleBar.menu.help.resourceManager"]);
+      expect(captured.menuItems[0]!.onSelect).toBeTypeOf("function");
+      await captured.menuItems[0]!.onSelect?.();
+      expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
+        DesktopCommandIds.OpenResourceManager,
+      );
       expect(captured.openExternal).not.toHaveBeenCalled();
     } finally {
       captured.loading = false;
@@ -187,17 +181,14 @@ describe("WorkspaceHelpMenuButton", () => {
     }
   });
 
-  it("桌面端关于项位于最后，点击复用 ShowAbout", async () => {
-    await render(true);
-    const index = captured.menuItems.findIndex(
-      (entry) => entry.label === "titleBar.menu.help.about",
-    );
-    expect(index).toBeGreaterThan(0);
-    expect(index).toBe(captured.menuItems.length - 1);
-    await captured.menuItems[index]?.onSelect?.();
+  it("桌面不恢复关于动作，唯一动作仍是资源管理器", async () => {
+    expect(await render(true)).not.toContain("titleBar.menu.help.about");
+    expect(captured.menuItems).toHaveLength(1);
+    await captured.menuItems[0]!.onSelect?.();
     expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
-      DesktopCommandIds.ShowAbout,
+      DesktopCommandIds.OpenResourceManager,
     );
+    expect(captured.executeDesktopCommand).not.toHaveBeenCalledWith(DesktopCommandIds.ShowAbout);
   });
 
   it("Web 和手机远控不显示桌面关于入口", async () => {
@@ -206,15 +197,14 @@ describe("WorkspaceHelpMenuButton", () => {
     }
   });
 
-  it("资源管理器之后显示检查更新，点击执行已有命令", async () => {
-    await render(true);
-    const index = captured.menuItems.findIndex(
-      (entry) => entry.label === "titleBar.menu.help.checkForUpdates",
-    );
-    expect(index).toBeGreaterThan(0);
-    expect(captured.menuItems[index - 1]?.testId).toBe(TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER);
-    await captured.menuItems[index]?.onSelect?.();
+  it("旧更新状态可用时也不恢复检查更新动作", async () => {
+    expect(await render(true)).not.toContain("titleBar.menu.help.checkForUpdates");
+    expect(captured.menuItems).toHaveLength(1);
+    await captured.menuItems[0]!.onSelect?.();
     expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
+      DesktopCommandIds.OpenResourceManager,
+    );
+    expect(captured.executeDesktopCommand).not.toHaveBeenCalledWith(
       DesktopCommandIds.CheckForUpdates,
     );
   });
@@ -229,18 +219,16 @@ describe("WorkspaceHelpMenuButton", () => {
     }
   });
 
-  it("桌面导出日志复用平台导出及共享提示", async () => {
-    await render(true);
-    const item = captured.menuItems.find(
-      (entry) => entry.label === "titleBar.menu.help.exportLogs",
+  it("桌面菜单不触发已裁剪的导出日志及提示", async () => {
+    expect(await render(true)).not.toContain("titleBar.menu.help.exportLogs");
+    expect(captured.menuItems).toHaveLength(1);
+    await captured.menuItems[0]!.onSelect?.();
+    expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
+      DesktopCommandIds.OpenResourceManager,
     );
-    expect(item).toBeDefined();
-    await item!.onSelect?.();
-    expect(captured.exportLogs).toHaveBeenCalledExactlyOnceWith();
-    expect(captured.toast).toHaveBeenCalledWith("sidebar.exportLogs.pending", {
-      durationMs: Number.POSITIVE_INFINITY,
-    });
-    expect(captured.dismissToast).toHaveBeenCalledWith(7);
+    expect(captured.exportLogs).not.toHaveBeenCalled();
+    expect(captured.toast).not.toHaveBeenCalled();
+    expect(captured.dismissToast).not.toHaveBeenCalled();
   });
 
   it("Web 和手机远控不显示本地导出日志入口", async () => {
@@ -250,38 +238,28 @@ describe("WorkspaceHelpMenuButton", () => {
     }
   });
 
-  it("桌面两组一条分隔线，导出日志位于桌面组首项，Web 仅帮助组", async () => {
+  it("桌面仅一项且没有分隔线，Web 不留空菜单", async () => {
     for (const desktop of [true, false]) {
       const html = await render(desktop);
-      expect(captured.menuItems.map((item) => item.label)).toEqual([
-        "workspaceHeader.help.docs",
-        "workspaceHeader.help.community",
-        "workspaceHeader.help.issueReport",
-        "workspaceHeader.help.productRequest",
-        ...(desktop
-          ? [
-              "titleBar.menu.help.exportLogs",
-              "titleBar.menu.help.resourceManager",
-              "titleBar.menu.help.checkForUpdates",
-              "titleBar.menu.help.about",
-            ]
-          : []),
-      ]);
-      expect((html.match(/<hr/g) ?? []).length).toBe(desktop ? 1 : 0);
+      expect(captured.menuItems.map((item) => item.label)).toEqual(
+        desktop ? ["titleBar.menu.help.resourceManager"] : [],
+      );
+      expect(html).not.toContain("<hr");
+      if (!desktop) expect(html).toBe("");
     }
   });
 
-  it("桌面端与 Web 端都保留原有帮助项", async () => {
-    for (const isDesktop of [true, false]) {
-      const html = await render(isDesktop);
-      for (const id of [
-        "workspaceHeader.help.issueReport",
-        "workspaceHeader.help.productRequest",
-        "workspaceHeader.help.community",
-        "workspaceHeader.help.docs",
-      ]) {
-        expect(html).toContain(id);
-      }
-    }
+  it("桌面按钮可访问，已裁剪外链与 Web 按钮都不恢复", async () => {
+    const html = await render(true);
+    expect(html).toContain('aria-label="workspaceHeader.help.menu"');
+    for (const id of ["issueReport", "productRequest", "community", "docs"])
+      expect(html).not.toContain(`workspaceHeader.help.${id}`);
+    await captured.menuItems[0]!.onSelect?.();
+    expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
+      DesktopCommandIds.OpenResourceManager,
+    );
+    expect(captured.openExternal).not.toHaveBeenCalled();
+    expect(await render(false)).toBe("");
+    expect(captured.menuItems).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@
  * 拆出来的原因：仓库规矩单文件 ≤400 行；而且这段是"从零造一个形状"，与 pptShapes 里那些
  * "在既有形状上打补丁"的活计不是一类事——它得自己负责 nvSpPr / spPr / txBody 三件套与唯一 id。
  */
-import { shapeNodes, writeBack } from "./pptShapes.js";
+import { shapeNodes, writeBack } from "./pptShapeXml.js";
 
 const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";

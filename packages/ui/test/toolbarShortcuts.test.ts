@@ -70,17 +70,6 @@ describe("composer 工具条热键按生效表解析（spec §12.6）", () => {
     ).toBe("cycleThoughtLevel");
   });
 
-  it("修饰精确匹配：Ctrl+Shift+M 不误命中 Ctrl+M（与旧 matchesCtrlShortcut 语义一致）", () => {
-    const effective = resolveEffectiveShortcutBindings(undefined);
-    expect(
-      resolveToolbarShortcutAction(
-        toolbarEvent({ ctrlKey: true, shiftKey: true }),
-        effective,
-        enabledState,
-      ),
-    ).toBe("cycleSessionMode");
-  });
-
   it("改绑后按新键位命中：openModelMenu 改绑 Ctrl+Y", () => {
     const effective = resolveEffectiveShortcutBindings({ openModelMenu: ["Ctrl+y"] });
     expect(

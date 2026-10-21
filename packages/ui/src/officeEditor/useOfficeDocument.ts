@@ -4,7 +4,7 @@
  * 抽出来的原因有两个：编辑位本体要守 400 行上限；更重要的是这些逻辑（尤其护栏与写回）
  * 属于"数据安全"路径，单独成文件后，读者能一眼看清"什么情况下我们不让编、什么情况下拒绝写"。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base64ToArrayBuffer, bytesToBase64 } from "./binary.js";
 import type { DocxPreflightResult } from "./docxPreflight.js";
@@ -45,7 +45,7 @@ export interface OfficeEditorHandle {
 }
 
 export interface UseOfficeDocumentInput {
-  fileService: IFileService;
+  fileService: OfficeEditorFilePort;
   path: string;
   editorRef: { current: OfficeEditorHandle | null };
   /** 远端工作区要探一次写能力（老远端没有 writeBinaryFile，编辑到最后才发现保存不了）。 */

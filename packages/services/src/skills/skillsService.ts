@@ -25,7 +25,7 @@ import type {
   SkillsListResult,
   SkillsCapability,
 } from "@zcode/shared";
-import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
+import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS, UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import type { ISkillsService } from "./skills.js";
 import { SKILL_FILE_NAME, walkSkillMarkdownPaths } from "./skillDiscoveryWalk.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
@@ -57,6 +57,7 @@ const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
 const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE = "zcode-plugins-official";
 const ZCODE_INLINE_PLUGIN_MARKETPLACE = "inline";
+const UWORK_PLUGIN_MANIFEST_PATH = join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json");
 const ZCODE_PLUGIN_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
 const CLAUDE_PLUGIN_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
 const CODEX_PLUGIN_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
@@ -259,7 +260,7 @@ function collectMentionedSkillNames(prompt: string): Set<string> {
 function escapeXmlAttribute(value: string): string {
   return value
     .replaceAll("&", "&amp;")
-    .replaceAll("\"", "&quot;")
+    .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 }
@@ -460,7 +461,7 @@ function hasYamlUnsafeLooseInlineField(frontmatterText: string): boolean {
     const rawValue = line.slice(colonIndex + 1).trim();
     if (
       rawValue.length === 0 ||
-      rawValue.startsWith("\"") ||
+      rawValue.startsWith('"') ||
       rawValue.startsWith("'") ||
       rawValue.startsWith("|") ||
       rawValue.startsWith(">")
@@ -644,9 +645,9 @@ function readBooleanRecord(value: unknown): Record<string, boolean> {
 
 function readStorageDirFromConfig(config: Record<string, unknown>): string {
   const storage = isObjectRecord(config.storage) ? config.storage : {};
-  return typeof storage.dir === "string" && storage.dir.trim().length > 0
-    ? storage.dir
-    : "~/.zcode";
+  if (typeof storage.dir === "string" && storage.dir.trim().length > 0) return storage.dir;
+  // CLI 配置已从 UWork 根读取；再硬编码回上游根会漏掉本产品插件并误展示另一产品的缓存。
+  return getUworkUserStorageRoot();
 }
 
 function resolveConfigPath(path: string): string {
@@ -744,7 +745,9 @@ async function readPluginManifest(rootPath: string): Promise<PluginManifestSumma
 }
 
 async function findPluginManifestPath(rootPath: string): Promise<string | null> {
+  // 与 Agent 加载器保持同一顺序，避免新清单已可运行但技能面板仍读取旧组件声明。
   for (const manifestPath of [
+    join(rootPath, UWORK_PLUGIN_MANIFEST_PATH),
     join(rootPath, ZCODE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CLAUDE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CODEX_PLUGIN_MANIFEST_PATH),
@@ -848,9 +851,7 @@ async function discoverSkills(params: {
   includeUserSkills: boolean;
   provider: ZCodeProvider;
 }): Promise<DiscoverResult> {
-  const workspaceRoots = dedupeRoots(
-    await resolveAncestorWorkspaceRoots(params.workspacePath),
-  );
+  const workspaceRoots = dedupeRoots(await resolveAncestorWorkspaceRoots(params.workspacePath));
   const roots: SkillRootDescriptor[] = workspaceRoots.map((rootPath) => ({
     scope: "workspace" as const,
     rootPath,
@@ -913,10 +914,7 @@ async function discoverSkills(params: {
         diagnostics.push({
           code: "skill_read_failed",
           severity: "warning",
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to read skill: ${skillPath}`,
+          message: error instanceof Error ? error.message : `Failed to read skill: ${skillPath}`,
           path: skillPath,
         });
         continue;
@@ -1004,10 +1002,7 @@ async function collectSkillMarkdownPaths(
       diagnostics.push({
         code: "skill_scan_failed",
         severity: "warning",
-        message:
-          error instanceof Error
-            ? error.message
-            : `Failed to scan skill directory: ${path}`,
+        message: error instanceof Error ? error.message : `Failed to scan skill directory: ${path}`,
         path,
       });
     },
@@ -1018,8 +1013,7 @@ async function collectSkillMarkdownPaths(
 }
 
 function resolveCapabilities(options?: SkillsServiceOptions): SkillsCapability {
-  const isDesktopRuntime =
-    options?.isDesktopRuntime ?? Boolean(process.env.ZCODE_PROCESS_LABEL);
+  const isDesktopRuntime = options?.isDesktopRuntime ?? Boolean(process.env.ZCODE_PROCESS_LABEL);
   if (isDesktopRuntime) {
     return { userScopeAvailable: true };
   }
@@ -1230,10 +1224,7 @@ export function createSkillsService(options?: SkillsServiceOptions): ISkillsServ
         const canonicalRoot = await realpath(root).catch(() => root);
         const relativePath = relative(canonicalRoot, canonicalParent);
         // 父目录等于根（叶子直接位于根下）也是合法的常见场景，故允许 "".
-        if (
-          relativePath === "" ||
-          (!relativePath.startsWith("..") && !isAbsolute(relativePath))
-        ) {
+        if (relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))) {
           contained = true;
           break;
         }

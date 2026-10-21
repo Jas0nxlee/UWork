@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputHashEncoding": "UTF-8 with CRLF normalized to LF; notice and source snapshot hashes remain byte-exact",
   "scope": "Production dependency union across current workspace projects, copied source/assets and native tools; not a per-installer SBOM or a certification of all licensing obligations.",
-  "noticesSha256": "cc4dc28a602f472a85a5abbab5d7f06198823d62f796830d0c4551c0b80ade4b",
+  "noticesSha256": "bc370c01f823037eb33d6602691ab2fd141090dc04898d81c1837629b689c0a6",
   "inputs": {
     ".agents/skills/agent-browser/references/authentication.md": "e2c3b0f4a1dc1368dee821f03c000d818a48421d09f3872525dddffe73f2112b",
     ".agents/skills/agent-browser/references/commands.md": "17522fc56d742663f47231ff06c4811abc87e12c7f78e11f94d253ddd540a909",
@@ -225,37 +225,38 @@
     ".agents/skills/react-best-practices/rules/server-serialization.md": "f4c7d68b29c82381baad059c4a7f09e868e71ec9c3115a26ad3ae7d24c0dfe1f",
     ".agents/skills/react-best-practices/SKILL.md": "71ed7794962fa6e803ee83030517b5b93a9f70fbfeb431ec4535c5480a8d8355",
     "apps/dev-docs/package.json": "3830c01890b83081debf6596aceb19734924f43b4dee2111c5ea85584f3e944b",
-    "apps/zcode-cli/package.json": "8c11b1ddbbcc5c98bc17dac8d61c7840be1d67d237e4b952d707e31884129317",
+    "apps/zcode-cli/package.json": "f4622eb66460133ac75eba76135a022f12078bf7182ecc02379b15a9f7c68615",
     "apps/zcode-cli/packages/adapters/package.json": "a716756a7e9a3a7e11993a94f646c823c21c4e095c61d2f8b8ca91eb9a97cc6c",
     "apps/zcode-cli/packages/android-emulator-plugin/package.json": "96ecaa9ce091e13f7e508b0aed8ab116360b40ba21dc1be78c906b2eebbf5571",
     "apps/zcode-cli/packages/bootstrap/package.json": "554ddd3fc3a017e1bde9af23477d7cff16d4e86b63f3faeda19ce3af7f1edee8",
     "apps/zcode-cli/packages/browser-use-plugin/package.json": "e385ead02c51cc4c6c62c9f3fc8951333cbdc15fb9dd08273b682c9f5936ad57",
-    "apps/zcode-cli/packages/cli/package.json": "11f1caaad677756c511a3c8a159441f41ea09c90960cedcae92e767987b624a4",
+    "apps/zcode-cli/packages/cli/package.json": "c7f319da5c9c354b891c2741a119276ab0abeea82c8d1e14585d14661fb1175c",
     "apps/zcode-cli/packages/contracts/package.json": "d71e04825072c7407dcc3e1fcca3d8b9221cfac411ea58a024998a57cb579029",
     "apps/zcode-cli/packages/core/package.json": "e70205607c75f7fb51cd1815ff3d411d7ea63bef6a0148f3a698229c30189d32",
     "apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts": "60fa5acd9f5c357f4e51b1d1e944ee39da92680e4bc5e98dd708f1457fcf612b",
     "apps/zcode-cli/packages/debug/package.json": "0cf03ea1dd384546319e8f301e99c2b668c7c15271f5d38d5a3b0526c24a3279",
-    "apps/zcode-cli/packages/documents-plugin/package.json": "5cb7af3827a389529c68ffd5f69f8cfd872f7b662d579762047e5d4aeb878289",
+    "apps/zcode-cli/packages/documents-plugin/package.json": "7ce3663e5e14ff8f4e9c2c456e0e023c1228ca0823518e56073fdc1149389ff7",
     "apps/zcode-cli/packages/dynamic-workflow-runtime/package.json": "700fb16f330bee73cd84d6e1fc8609663faf14ffa2108415e3bfb267ae9bcb3a",
     "apps/zcode-cli/packages/dynamic-workflow/package.json": "9edb746ae170418d81c4431dc16533e814bf3a97e4693a2a94f06b4516151a95",
     "apps/zcode-cli/packages/i18n/package.json": "cd51fc9cda66d726ab54f9821ff748bc150bf4bd84143bb7c8aa9b712a7e6c61",
     "apps/zcode-cli/packages/image-search-plugin/package.json": "f59cba2c8890624a2f5164c9e2f68f808021d2958a7f088544c268eddc9a26a5",
     "apps/zcode-cli/packages/ios-simulator-plugin/package.json": "fc38d3f6d88598f2c84aced1dfbbef0682addc54e477500dbe323e829c74217a",
     "apps/zcode-cli/packages/node-repl-host/package.json": "3b8fafd78a122a59eb7941e7ef44f62fbacdc75b344aa5859f814c250f9de4d8",
-    "apps/zcode-cli/packages/pdf-plugin/package.json": "6609798581fae07c0c98ddd682d22efe0ba2f8b69fcc4c9ad37b6739401ca12c",
+    "apps/zcode-cli/packages/office-runtime/package.json": "c51046c5646a0670e554ac4b5949c70cc029c1ba94a5ee3b277b26208e2b4063",
+    "apps/zcode-cli/packages/pdf-plugin/package.json": "63588284641c57e2d7a6b8ff5826cdcb451a5b21f7bc91d6f544ef535d36bc14",
     "apps/zcode-cli/packages/plugin-creator-plugin/package.json": "17ab1504c465c165b013f983270f54868aa282538557bf6f935daac153e46ba6",
-    "apps/zcode-cli/packages/presentations-plugin/package.json": "3e7bb709e7bab8d312a86405c6ef6461a5bd8d8eb5ab5ac05dd72fdb3c5c4922",
+    "apps/zcode-cli/packages/presentations-plugin/package.json": "8c8bc559c98ca67cbe95616032589d14425dc85fae309a824101efc1a021e861",
     "apps/zcode-cli/packages/restore-legacy-sessions-plugin/package.json": "ee180a70bc31e945dfa798fd2592a3150cd2e55d546d44be361a90a24cb33fd3",
     "apps/zcode-cli/packages/shared-types/package.json": "6616fb50cf5b4b854273d09411f38857c17df5d4b4abebdfe5d9601e7341e451",
     "apps/zcode-cli/packages/skill-creator-plugin/package.json": "9477f2dbaf0de233856a8d71f8aa1e4fac95e189358887df5c3b7c13672727a6",
-    "apps/zcode-cli/packages/spreadsheets-plugin/package.json": "ff99c56592a682d14831427207c74c75dcd952645f70759e60afdb9b644243ea",
+    "apps/zcode-cli/packages/spreadsheets-plugin/package.json": "b293c49125bfb98e5798210fb773f71266d725867c97e9b01442f1ae3a530228",
     "apps/zcode-cli/packages/superpowers-plugin/LICENSE": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400",
     "apps/zcode-cli/packages/superpowers-plugin/package.json": "003495dd8441f4a9b017931e081770a157fa48b895752d0cfe7487d437507685",
     "apps/zcode-cli/packages/swift-bridge/package.json": "958674fcd44c789564ee672b0e6c687f1f900f4286174280700ddfb442d23906",
     "apps/zcode-cli/packages/telemetry/package.json": "2c7efa1d5b42700400b971fff61314c7277f5e05b5f96f48b7d50c9ccf11772e",
     "apps/zcode-cli/packages/tui/package.json": "303b8c2f0eb3f8ea0476935f452dd0d2c620ac52587ebb08b24a193f3e3658e0",
     "apps/zcode-cli/packages/visualize-plugin/package.json": "f38e0334cd743a4ca15cf8884ca563aaf0b37bccbdfca63505f56f84f5576971",
-    "apps/zcode-cli/packages/zcode-cua-plugin/package.json": "ecc5640181e2273ef04ad741e7ff25fd36326410386a58c60b61fb704277732a",
+    "apps/zcode-cli/packages/zcode-cua-plugin/package.json": "d923446edcf3277fe30375a6db251612515ef5e42f6d0d290549ccf80982d879",
     "apps/zcode-cli/packages/zcode-guide-plugin/package.json": "b6b6c4a0097496f5bf8848ad4fecea1c2e9f8a94d4a3b962217a74a6253deacf",
     "apps/zcode-cli/tools/prompt-trajectory/package.json": "a8374fef7b1f1814d91dfe5ef5f3d369de8d12f73601dbed6e026f2b12bcca0d",
     "apps/zcode-cli/tools/typescript/package.json": "23d7e50d2089d205ce3022c5bafbb6b3e31d000e41ac678a5934e0b72627cf3a",
@@ -432,9 +433,9 @@
     "docs/knip/docs/src/styles/theme-light.css": "e2e85900fd43b5b563f56b9ce7e2a09f07d7420a78e80f0133efffeb8fce2aa0",
     "docs/knip/docs/src/util/post.ts": "6d7c45bd29035a73f1b67d24524760c7e317f367d32216de2c9a240dda7a40d1",
     "docs/knip/docs/tsconfig.json": "662b1f10a5e572b49a45669e4be9ee46c22f987dcf277c204948777b367df1cd",
-    "package.json": "c17309cdb41972c52c0b6745e7a3ee2324b469be05992050921e495ae63ec3a8",
+    "package.json": "c67b8129a10619c5730faf3b901e84957e7040fb2e2f48f99f0625649efe32a3",
     "packages/client/package.json": "e76f441549130dc3e5e68072a36b6cb9044e19a6625f1e813f19a4def2b1b689",
-    "packages/desktop/package.json": "b09955196a42f0b1da8b8da5ec1f59d99a4e40df97d33f357a1850dc68b5c6db",
+    "packages/desktop/package.json": "6bdadcbf9dc361062932faa5b067084bfe278713c586f0106b2f786667557c75",
     "packages/desktop/src/renderer/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
     "packages/desktop/src/renderer/public/material-icons/abap.svg": "1335bd7eb9a0ed49deb622330d680c2e97731726a7a5eee8e4f46dc1e5db4de4",
     "packages/desktop/src/renderer/public/material-icons/abc.svg": "d1a68020e8f020ef29dca5f94dc8613b7ae8fb5b212d8b1cc23b0f975ac7acda",
@@ -1592,10 +1593,10 @@
     "packages/rpc/examples/04-remote-connection.ts": "fe43a2d631ba54a1cf63a86e344b6e2e58d83c2e8c95f2f8b7371f63e6442541",
     "packages/rpc/package.json": "096520229295f4efc4d8bea1d184484cd2f7289af17472d80847c7db1ac26dd0",
     "packages/rpc/src/buffer.ts": "6bc6a44e6abd088f72d57616d9556d78ce078b6f3813bf75402dde386781492c",
-    "packages/rpc/src/channelClient.ts": "d2504929253ebb18f020e6f35e51a3741190558875d18a47192f9af78ca3f8ac",
-    "packages/rpc/src/channels.shared.ts": "e2d3ce17dfb23d53ea8fef6cd4dc87bef4558ff6e72b458e50fd456b0b2a6ae2",
+    "packages/rpc/src/channelClient.ts": "9c5c99acfa173a2986c39619966955ddebe123c3a3882aaea3d835a73bb59068",
+    "packages/rpc/src/channels.shared.ts": "d7faaf2affcb028355501e44b0c9bcbc673f7ad4f5c812cbf012d33260517586",
     "packages/rpc/src/channels.ts": "afaba1724055a3d2e6b8b379553569489b71ac6eb252f636ab91649657485209",
-    "packages/rpc/src/channelServer.ts": "b9c61bd3881fff11b38a93853c60fa5c2bc871bcbea5dad0e9be0a4674f6c9da",
+    "packages/rpc/src/channelServer.ts": "e93d30ddd347d2558960072219b5667cc940f39e2955440f4ae3db6a96a726e1",
     "packages/rpc/src/delayedChannel.ts": "e7607b7fe9f35c742db206df90852e2ccafb75abc088606cf1ddbae801574ecf",
     "packages/rpc/src/foundation.ts": "b4874401965e7bad7e84245a2fc5960657a349b146f355ac7343562fa724da9f",
     "packages/rpc/src/index.ts": "6a5adcfb0e6c7a7d385e10fede09c3e9c808e3555c27b938091868cdf0c3fbef",
@@ -1603,25 +1604,25 @@
     "packages/rpc/src/logging-middleware.ts": "20edfd8e5d054097186f2498ec4e9c08c61740ed003fc69eecea8176a15fe025",
     "packages/rpc/src/network-telemetry-middleware.ts": "18a7cde46e6c65e0138af0623d07bf883ce278acf44654bc5144ecaadd36a536",
     "packages/rpc/src/persistent-protocol.ts": "80609595b89188272d743e557502c6cad3858f828acae31c2ef64206bb3c8978",
-    "packages/rpc/src/protocol.ts": "aafc0c098c75fcba4519fad2ecbee7e025d5d8a27c15c87e5ccb4ca6ce554670",
+    "packages/rpc/src/protocol.ts": "b3e18c273bdfab46daf7b153a060ba7936e993abc1b81246d14b7d2991932594",
     "packages/rpc/src/proxy-channel.ts": "ec5b43e6a3a622a88a8aaa6af9cb37dbfe517932ee7f4a337019ec138bb2d513",
     "packages/rpc/src/remote.ts": "a11e072d5df7e1c1ce64814a68f72afc081246b364f0da409b5c9d22bc815957",
     "packages/rpc/src/serialization.ts": "e949418e1cd17cc863c147fc8d1ff15237e1b5f0cb8e3344fd2a9ccfae9d54e7",
     "packages/safe-extract-zip/package.json": "fd2ea628f7ba8121cbe5fcb4a822d68ee7463216d91bf866c6b33f6cc7a5ee71",
-    "packages/server/package.json": "36d4e25386a03626d449e654bae3d7f569903cf775faad5ff4de3d7a53be40c1",
-    "packages/services/package.json": "99ead167425e0618b2ff40b96519d8123952ce3e1cddafc6592d8757216eb8d3",
+    "packages/server/package.json": "1534ed270fa99c846563eb2671678697edcebee33f6c8b21eafe89734e927eaf",
+    "packages/services/package.json": "625a79390b7c5cc056c4acccc47e4cd09e75d6d373478a45ae4b042f4f913a72",
     "packages/share-ui/package.json": "b6b2135ae81213bb0cb53dff74b165299d3b5d6b08c153fbb8f4e8fabaf6b604",
-    "packages/shared/package.json": "6e669157dec49dcdd7cf50b587d7a7c7766c85a637931f74daebb054e2fa4b48",
+    "packages/shared/package.json": "e73faa3f9855fb7e1c9b60f2ebe1d39d68f2437575724f5936d2d24be1f7e79e",
     "packages/shared/src/zcode-protocol-v4/wire-codec.ts": "ac2494a3acc795c809c94ee9393f50271a9c2a0fd33813459e5ab93842ceef75",
     "packages/stream-animate/package.json": "31cb25ed87e64dbcd695bbc932729ac30499107d45f747b96a5c3de832afdc28",
-    "packages/ui/package.json": "ffe47bc85ba4705b1417143b517af12bcbdb2c894f366d0a506b254badbf9fae",
+    "packages/ui/package.json": "beb4f9ede38811effde3f43953eef1d937a78ad4838700d7817f78d612b8d1e6",
     "packages/ui/src/components/ai-elements/agent.tsx": "830e7ea9e927de1524851337f1d35bda0e5690e3e4fa307fff854b60006b16c7",
     "packages/ui/src/components/ai-elements/artifact.tsx": "7d73f08864d6280ac86c77d32e56d0e702f8aa6208e5910820139d0fb08ce64c",
     "packages/ui/src/components/ai-elements/attachments.tsx": "7a847ce6c8ac9dc630481a82dd20a5e9e00949bf710a41fea1d32a18123011d8",
     "packages/ui/src/components/ai-elements/audio-player.tsx": "3ed28af16b3a49123ac19b27763188d1087bdb8919d52263c00c761326d0a15a",
     "packages/ui/src/components/ai-elements/canvas.tsx": "7bc92905e97c182c9a2f52b421a4d70414c8700a66039af9a4466587f74d2687",
     "packages/ui/src/components/ai-elements/chain-of-thought.tsx": "d9755d90e2949137f03bb603ed34a1e1893a83fdc3cae321a02814af307400e3",
-    "packages/ui/src/components/ai-elements/chat-loading.tsx": "b75d4398d778179f78209debde63547410d76e01cdaf3887f60b13ef9a35331f",
+    "packages/ui/src/components/ai-elements/chat-loading.tsx": "2e6da0eba3e49cc78cc01d463c84c60b7bafa6a9a219e9babb429aeb96a272c1",
     "packages/ui/src/components/ai-elements/checkpoint.tsx": "72459f6fb8668e9245ec32542f92c7de809cc9b5a366bb44ab08f91ea4e1255b",
     "packages/ui/src/components/ai-elements/code-block.tsx": "ae4f975537ebb9c8ef905b7b9de39bc37180f81511bffc027dc4da1929037f18",
     "packages/ui/src/components/ai-elements/commit.tsx": "e9f5dcffac4ec7702b6d77b41cfc28fab54f0595375dd2c992dc972c0a9e74d2",
@@ -1634,7 +1635,7 @@
     "packages/ui/src/components/ai-elements/edge.tsx": "661a25632f0879b8363f22e6b99198a6d37ad622781c798c090fcad9b591b181",
     "packages/ui/src/components/ai-elements/environment-variables.tsx": "397931dbf3496ad98df1f5e044410b87030e37c245e1299bc774c294fb08c047",
     "packages/ui/src/components/ai-elements/file-tree.tsx": "55386da0f5d2f453dd88fa84716e02cd0ea36a2f3822d93e717102ca8247b15f",
-    "packages/ui/src/components/ai-elements/image-preview-dialog.tsx": "47d4ecdefc84d39f2deda93119ce400b36224276bb6c7dab6a914868914ac8de",
+    "packages/ui/src/components/ai-elements/image-preview-dialog.tsx": "1f25a198c49c3b2d6e4a72fb16efba3e621beeb51e00e808ca9cff65be39d546",
     "packages/ui/src/components/ai-elements/image-thumbnail-gallery.tsx": "185766c039c6c4852ae12360360f7cf29e844a1463358b8cc2c6de972dcdaf43",
     "packages/ui/src/components/ai-elements/image.tsx": "1c6f9595ef814c4ef9648607562fa77a3007f7d857571f8e107a24022fe83e24",
     "packages/ui/src/components/ai-elements/inline-citation.tsx": "f7221c9ed75860944f1eee97df52edb95f822acdafa94852a1ba2bee4f97725c",
@@ -1651,7 +1652,7 @@
     "packages/ui/src/components/ai-elements/open-in-chat.tsx": "10b9bec180ccb749ca0c02c10520f9dbc8370ad2a3a169ad139707f2c1db93fa",
     "packages/ui/src/components/ai-elements/package-info.tsx": "d8fd7a36b69575934f39e51fc0c94f032b59edde117f312628c69434ad91c392",
     "packages/ui/src/components/ai-elements/panel.tsx": "9c345ecb217fbb6a3a2b49b93ca81b746f249d18b9223470fbf511c0a9a37bb7",
-    "packages/ui/src/components/ai-elements/persona.tsx": "c796e1aa0f85395138eda5e4c7ffc7dac5321690b3f6949f73c7b3ebe8d52808",
+    "packages/ui/src/components/ai-elements/persona.tsx": "54f947091b2dc54c69dbca249a36c4f85e9843f44b2582a87bade1aa50e77c4a",
     "packages/ui/src/components/ai-elements/plan.tsx": "576b2ee1a9546f9e30f2512bb2e097babca71ca35a2820c0be4c93caef600622",
     "packages/ui/src/components/ai-elements/prompt-input-actions.tsx": "198df66e5883016d542b4dfbfb12d050992febf53ccdcd712a289fbdd7a48a56",
     "packages/ui/src/components/ai-elements/prompt-input-buttons.tsx": "b1c2a6ded9a2866946d08691072a4dacb59ecdce761baba7ee06f02e1e117185",
@@ -1659,7 +1660,7 @@
     "packages/ui/src/components/ai-elements/prompt-input-textarea.tsx": "4798574a8f2fc8584a1c5585d9dd878dd19d76bd05603e77948ec12180649def",
     "packages/ui/src/components/ai-elements/prompt-input.tsx": "68a92e07c27774e9c1d63bccd12ec3ff38b4f89dd245b20bfffbbd052e6101c4",
     "packages/ui/src/components/ai-elements/queue.tsx": "9d84f6e15708519ec65e258d9843dc5f4d76f106fc85155f7dcf51f89474b695",
-    "packages/ui/src/components/ai-elements/reasoning.tsx": "a10a38c7b3ca633e9b5480ad94f9c7a1fdd52bc5526ae0801e3e6ed141f2b604",
+    "packages/ui/src/components/ai-elements/reasoning.tsx": "ce51bcc011761a3f6a7f776d3079395812c3c251af30b5754d0e948dbd58d611",
     "packages/ui/src/components/ai-elements/sandbox.tsx": "f521400dbaebe4c2a2fbcdcb8c18f98980c566169233beb137b22a093b44bbf0",
     "packages/ui/src/components/ai-elements/schema-display.tsx": "826d2e11423ee3bc0295c31936c347f06361335aa849626031aa0885e3530cdd",
     "packages/ui/src/components/ai-elements/shimmer.tsx": "5d06ffdff80a13453a0b61b67f588c48d838a20d9be2cd319ca2a97d441b3127",
@@ -1689,20 +1690,20 @@
     "packages/ui/src/components/ui/chart.tsx": "272efec5aa60d34665104b45341d9f2b8cad4480070bca91e9d5409713b6fecd",
     "packages/ui/src/components/ui/checkbox.tsx": "5b3cb5612ed7654218e1cdd86fc41c7b490475721948d50a603996133245bace",
     "packages/ui/src/components/ui/code-viewer.tsx": "dfccd2feaccc62af84f3e92dc5b8e25e7025b6c64cbd16f177586b1dc763affe",
-    "packages/ui/src/components/ui/collapsible.tsx": "e00f7ad26cc4c168f8c6b20e6078512807ddca05e375e47b6c9dbbd50fcbef52",
+    "packages/ui/src/components/ui/collapsible.tsx": "fcb5125c2c0e824e8b75e3b9c164011bac7a4c602ff83cf0937b71620ee77d92",
     "packages/ui/src/components/ui/command.tsx": "7c754bc80704163ce505d08d961a5a4b3e57107e7d53ea319483a896d448cbdb",
     "packages/ui/src/components/ui/context-menu.tsx": "3820461fd68ca7a345fc919ab356bdefbbead23abb3ac0f4e8d46898f7522a6f",
-    "packages/ui/src/components/ui/dialog.tsx": "53dc10761bd894a5e86278d9354aac47920c81b4aab8b414b840af095f7c0b31",
+    "packages/ui/src/components/ui/dialog.tsx": "fb2decab75993205ec5670acbd5b8b7dfc9b1518d3acb457ddde7edd1984d44e",
     "packages/ui/src/components/ui/diff-viewer.tsx": "f02208b316e6dc4043ed1794455422bc74cdd521285fcac5a2c0d589c2eb9af2",
-    "packages/ui/src/components/ui/dropdown-menu.tsx": "34c5b79489756aa3467ec26d2b44587f3d47eafcb2cb16402686aac15e4debdb",
+    "packages/ui/src/components/ui/dropdown-menu.tsx": "61fb51b98cf76207dfe5e86e6baf6e2d5ef0f77698377b2c332066a4b9e2da60",
     "packages/ui/src/components/ui/flip-metric-value.tsx": "ce2d6cf063003e1023191b0fa4e3eb9b365e04a14eb0d498b897326600bf4071",
     "packages/ui/src/components/ui/floating-particles.tsx": "88250e9104721c35f6119e9ffadac4c9795c798976cf06c0e4f4e584e8195fd2",
     "packages/ui/src/components/ui/GlmMonochromeIcon.tsx": "f1691224d23be4359e1a79bcd81b9dd5ee19c0177b3a4bf750332c620b98ae5c",
     "packages/ui/src/components/ui/highlighted-lightweight-diff-preview.tsx": "c04bb6009683ab74cb72ff8f1e1157ffbdd06be4a46dc3c725c63e0bc43fea72",
-    "packages/ui/src/components/ui/hover-card.tsx": "28e49fb55a3fd4f5bfc5d61f336854304bc92c5a7098305b208274913b226f3d",
+    "packages/ui/src/components/ui/hover-card.tsx": "d202699fb339c78ba96d4ca1816ba8e46d6b27dc1963f441cdafa0155ce5e804",
     "packages/ui/src/components/ui/input-group.tsx": "72e8c0775e55525efe49dfa42ecba7b9244836a78c31be0dd576d52640d4c3c9",
     "packages/ui/src/components/ui/input.tsx": "946d37bdf07c81e70ad13242b904c27618d5d09f7c17a74f6b6c8cb613fa93dc",
-    "packages/ui/src/components/ui/kbd.tsx": "a7fabb33892c759337ae5c936d3b62f27fb2356a5a6340dbff8bfbac6f0a359f",
+    "packages/ui/src/components/ui/kbd.tsx": "f8bd1d5a51f991d60781f62a8bd7f1db06a237f2a7a7bb39f0127bd1ba067066",
     "packages/ui/src/components/ui/label.tsx": "717bd1167a7c8c136abfe0b3e23e8cfcb38abbe51b04c74d6d01ba1ea0b53fa5",
     "packages/ui/src/components/ui/lightweight-diff-preview.tsx": "7d1ff2a02815d988f5ffd2d6549848920c98488a4dba43f67ba9d81a3da49d01",
     "packages/ui/src/components/ui/pdf-viewer.tsx": "19ba82ab97a84599bb99178de85a4d5c6a89da6924ba55a0dc14f33286187fdc",
@@ -1712,7 +1713,7 @@
     "packages/ui/src/components/ui/progress.tsx": "ba88ffa75ad78eaa23519c7af84e11679ca2b8e4508c57759d769462811c0ec5",
     "packages/ui/src/components/ui/radio-group.tsx": "9f8cb93cfeade262cc6270547ad90adf5237b4750bd2e70c62116d336a55295c",
     "packages/ui/src/components/ui/README.md": "5b5d554e2ad0c8e095258d70e5c3f35f58b9340a850c767f7b76bbe19c3b42d0",
-    "packages/ui/src/components/ui/resizable.tsx": "83425c34fb76c35276e6dbf8d7ad0ee860b4536ba9d4cfd8e8a60aec3b7cabc4",
+    "packages/ui/src/components/ui/resizable.tsx": "4387041d74cfcd71ce2fa12a78462ed4b5cdb4c634d878726f34dadadc8ebeec",
     "packages/ui/src/components/ui/scroll-area.tsx": "83999d597a4a417aea402e833884826539b9aa1bd1ec966aa2f6dab9a97afb3c",
     "packages/ui/src/components/ui/scroll-fade-viewport.tsx": "50e5984232b6a7d59e872aab4ebb36ae837e2865e3a770adbc234b61c2531da1",
     "packages/ui/src/components/ui/select.tsx": "718c222c5acdfa149f4a61da3d6756a4ca5ef1ba14b2ebafb7a5306c3a616beb",
@@ -1722,16 +1723,16 @@
     "packages/ui/src/components/ui/switch.tsx": "1a6490eb3c47b3a86b76c8469e5702608ea57da7853df5de00fffa9a4a472adf",
     "packages/ui/src/components/ui/tabs.tsx": "adc59a0469c80118e9d60c08bf0222d55664ef95e6c522496b5c201011b347f0",
     "packages/ui/src/components/ui/textarea.tsx": "a839574ce1301fbaa9ba917fdb980900eb9118bffa7c6c4e469f3293b122ed30",
-    "packages/ui/src/components/ui/toast.tsx": "0f8894c6fc30e4cec44caa4cffe70e111f9c41ff9bf3699ec8e91696ea631671",
-    "packages/ui/src/components/ui/tooltip.tsx": "301dbf3a6f8b1bc496f9bdc6fbc5fe6202ed373182897f39cd1ecd19b00fdfbe",
+    "packages/ui/src/components/ui/toast.tsx": "09e69303cf1def776ab669a56eb188c34dfc351188a7c00d836ac9880df7d140",
+    "packages/ui/src/components/ui/tooltip.tsx": "b385da0f882ef4a44c101051107a670c42f7b347b86ef8ca0dba40369ed34d3b",
     "packages/ui/src/components/ui/usePdfZoomOverlay.ts": "c8c91b003ce2fded32c7a2369dc6eac43aa4b9dc9c830a0f5ceccb21d366b610",
     "packages/ui/src/components/ui/UWorkLogo.tsx": "90935586d36ac2378ba67d5ca3285b1be8103f49f04438a41256590c012707a9",
     "packages/ui/src/components/ui/ZCodeAboutLogo.tsx": "fb31cf1901ad3f21826b7d4c4ecbd549debb523a26ac5644dab490cb1bdef27c",
-    "packages/ui/src/lib/builtinSkillI18n.ts": "3e3584bd2483e50e17eaba6f110085cb5d7432fb71db2fcd0d831919285850cc",
-    "packages/ui/src/styles.css": "e80a19cfbc7f36c7df17c082cc06b8032d1040c2bd46ead61eeffb6a7558c5a4",
+    "packages/ui/src/lib/builtinSkillI18n.ts": "9ec3855748c8533e1da4dcbf7608d2def55643b6da852db4407d5864a44cdf50",
+    "packages/ui/src/styles.css": "a6b69656639a1a67d7d562db711a9bbec349fab6d65b10c190910cc34f68f6d5",
     "packages/ui/src/styles/shadcn-4.1.1.css": "e378809c96a5ba1e3909caf8362d83935100b641eab6bc2fe7a7dcb0c40cb32a",
     "packages/web-share/package.json": "4865c14968b96d355c45c2edf612443f79d6d05cfbe433a28374e19b1b0c9d88",
-    "packages/web/package.json": "0810e762bf1d6641d5f73ab642b81953e183e53fd963a1d405ffc65b206e5ce6",
+    "packages/web/package.json": "b3170c61d819fe1ab7ed7ebbb3ec9fbacfa1d2c75a32060a263006bac81c4411",
     "packages/web/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
     "packages/web/public/material-icons/abap.svg": "1335bd7eb9a0ed49deb622330d680c2e97731726a7a5eee8e4f46dc1e5db4de4",
     "packages/web/public/material-icons/abc.svg": "d1a68020e8f020ef29dca5f94dc8613b7ae8fb5b212d8b1cc23b0f975ac7acda",
@@ -2878,20 +2879,33 @@
     "packages/web/public/material-icons/zeabur.svg": "8bb7c84934202e9b24842ddb1ca69d316b9d69f1a4f5ebc9bbcce78eb2cea1a7",
     "packages/web/public/material-icons/zig.svg": "37be0ce02cf471b18d86150b3c38e80caa7c16c49a15078e7db6f1f41788d101",
     "packages/web/public/material-icons/zip.svg": "dad79a45f756542d37abd422502ecfbea15720b92ea1c9d80ef0439ab6b9448a",
-    "packages/zcode-cua/package.json": "e71948820aafebeac7ec92879adf344011d0f310ed954eb7204be7320f08ebef",
-    "packages/zcode-server-cli/package.json": "1dfc113333cda0bc06f7c2eb22b5b1fdd7e9e4049368c8f0d4ef1becbf85c1c5",
+    "packages/zcode-cua/package.json": "794687f6e1bf78cc4838e776263908223e2df0a79e15d867a655b112f123ce20",
+    "packages/zcode-server-cli/package.json": "698f659142ac592cddba0e0f9b1ea932a8c1ac7d8ee3d049c5defe2a493b9235",
     "patches/@ai-sdk__anthropic@3.0.81.patch": "d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18",
     "patches/@ai-sdk__openai-compatible@2.0.60.patch": "9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b",
     "patches/@arms__rum-electron@0.0.3.patch": "36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97",
+    "patches/@radix-ui__react-collapsible@1.1.12.patch": "4b7b3781f603e111bb33aef9c4b1694ac9bacd3dff47692606de9876d4631164",
+    "patches/exceljs@4.4.0.patch": "3fd52b48fd037d35cdf5f26c104b22405dc44bda21bf71ba9a06b1d3e158038a",
     "patches/playwright-core@1.59.1.patch": "9ae057e01fae03fcc47221009c62c58ccfd9b752b3510502ceb5f3266e8373e0",
+    "patches/unzipper@0.12.5.patch": "cf48a31a76251b667aa270f62edbb475c143273d975d44e392a485110a475583",
     "patches/vitest@4.1.7.patch": "11fdb66aa985e1d77e68752deeb7c1130ae33c9a4e2968f23aae8adaf8bc9ba0",
     "patches/wdio-electron-service@9.2.1.patch": "52481dae5e76772fcb8c2a9ff42feb3d0e1478e28815a4b975c81b9287e3385f",
-    "pnpm-lock.yaml": "4c2a267c4e9b5193585c8ed8d4683cee020bedefc7322c36f5f7275d93e56c4c",
-    "pnpm-workspace.yaml": "53323236cebcfcbf73ff5b7694c5c95ed88d322efe024a0c5315b5b2026cd2c0",
+    "plugins/office-editor/ui/vendor/docx-preview.js": "c481da271af83eb056703690a84c3737c11c221ca381d8c85da81a71723c3b16",
+    "plugins/office-editor/ui/vendor/jszip.min.js": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
+    "plugins/office-editor/ui/vendor/LICENSE-docx-preview.txt": "0ed0b35bd10cb0d990fbecf7f1e05d113d785dfbbef8332e139fc10b84a4c3d7",
+    "plugins/office-editor/ui/vendor/LICENSE-jszip.txt": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4",
+    "plugins/office-editor/ui/vendor/LICENSE-mcp-apps.txt": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a",
+    "plugins/office-editor/ui/vendor/LICENSE-pako.txt": "a04665b3b2de56c66730c1f720f528175739e4104f79073614aa611da1e85539",
+    "plugins/office-editor/ui/vendor/mcp-apps-app.js": "fb56376b7583ecafb4820bdebc150abee18feb6258ff84b83c2c944ebd9c3602",
+    "plugins/office-editor/ui/vendor/superdoc/LICENSE-AGPL-3.0.txt": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+    "plugins/office-editor/ui/vendor/superdoc/superdoc.min.css": "0c1fd0ae51215b4fe5573858190c97ac971f888c63875970979e72018daef33f",
+    "plugins/office-editor/ui/vendor/superdoc/superdoc.min.js": "360490e362af6623eae40cc5aa82efcc5d9dedf5455195b9c373c48220c232ad",
+    "pnpm-lock.yaml": "bad6a42ed201fa0e9c48f18376a241e3a13e65e2272b58c465e9976626b05eeb",
+    "pnpm-workspace.yaml": "b4d4c2b5c2163f735a46932878577048ae0b6de3b91f557925d78407c8e0f463",
     "scripts/license-texts/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "scripts/native-search-tools-config.mjs": "06e9d2b066a22f4bb731fb7356d786b52cf08e20dd6faf91e1a82b167d7462e8",
     "scripts/remote-native-search-tools-config.mjs": "2ddb7054e219ea487596cbdcb83d5c7eac9f239cfe169cfac22e3759d95d7c35",
-    "third-party/copied-components.json": "8e49640be421f610fe34146b388973e4d79bf371ea5d596ad74557c43ced4fc2",
+    "third-party/copied-components.json": "523d88db1a273890704d05e45fbbabb89a19f8adb3e0b708f8ad6dab6e215df7",
     "third-party/embedded-components.json": "9586ccca15897f56d4ca1d703dffe9e02880fedd766c1dff93f7ac1f52ea891a",
     "third-party/native-search/licenses/00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce.txt": "00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce",
     "third-party/native-search/licenses/01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f.txt": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
@@ -3008,7 +3022,7 @@
     "third-party/native-search/licenses/f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af.txt": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
     "third-party/native-search/licenses/f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505.txt": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505",
     "third-party/native-search/sources.json": "5e1aedef96227f4deefe6f07cda644bd25e638443e86e93ddb2e9578a73d9609",
-    "third-party/npm-overrides.json": "d390d670363f9c6c491018b7485023f0f4af63192a691bb82d78f4e653100bfe",
+    "third-party/npm-overrides.json": "a3274a4671bc37023e70d43042a8ea3f78c9dade8f2695bb13f7cbd593ea3c53",
     "third-party/runtime/node-22.16.0-LICENSE.txt": "1ae62e2015784ba438db7b04ebd33f3c4ff3efdb824c111c4ececd99945fd52d",
     "third-party/runtime/node-24.14.0-LICENSE.txt": "4573185d56580da2b890ba34a85a409257640f1c5632eade4300137266194d18",
     "third-party/runtime/sources.json": "b27bc8d81aeb71108e523602364ffbb6a1b19c2d5d47733fd43094b769006741",
@@ -3017,6 +3031,7 @@
     "third-party/upstream/0ab717053f3e24736cd404a0801407fb305db75d1b58f7e6487d14feee30d28a.txt": "0ab717053f3e24736cd404a0801407fb305db75d1b58f7e6487d14feee30d28a",
     "third-party/upstream/0c74e86d37d6fc7e8f22b4b8e3b801f6737c263c27a71d81c86cd8de0b6a84e5.txt": "0c74e86d37d6fc7e8f22b4b8e3b801f6737c263c27a71d81c86cd8de0b6a84e5",
     "third-party/upstream/0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138.txt": "0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138",
+    "third-party/upstream/0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e.txt": "0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e",
     "third-party/upstream/1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f.txt": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f",
     "third-party/upstream/17510cf7a58b4879b887ec05a45d72cf1b73544dd9ec7e72f20110ed104229ee.txt": "17510cf7a58b4879b887ec05a45d72cf1b73544dd9ec7e72f20110ed104229ee",
     "third-party/upstream/1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d.txt": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d",
@@ -3048,6 +3063,7 @@
     "third-party/upstream/5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf.txt": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
     "third-party/upstream/5f745b8244890bde0a2258fe32342d60c577fad043e8601d923690a5bfe1b54f.txt": "5f745b8244890bde0a2258fe32342d60c577fad043e8601d923690a5bfe1b54f",
     "third-party/upstream/5f787c1dee3c56547f09ccc2906ab5f5293c4d8dd6c8654e573216c38e908dbd.txt": "5f787c1dee3c56547f09ccc2906ab5f5293c4d8dd6c8654e573216c38e908dbd",
+    "third-party/upstream/5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9.txt": "5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9",
     "third-party/upstream/66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101.txt": "66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101",
     "third-party/upstream/6ae13df543a24b3fb18c25182cf4f084132f799ea9225410f7037888401b7469.txt": "6ae13df543a24b3fb18c25182cf4f084132f799ea9225410f7037888401b7469",
     "third-party/upstream/75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6.txt": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
@@ -3647,6 +3663,30 @@
       ]
     },
     {
+      "name": "@fast-csv/format",
+      "version": "4.3.5",
+      "license": "MIT",
+      "repository": "git+https://github.com/C2FO/fast-csv.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "2450088d1769a2b36e210a5a345a55b209944f4c6a9a89f7ce3aaba163680a42"
+        }
+      ]
+    },
+    {
+      "name": "@fast-csv/parse",
+      "version": "4.3.6",
+      "license": "MIT",
+      "repository": "git+https://github.com/C2FO/fast-csv.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "2450088d1769a2b36e210a5a345a55b209944f4c6a9a89f7ce3aaba163680a42"
+        }
+      ]
+    },
+    {
       "name": "@fiahfy/icns",
       "version": "0.0.7",
       "license": "MIT",
@@ -3727,6 +3767,57 @@
         {
           "member": "LICENSE",
           "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+        }
+      ]
+    },
+    {
+      "name": "@formulajs/formulajs",
+      "version": "2.9.3",
+      "license": "MIT",
+      "repository": "git@github.com:formulajs/formulajs.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "174950f43de64be376a36ce6f81c9da6242f59f86c5aad6371bff0fa30469a7b"
+        }
+      ]
+    },
+    {
+      "name": "@fortune-sheet/core",
+      "version": "1.0.4",
+      "license": "MIT",
+      "repository": "https://github.com/ruilisi/fortune-sheet",
+      "notices": [
+        {
+          "member": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/LICENSE",
+          "sha256": "5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9"
+        }
+      ]
+    },
+    {
+      "name": "@fortune-sheet/formula-parser",
+      "version": "0.2.13",
+      "license": "MIT",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "1ae5035080114d8b00c41b8f0441dab4ecd157fcb4b540c7409830a4606db6ee"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "a3fd2568dcaeb3a348f3891e4dd2de83f1e349f1a0253815706960df1c162582"
+        }
+      ]
+    },
+    {
+      "name": "@fortune-sheet/react",
+      "version": "1.0.4",
+      "license": "MIT",
+      "repository": "https://github.com/ruilisi/fortune-sheet",
+      "notices": [
+        {
+          "member": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/LICENSE",
+          "sha256": "5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9"
         }
       ]
     },
@@ -4606,8 +4697,8 @@
     },
     {
       "name": "@modelcontextprotocol/client",
-      "version": "2.2.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -4618,20 +4709,8 @@
     },
     {
       "name": "@modelcontextprotocol/core",
-      "version": "2.0.0",
-      "license": "MIT",
-      "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a"
-        }
-      ]
-    },
-    {
-      "name": "@modelcontextprotocol/core",
-      "version": "2.2.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -4654,8 +4733,8 @@
     },
     {
       "name": "@modelcontextprotocol/server",
-      "version": "2.0.0",
-      "license": "MIT",
+      "version": "2.3.0",
+      "license": "Apache-2.0",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "notices": [
         {
@@ -7021,6 +7100,18 @@
     },
     {
       "name": "@types/node",
+      "version": "14.18.63",
+      "license": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ]
+    },
+    {
+      "name": "@types/node",
       "version": "16.9.1",
       "license": "MIT",
       "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
@@ -7106,6 +7197,18 @@
     {
       "name": "@types/react",
       "version": "19.2.14",
+      "license": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ]
+    },
+    {
+      "name": "@types/regenerator-runtime",
+      "version": "0.13.8",
       "license": "MIT",
       "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
       "notices": [
@@ -7480,6 +7583,42 @@
       ]
     },
     {
+      "name": "archiver-utils",
+      "version": "2.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/archiver-utils.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "19a37eba4fee8b33d904c46235c30bd668cff139f50b1fa5c7c57d2f920e6a4f"
+        }
+      ]
+    },
+    {
+      "name": "archiver-utils",
+      "version": "3.0.4",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/archiver-utils.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "9fe335fb097fbff0b7f709ee14a77b1d1cf739d3400cd0b0e19118946772ea56"
+        }
+      ]
+    },
+    {
+      "name": "archiver",
+      "version": "5.3.2",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/node-archiver.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "9e23899170d96e708b24a2afce11e96d169c8cebf1bd24ac60b675a400cb1cf1"
+        }
+      ]
+    },
+    {
       "name": "argparse",
       "version": "2.0.1",
       "license": "Python-2.0",
@@ -7628,6 +7767,22 @@
       ]
     },
     {
+      "name": "balanced-match",
+      "version": "1.0.2",
+      "license": "MIT",
+      "repository": "git://github.com/juliangruber/balanced-match.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "a1bd5deadb6a06dd74efa852c1b8b23f63b67f2214fbe9c8bd591da51da69268"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101"
+        }
+      ]
+    },
+    {
       "name": "base64-arraybuffer",
       "version": "1.0.2",
       "license": "MIT",
@@ -7640,6 +7795,22 @@
         {
           "member": "README.md (license section)",
           "sha256": "62235643db61d20e8e4c58d160e906fc168941207adbc96a80ba87b491570067"
+        }
+      ]
+    },
+    {
+      "name": "base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "repository": "git://github.com/beatgammit/base64-js.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "5b37224c080cdcc97c871ada971c224e9926370fe74f11b539aa1cf9f3b1aca1"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "bcc62468ddfc1d8b468c44e6bef1f4d4149729eeafbdbbd86c6cfc87b6ab55f4"
         }
       ]
     },
@@ -7668,6 +7839,54 @@
         {
           "member": "README.md (license section)",
           "sha256": "0e00c860f4ae10ef7d21d31833d4dc187d866d2914b3a20e0037f3bd2c67d2fa"
+        }
+      ]
+    },
+    {
+      "name": "bessel",
+      "version": "1.0.2",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/SheetJS/bessel.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "83954c3a13a34578887622094871f90a219e250cda5aa0c8fc443cfe5c1b935e"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "4eea1c4ffa4cc95d0580637b36325ceb63ee77a8233733e16fba2ebdbabefa29"
+        }
+      ]
+    },
+    {
+      "name": "bl",
+      "version": "4.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/rvagg/bl.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "9377db95383c8befacf05c6e465d969d756edf178487ca1344fdf3ba147c596f"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "c37c3f830189b5b46188ccc224a978e596ef3e5b71043b45fea0bf3cdc6a4dae"
+        }
+      ]
+    },
+    {
+      "name": "bluebird",
+      "version": "3.7.2",
+      "license": "MIT",
+      "repository": "git://github.com/petkaantonov/bluebird.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "87092fe7ffd1e92eba5d1dd39b73a73fdb4fdd4df3474beacc3d9f6b08ece82c"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "3b6b8e0ced23af4a5127940b99433c00b14b51fd7ea3aca94aa60c53826566dd"
         }
       ]
     },
@@ -7712,6 +7931,38 @@
       ]
     },
     {
+      "name": "brace-expansion",
+      "version": "1.1.20",
+      "license": "MIT",
+      "repository": "git://github.com/juliangruber/brace-expansion.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "68f12f6e2c33688699249c01d8f9623c534da20aa71989c57b061b7bc1676d14"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101"
+        }
+      ]
+    },
+    {
+      "name": "brace-expansion",
+      "version": "2.1.6",
+      "license": "MIT",
+      "repository": "git://github.com/juliangruber/brace-expansion.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "68f12f6e2c33688699249c01d8f9623c534da20aa71989c57b061b7bc1676d14"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101"
+        }
+      ]
+    },
+    {
       "name": "buffer-crc32",
       "version": "0.2.13",
       "license": "MIT",
@@ -7740,6 +7991,22 @@
         {
           "member": "README.md (license section)",
           "sha256": "c6483fac297225119319fee0a87bb04bbd17dd65e30299f92317da30bcb9a9a1"
+        }
+      ]
+    },
+    {
+      "name": "buffer",
+      "version": "5.7.1",
+      "license": "MIT",
+      "repository": "git://github.com/feross/buffer.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "06bafa45fdad2579ba0e43b0c9b2c6290287c99c4203c300254a462b38a307f6"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "233f9392178f64b53517abc5b8a7b6b66c2802374a51ba48e3654876ca06ef14"
         }
       ]
     },
@@ -8192,6 +8459,34 @@
       ]
     },
     {
+      "name": "compress-commons",
+      "version": "4.1.2",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/node-compress-commons.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "79bad9f51738814f83251ae89460326b2ff2ea19ff5f71ab8f7636b2e17bb231"
+        }
+      ]
+    },
+    {
+      "name": "concat-map",
+      "version": "0.0.1",
+      "license": "MIT",
+      "repository": "git://github.com/substack/node-concat-map.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b"
+        },
+        {
+          "member": "README.markdown (license section)",
+          "sha256": "1617b045dd80cddf06277adc7fd5f4a06876bd15812bc938658fb11e9fb0b701"
+        }
+      ]
+    },
+    {
       "name": "confbox",
       "version": "0.1.8",
       "license": "MIT",
@@ -8260,6 +8555,34 @@
         {
           "member": "LICENSE",
           "sha256": "7c28463b739e2e73a49bf127d0bda427f8c55f0b37365a044c3c3f254716118b"
+        }
+      ]
+    },
+    {
+      "name": "crc-32",
+      "version": "1.2.2",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/SheetJS/js-crc32.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "c542ba7851b5d39a5face477e47a27cb7c00a9759e321b66824e79718bffe1ac"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "881788c69fcf010a0a25ffb2e09eb00f628c43b31eb90b989d0f0334fdb6f3e0"
+        }
+      ]
+    },
+    {
+      "name": "crc32-stream",
+      "version": "4.0.3",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/node-crc32-stream.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "79bad9f51738814f83251ae89460326b2ff2ea19ff5f71ab8f7636b2e17bb231"
         }
       ]
     },
@@ -9116,6 +9439,22 @@
       ]
     },
     {
+      "name": "duplexer2",
+      "version": "0.1.4",
+      "license": "BSD-3-Clause",
+      "repository": "deoxxa/duplexer2",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "252a200ba7a38686f7954ec4cb09b3ad7788fa099eb724de167d7ab16b1244b9"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "27c0e1498340178e73c69507d061c0e2f8afae8da9e4c3a08bdc4bdb8fc8b3ef"
+        }
+      ]
+    },
+    {
       "name": "echarts",
       "version": "6.1.0",
       "license": "Apache-2.0",
@@ -9268,6 +9607,22 @@
       ]
     },
     {
+      "name": "end-of-stream",
+      "version": "1.4.5",
+      "license": "MIT",
+      "repository": "git://github.com/mafintosh/end-of-stream.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "3fe8d55a98dbf260eace67c00cf9bc53edb46234e840098a0b93df3096b97fb6"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "daf005969aac8cb4283b3777361f0244f4cce898b9a983a60b7f0d9e96f559bf"
+        }
+      ]
+    },
+    {
       "name": "entities",
       "version": "4.5.0",
       "license": "BSD-2-Clause",
@@ -9341,7 +9696,7 @@
     },
     {
       "name": "es-object-atoms",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "license": "MIT",
       "repository": "git+https://github.com/ljharb/es-object-atoms.git",
       "notices": [
@@ -9544,6 +9899,22 @@
       ]
     },
     {
+      "name": "exceljs",
+      "version": "4.4.0",
+      "license": "MIT",
+      "repository": "https://github.com/exceljs/exceljs.git",
+      "notices": [
+        {
+          "member": "dist/LICENSE",
+          "sha256": "2ed526b7e7c7681dc2347995b5036ddf73dc27d0539cdea59b6d4a72b63a57a0"
+        },
+        {
+          "member": "LICENSE",
+          "sha256": "2ed526b7e7c7681dc2347995b5036ddf73dc27d0539cdea59b6d4a72b63a57a0"
+        }
+      ]
+    },
+    {
       "name": "exif-parser",
       "version": "0.1.12",
       "license": "MIT",
@@ -9568,6 +9939,18 @@
         {
           "member": "README.md (license section)",
           "sha256": "96be1b98f5e3e3ff42bab4784541378aae45378d76c6b7fb09cc17e63ee60b1f"
+        }
+      ]
+    },
+    {
+      "name": "fast-csv",
+      "version": "4.3.6",
+      "license": "MIT",
+      "repository": "git+https://github.com/C2FO/fast-csv.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "2450088d1769a2b36e210a5a345a55b209944f4c6a9a89f7ce3aaba163680a42"
         }
       ]
     },
@@ -9629,7 +10012,7 @@
     },
     {
       "name": "follow-redirects",
-      "version": "1.16.0",
+      "version": "1.16.1",
       "license": "MIT",
       "repository": "git+ssh://git@github.com/follow-redirects/follow-redirects.git",
       "notices": [
@@ -9672,6 +10055,22 @@
       ]
     },
     {
+      "name": "fs-constants",
+      "version": "1.0.0",
+      "license": "MIT",
+      "repository": "https://github.com/mafintosh/fs-constants.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "2281f2db407bdbb54f069eec38128b2dee2c0c952f52b786ef1faecb81767b3c"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "daf005969aac8cb4283b3777361f0244f4cce898b9a983a60b7f0d9e96f559bf"
+        }
+      ]
+    },
+    {
       "name": "fs-extra",
       "version": "10.1.0",
       "license": "MIT",
@@ -9684,6 +10083,34 @@
         {
           "member": "README.md (license section)",
           "sha256": "99418da6b0279959da793d62433978847d00236e852c4be780f384b7f506d425"
+        }
+      ]
+    },
+    {
+      "name": "fs-extra",
+      "version": "11.3.1",
+      "license": "MIT",
+      "repository": "https://github.com/jprichardson/node-fs-extra",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "c6a7de1428955aa5a692f4d3a3d3ede658d959616944713337cda296736442e1"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "17f7fa5a10a40e614e14342fa1b18046fee2edcdfb9528bf67f4593ef2ff61fd"
+        }
+      ]
+    },
+    {
+      "name": "fs.realpath",
+      "version": "1.0.0",
+      "license": "ISC",
+      "repository": "git+https://github.com/isaacs/fs.realpath.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "8465b04b67f473341171b5c9c8b2c741a4a395b3f6ed58339b3a4f4db3db7472"
         }
       ]
     },
@@ -9796,6 +10223,18 @@
       ]
     },
     {
+      "name": "glob",
+      "version": "7.2.3",
+      "license": "ISC",
+      "repository": "git://github.com/isaacs/node-glob.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "6236fa0b88a4a0cce3dda0367979491b2052b3c8d6b1c10b3668de083e86a7f0"
+        }
+      ]
+    },
+    {
       "name": "gopd",
       "version": "1.2.0",
       "license": "MIT",
@@ -9868,18 +10307,6 @@
         {
           "member": "LICENSE",
           "sha256": "e2560e002e13281578c75c850061d9255c33d16d732939e8c2db64c2506642fa"
-        }
-      ]
-    },
-    {
-      "name": "hasown",
-      "version": "2.0.2",
-      "license": "MIT",
-      "repository": "git+https://github.com/inspect-js/hasOwn.git",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "bf9b0d665be2a689851eea667ca9f42066ea1d903b38349c51e6a44b2577680a"
         }
       ]
     },
@@ -10356,6 +10783,30 @@
       ]
     },
     {
+      "name": "immer",
+      "version": "9.0.21",
+      "license": "MIT",
+      "repository": "https://github.com/immerjs/immer.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "99cf22f6960a6fe228ec84ea9aefb0d75b27999ece83a3a9801e1c2081fa270b"
+        }
+      ]
+    },
+    {
+      "name": "inflight",
+      "version": "1.0.6",
+      "license": "ISC",
+      "repository": "https://github.com/npm/inflight.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "05dc4d785ac3a488676d3ed10e901b75ad89dafcc63f8e66610fd4a39cc5c7e8"
+        }
+      ]
+    },
+    {
       "name": "inherits",
       "version": "2.0.4",
       "license": "ISC",
@@ -10688,6 +11139,18 @@
       ]
     },
     {
+      "name": "jstat",
+      "version": "1.9.6",
+      "license": "MIT",
+      "repository": "http://github.com/jstat/jstat.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "854847b5c4375f52fbe73364fd13ba138e59a52c88938ed0bab7f940dd8dd800"
+        }
+      ]
+    },
+    {
       "name": "jszip",
       "version": "3.10.1",
       "license": "(MIT OR GPL-3.0-or-later)",
@@ -10848,6 +11311,18 @@
       ]
     },
     {
+      "name": "lazystream",
+      "version": "1.0.1",
+      "license": "MIT",
+      "repository": "https://github.com/jpommerening/node-lazystream.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "e7f5d28405c9fe6580db684634bace66953055b436d7fbb6f860d0c800c44a9f"
+        }
+      ]
+    },
+    {
       "name": "lexical",
       "version": "0.42.0",
       "license": "MIT",
@@ -10932,8 +11407,56 @@
       ]
     },
     {
+      "name": "lodash.defaults",
+      "version": "4.2.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.difference",
+      "version": "4.5.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
       "name": "lodash.escaperegexp",
       "version": "4.1.2",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.flatten",
+      "version": "4.4.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.groupby",
+      "version": "4.6.0",
       "license": "MIT",
       "repository": "lodash/lodash",
       "notices": [
@@ -10956,6 +11479,18 @@
       ]
     },
     {
+      "name": "lodash.isboolean",
+      "version": "3.0.3",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "25a399d4a42f419445101092a1fc3f9b4bfe06d614f84128222d79e3a2105fe7"
+        }
+      ]
+    },
+    {
       "name": "lodash.isequal",
       "version": "4.5.0",
       "license": "MIT",
@@ -10964,6 +11499,54 @@
         {
           "member": "LICENSE",
           "sha256": "e159c6d48c989185448658f276375bfb2300362ec6d4ae5525a2d49c4bcb947d"
+        }
+      ]
+    },
+    {
+      "name": "lodash.isfunction",
+      "version": "3.0.9",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "e159c6d48c989185448658f276375bfb2300362ec6d4ae5525a2d49c4bcb947d"
+        }
+      ]
+    },
+    {
+      "name": "lodash.isnil",
+      "version": "4.0.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "25a399d4a42f419445101092a1fc3f9b4bfe06d614f84128222d79e3a2105fe7"
+        }
+      ]
+    },
+    {
+      "name": "lodash.isplainobject",
+      "version": "4.0.6",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.isundefined",
+      "version": "3.0.1",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE.txt",
+          "sha256": "90df9e2220f682e1f77e24b1c0f72d2de18b818096c957a65698e74c41a4826f"
         }
       ]
     },
@@ -10988,6 +11571,42 @@
         {
           "member": "LICENSE",
           "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.union",
+      "version": "4.6.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash.uniq",
+      "version": "4.5.0",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272"
+        }
+      ]
+    },
+    {
+      "name": "lodash",
+      "version": "4.18.1",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "f71e8ed126b46346494aad5486874cd8f0aafe95092ed67d2e3cb6110f939abc"
         }
       ]
     },
@@ -12048,6 +12667,30 @@
       ]
     },
     {
+      "name": "minimatch",
+      "version": "3.1.5",
+      "license": "ISC",
+      "repository": "git://github.com/isaacs/minimatch.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
+        }
+      ]
+    },
+    {
+      "name": "minimatch",
+      "version": "5.1.9",
+      "license": "ISC",
+      "repository": "git://github.com/isaacs/minimatch.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "d11323827fa4edeaafc437cc5b91b6971b335f0127efeeb42bf5122fe8657e8f"
+        }
+      ]
+    },
+    {
       "name": "mitt",
       "version": "3.0.1",
       "license": "MIT",
@@ -12272,6 +12915,18 @@
       ]
     },
     {
+      "name": "node-int64",
+      "version": "0.4.0",
+      "license": "MIT",
+      "repository": "https://github.com/broofa/node-int64",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "8f85aab053e268546014761da47630a09886626afbd0d8d440cb2c69611bb8d3"
+        }
+      ]
+    },
+    {
       "name": "node-pty",
       "version": "1.1.0",
       "license": "MIT",
@@ -12292,6 +12947,22 @@
       ]
     },
     {
+      "name": "normalize-path",
+      "version": "3.0.0",
+      "license": "MIT",
+      "repository": "jonschlinkert/normalize-path",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "e70ff771504ba41f2be55de812a017ff46433d7a250c862e38fc419159e44500"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "f01e8d67b83bf33655fa832af835ef8350c58c0c0d7c058f20e2e1f3abf4c86b"
+        }
+      ]
+    },
+    {
       "name": "nth-check",
       "version": "2.1.1",
       "license": "BSD-2-Clause",
@@ -12300,6 +12971,22 @@
         {
           "member": "LICENSE",
           "sha256": "cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164"
+        }
+      ]
+    },
+    {
+      "name": "numeral",
+      "version": "2.0.6",
+      "license": "MIT",
+      "repository": "https://github.com/adamwdraper/Numeral-js",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "036926dbd26f6493cf15a4ee737e4554cf738adc9bc5b89a4c05d4e1baf62f25"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "651089898e84352ad787f3becb05c099bf91e5d0589a12225e2615a3c0e341d2"
         }
       ]
     },
@@ -12344,6 +13031,18 @@
         {
           "member": "node_modules/omggif/README",
           "sha256": "fc7d762e0ebf8720d0a03cf00058aaa3a198347e9651be2f50a25e3b3ec13985"
+        }
+      ]
+    },
+    {
+      "name": "once",
+      "version": "1.4.0",
+      "license": "ISC",
+      "repository": "git://github.com/isaacs/once",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
         }
       ]
     },
@@ -12620,6 +13319,22 @@
         {
           "member": "license",
           "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        },
+        {
+          "member": "readme.md (license section)",
+          "sha256": "0b8c7c0c5579b689ab841976b473ebe9269aa46347fc1295431e0fc3f2452d36"
+        }
+      ]
+    },
+    {
+      "name": "path-is-absolute",
+      "version": "1.0.1",
+      "license": "MIT",
+      "repository": "sindresorhus/path-is-absolute",
+      "notices": [
+        {
+          "member": "license",
+          "sha256": "6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c"
         },
         {
           "member": "readme.md (license section)",
@@ -13308,6 +14023,30 @@
       ]
     },
     {
+      "name": "readable-stream",
+      "version": "3.6.2",
+      "license": "MIT",
+      "repository": "git://github.com/nodejs/readable-stream",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "ec62dc96da0099b87f4511736c87309335527fb7031639493e06c95728dc8c54"
+        }
+      ]
+    },
+    {
+      "name": "readdir-glob",
+      "version": "1.1.3",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Yqnn/node-readdir-glob.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "8cd23e2d76d2791765f7dd1025a9df99d81db91da9e2701f283987a1c0435aa3"
+        }
+      ]
+    },
+    {
       "name": "readdirp",
       "version": "4.1.2",
       "license": "MIT",
@@ -13372,6 +14111,18 @@
         {
           "member": "README.md (license section)",
           "sha256": "1357154d40ea5bf0e89ccfd2bd99f0ac8def6dc5b07794b1ea2386b3e662a617"
+        }
+      ]
+    },
+    {
+      "name": "regenerator-runtime",
+      "version": "0.14.1",
+      "license": "MIT",
+      "repository": "https://github.com/facebook/regenerator/tree/main/packages/runtime",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "51887a3d47051ac2fce1210562e5b9fe0830a8a8fabeb272c2d586eeb18a05fd"
         }
       ]
     },
@@ -13764,6 +14515,22 @@
       ]
     },
     {
+      "name": "safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "repository": "git://github.com/feross/safe-buffer.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "c7cc929b57080f4b9d0c6cf57669f0463fc5b39906344dfc8d3bc43426b30eac"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "4001f409f2886ac791b0be2131ca3ed8770b896314579ecb5d1eaf7a6e6f3eb8"
+        }
+      ]
+    },
+    {
       "name": "safer-buffer",
       "version": "2.1.2",
       "license": "MIT",
@@ -13784,6 +14551,18 @@
         {
           "member": "LICENSE.md",
           "sha256": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004"
+        }
+      ]
+    },
+    {
+      "name": "saxes",
+      "version": "5.0.1",
+      "license": "ISC",
+      "repository": "https://github.com/lddubeau/saxes.git",
+      "notices": [
+        {
+          "member": "https://raw.githubusercontent.com/lddubeau/saxes/6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e/LICENSE",
+          "sha256": "0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e"
         }
       ]
     },
@@ -14140,6 +14919,18 @@
       ]
     },
     {
+      "name": "string_decoder",
+      "version": "1.3.0",
+      "license": "MIT",
+      "repository": "git://github.com/nodejs/string_decoder.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "11f2aafb37d06b3ee5bdaf06e9811141d0da05263c316f3d627f45c20d43261b"
+        }
+      ]
+    },
+    {
       "name": "string-width",
       "version": "4.2.3",
       "license": "MIT",
@@ -14372,6 +15163,38 @@
       ]
     },
     {
+      "name": "tar-stream",
+      "version": "2.2.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/mafintosh/tar-stream.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "3fe8d55a98dbf260eace67c00cf9bc53edb46234e840098a0b93df3096b97fb6"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "98bb58f02f63428bdcf9153ac14c74149b50d3995e363c17a3faea9f8248858c"
+        }
+      ]
+    },
+    {
+      "name": "tiny-emitter",
+      "version": "2.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/scottcorgan/tiny-emitter.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "aada4c7da6a5be46beadf9d4f40d7dba9e222e57180d46289b2bb9112e65daae"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "7c8bfc776c78d8ba5db2cc6bb804d976363ab5d6e5d0b4cdff034c88f8dc6c66"
+        }
+      ]
+    },
+    {
       "name": "tiny-invariant",
       "version": "1.3.3",
       "license": "MIT",
@@ -14420,6 +15243,18 @@
         {
           "member": "LICENSE",
           "sha256": "f95f668fe64081ddb4153b322e34fdd719b991285ed08177d5ad7133b7988d92"
+        }
+      ]
+    },
+    {
+      "name": "tmp",
+      "version": "0.2.7",
+      "license": "MIT",
+      "repository": "https://github.com/raszi/node-tmp.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "162413c61e0982abe89a06bf7a02ec760dc49a7364d838bd9f01daebb5b95954"
         }
       ]
     },
@@ -14860,6 +15695,22 @@
       ]
     },
     {
+      "name": "unzipper",
+      "version": "0.12.5",
+      "license": "MIT",
+      "repository": "https://github.com/ZJONSSON/node-unzipper.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "b9e9abeaf8b92573dc28915d4948dbce30d55b30c688d109898b35e6105c4215"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "ed8a1e51777dfd46dcb9b07f1ef9f626aa25995fa1a0b5cba69c8f517acb066b"
+        }
+      ]
+    },
+    {
       "name": "us-atlas",
       "version": "3.0.1",
       "license": "ISC",
@@ -14970,6 +15821,18 @@
     {
       "name": "uuid",
       "version": "11.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/uuidjs/uuid.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "beaa6b04fb82e41dd2ad679e19e27953afb5999b1abbb455b6564e78ebfeb332"
+        }
+      ]
+    },
+    {
+      "name": "uuid",
+      "version": "8.3.2",
       "license": "MIT",
       "repository": "https://github.com/uuidjs/uuid.git",
       "notices": [
@@ -15404,6 +16267,18 @@
       ]
     },
     {
+      "name": "wrappy",
+      "version": "1.0.2",
+      "license": "ISC",
+      "repository": "https://github.com/npm/wrappy",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
+        }
+      ]
+    },
+    {
       "name": "ws",
       "version": "7.5.11",
       "license": "MIT",
@@ -15472,6 +16347,18 @@
         {
           "member": "LICENSE",
           "sha256": "e368bc4263b466cf98c225af15e300549e00da8859416a4536109e9654d434a8"
+        }
+      ]
+    },
+    {
+      "name": "xmlchars",
+      "version": "2.2.0",
+      "license": "MIT",
+      "repository": "https://github.com/lddubeau/xmlchars.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "45d196313c2647d313cc65ca9b093d2d6974b64d35ee7346f2c60c9d518dff2c"
         }
       ]
     },
@@ -15640,6 +16527,18 @@
         {
           "member": "https://raw.githubusercontent.com/facebook/yoga/v3.2.1/LICENSE",
           "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+        }
+      ]
+    },
+    {
+      "name": "zip-stream",
+      "version": "4.1.1",
+      "license": "MIT",
+      "repository": "https://github.com/archiverjs/node-zip-stream.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "79bad9f51738814f83251ae89460326b2ff2ea19ff5f71ab8f7636b2e17bb231"
         }
       ]
     },
@@ -15820,7 +16719,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/collapsible.tsx",
-          "sha256": "e00f7ad26cc4c168f8c6b20e6078512807ddca05e375e47b6c9dbbd50fcbef52"
+          "sha256": "fcb5125c2c0e824e8b75e3b9c164011bac7a4c602ff83cf0937b71620ee77d92"
         },
         {
           "file": "packages/ui/src/components/ui/command.tsx",
@@ -15832,7 +16731,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/dialog.tsx",
-          "sha256": "53dc10761bd894a5e86278d9354aac47920c81b4aab8b414b840af095f7c0b31"
+          "sha256": "fb2decab75993205ec5670acbd5b8b7dfc9b1518d3acb457ddde7edd1984d44e"
         },
         {
           "file": "packages/ui/src/components/ui/diff-viewer.tsx",
@@ -15840,7 +16739,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/dropdown-menu.tsx",
-          "sha256": "34c5b79489756aa3467ec26d2b44587f3d47eafcb2cb16402686aac15e4debdb"
+          "sha256": "61fb51b98cf76207dfe5e86e6baf6e2d5ef0f77698377b2c332066a4b9e2da60"
         },
         {
           "file": "packages/ui/src/components/ui/flip-metric-value.tsx",
@@ -15856,7 +16755,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/hover-card.tsx",
-          "sha256": "28e49fb55a3fd4f5bfc5d61f336854304bc92c5a7098305b208274913b226f3d"
+          "sha256": "d202699fb339c78ba96d4ca1816ba8e46d6b27dc1963f441cdafa0155ce5e804"
         },
         {
           "file": "packages/ui/src/components/ui/input-group.tsx",
@@ -15868,7 +16767,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/kbd.tsx",
-          "sha256": "a7fabb33892c759337ae5c936d3b62f27fb2356a5a6340dbff8bfbac6f0a359f"
+          "sha256": "f8bd1d5a51f991d60781f62a8bd7f1db06a237f2a7a7bb39f0127bd1ba067066"
         },
         {
           "file": "packages/ui/src/components/ui/label.tsx",
@@ -15904,7 +16803,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/resizable.tsx",
-          "sha256": "83425c34fb76c35276e6dbf8d7ad0ee860b4536ba9d4cfd8e8a60aec3b7cabc4"
+          "sha256": "4387041d74cfcd71ce2fa12a78462ed4b5cdb4c634d878726f34dadadc8ebeec"
         },
         {
           "file": "packages/ui/src/components/ui/scroll-area.tsx",
@@ -15944,11 +16843,11 @@
         },
         {
           "file": "packages/ui/src/components/ui/toast.tsx",
-          "sha256": "0f8894c6fc30e4cec44caa4cffe70e111f9c41ff9bf3699ec8e91696ea631671"
+          "sha256": "09e69303cf1def776ab669a56eb188c34dfc351188a7c00d836ac9880df7d140"
         },
         {
           "file": "packages/ui/src/components/ui/tooltip.tsx",
-          "sha256": "301dbf3a6f8b1bc496f9bdc6fbc5fe6202ed373182897f39cd1ecd19b00fdfbe"
+          "sha256": "b385da0f882ef4a44c101051107a670c42f7b347b86ef8ca0dba40369ed34d3b"
         },
         {
           "file": "packages/ui/src/components/ui/usePdfZoomOverlay.ts",
@@ -15956,7 +16855,7 @@
         },
         {
           "file": "packages/ui/src/styles.css",
-          "sha256": "e80a19cfbc7f36c7df17c082cc06b8032d1040c2bd46ead61eeffb6a7558c5a4"
+          "sha256": "a6b69656639a1a67d7d562db711a9bbec349fab6d65b10c190910cc34f68f6d5"
         },
         {
           "file": "packages/ui/src/styles/shadcn-4.1.1.css",
@@ -16146,7 +17045,7 @@
         },
         {
           "file": "packages/ui/src/components/ai-elements/chat-loading.tsx",
-          "sha256": "b75d4398d778179f78209debde63547410d76e01cdaf3887f60b13ef9a35331f"
+          "sha256": "2e6da0eba3e49cc78cc01d463c84c60b7bafa6a9a219e9babb429aeb96a272c1"
         },
         {
           "file": "packages/ui/src/components/ai-elements/checkpoint.tsx",
@@ -16198,7 +17097,7 @@
         },
         {
           "file": "packages/ui/src/components/ai-elements/image-preview-dialog.tsx",
-          "sha256": "47d4ecdefc84d39f2deda93119ce400b36224276bb6c7dab6a914868914ac8de"
+          "sha256": "1f25a198c49c3b2d6e4a72fb16efba3e621beeb51e00e808ca9cff65be39d546"
         },
         {
           "file": "packages/ui/src/components/ai-elements/image-thumbnail-gallery.tsx",
@@ -16266,7 +17165,7 @@
         },
         {
           "file": "packages/ui/src/components/ai-elements/persona.tsx",
-          "sha256": "c796e1aa0f85395138eda5e4c7ffc7dac5321690b3f6949f73c7b3ebe8d52808"
+          "sha256": "54f947091b2dc54c69dbca249a36c4f85e9843f44b2582a87bade1aa50e77c4a"
         },
         {
           "file": "packages/ui/src/components/ai-elements/plan.tsx",
@@ -16298,7 +17197,7 @@
         },
         {
           "file": "packages/ui/src/components/ai-elements/reasoning.tsx",
-          "sha256": "a10a38c7b3ca633e9b5480ad94f9c7a1fdd52bc5526ae0801e3e6ed141f2b604"
+          "sha256": "ce51bcc011761a3f6a7f776d3079395812c3c251af30b5754d0e948dbd58d611"
         },
         {
           "file": "packages/ui/src/components/ai-elements/sandbox.tsx",
@@ -26198,15 +27097,15 @@
         },
         {
           "file": "packages/rpc/src/channelClient.ts",
-          "sha256": "d2504929253ebb18f020e6f35e51a3741190558875d18a47192f9af78ca3f8ac"
+          "sha256": "9c5c99acfa173a2986c39619966955ddebe123c3a3882aaea3d835a73bb59068"
         },
         {
           "file": "packages/rpc/src/channelServer.ts",
-          "sha256": "b9c61bd3881fff11b38a93853c60fa5c2bc871bcbea5dad0e9be0a4674f6c9da"
+          "sha256": "e93d30ddd347d2558960072219b5667cc940f39e2955440f4ae3db6a96a726e1"
         },
         {
           "file": "packages/rpc/src/channels.shared.ts",
-          "sha256": "e2d3ce17dfb23d53ea8fef6cd4dc87bef4558ff6e72b458e50fd456b0b2a6ae2"
+          "sha256": "d7faaf2affcb028355501e44b0c9bcbc673f7ad4f5c812cbf012d33260517586"
         },
         {
           "file": "packages/rpc/src/channels.ts",
@@ -26242,7 +27141,7 @@
         },
         {
           "file": "packages/rpc/src/protocol.ts",
-          "sha256": "aafc0c098c75fcba4519fad2ecbee7e025d5d8a27c15c87e5ccb4ca6ce554670"
+          "sha256": "b3e18c273bdfab46daf7b153a060ba7936e993abc1b81246d14b7d2991932594"
         },
         {
           "file": "packages/rpc/src/proxy-channel.ts",
@@ -26295,7 +27194,7 @@
       "files": [
         {
           "file": "packages/ui/src/lib/builtinSkillI18n.ts",
-          "sha256": "3e3584bd2483e50e17eaba6f110085cb5d7432fb71db2fcd0d831919285850cc"
+          "sha256": "9ec3855748c8533e1da4dcbf7608d2def55643b6da852db4407d5864a44cdf50"
         },
         {
           "file": "apps/zcode-cli/packages/superpowers-plugin/LICENSE",
@@ -27400,6 +28299,112 @@
           "sha256": "4b288c48e41aed70b7007b9db4932427712b0a51283e88e5e145e0d3ac63e96f"
         }
       ]
+    },
+    {
+      "id": "office-editor-mcp-apps",
+      "referenceRevision": "v2.0.0",
+      "source": "https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/v2.0.0/LICENSE",
+      "file": "plugins/office-editor/ui/vendor/LICENSE-mcp-apps.txt",
+      "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a",
+      "importRevision": null,
+      "provenance": "Bundle bytes match installed @modelcontextprotocol/ext-apps@2.0.0/dist/src/app-with-deps.js; upstream license transition notice is retained.",
+      "roots": [
+        "plugins/office-editor/ui/vendor/mcp-apps-app.js"
+      ],
+      "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+      "license": "Apache-2.0 AND MIT",
+      "files": [
+        {
+          "file": "plugins/office-editor/ui/vendor/mcp-apps-app.js",
+          "sha256": "fb56376b7583ecafb4820bdebc150abee18feb6258ff84b83c2c944ebd9c3602"
+        }
+      ]
+    },
+    {
+      "id": "office-editor-docx-preview",
+      "referenceRevision": "0.4.0",
+      "source": "https://registry.npmjs.org/docx-preview/-/docx-preview-0.4.0.tgz",
+      "file": "plugins/office-editor/ui/vendor/LICENSE-docx-preview.txt",
+      "sha256": "8668bf4417d161e4eb4d47d6044526e4914d9eb3c748573d9bb7e87708c1253f",
+      "importRevision": null,
+      "provenance": "Bundle bytes match installed docx-preview@0.4.0/dist/docx-preview.min.mjs; original import commit was not recorded.",
+      "roots": [
+        "plugins/office-editor/ui/vendor/docx-preview.js"
+      ],
+      "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "file": "plugins/office-editor/ui/vendor/docx-preview.js",
+          "sha256": "c481da271af83eb056703690a84c3737c11c221ca381d8c85da81a71723c3b16"
+        }
+      ]
+    },
+    {
+      "id": "office-editor-jszip",
+      "referenceRevision": "v3.10.1",
+      "source": "https://raw.githubusercontent.com/Stuk/jszip/v3.10.1/LICENSE.markdown",
+      "file": "plugins/office-editor/ui/vendor/LICENSE-jszip.txt",
+      "sha256": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4",
+      "importRevision": null,
+      "provenance": "Bundle bytes match installed jszip@3.10.1/dist/jszip.min.js; its header identifies embedded pako. Original import commit was not recorded. Both JSZip license alternatives and a separate pako MIT notice are retained.",
+      "roots": [
+        "plugins/office-editor/ui/vendor/jszip.min.js"
+      ],
+      "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+      "license": "MIT OR GPL-3.0-or-later",
+      "files": [
+        {
+          "file": "plugins/office-editor/ui/vendor/jszip.min.js",
+          "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+        }
+      ]
+    },
+    {
+      "id": "office-editor-superdoc",
+      "referenceRevision": "v2.23.0",
+      "source": "https://raw.githubusercontent.com/superdoc-dev/superdoc/v2.23.0/LICENSE",
+      "file": "plugins/office-editor/ui/vendor/superdoc/LICENSE-AGPL-3.0.txt",
+      "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+      "importRevision": null,
+      "provenance": "JS bundle contains this.version=2.23.0. Original import revision and exact upstream build provenance were not recorded; external docx engine is not bundled.",
+      "roots": [
+        "plugins/office-editor/ui/vendor/superdoc/superdoc.min.js",
+        "plugins/office-editor/ui/vendor/superdoc/superdoc.min.css"
+      ],
+      "scope": "Unmodified vendored browser bundle files used by the optional office-editor plugin.",
+      "license": "AGPL-3.0-only",
+      "reviewRequired": "Review AGPL-covered bundle distribution and corresponding-source obligations for the intended plugin packaging; this inventory does not certify them or assert an unrecorded source revision.",
+      "files": [
+        {
+          "file": "plugins/office-editor/ui/vendor/superdoc/superdoc.min.js",
+          "sha256": "360490e362af6623eae40cc5aa82efcc5d9dedf5455195b9c373c48220c232ad"
+        },
+        {
+          "file": "plugins/office-editor/ui/vendor/superdoc/superdoc.min.css",
+          "sha256": "0c1fd0ae51215b4fe5573858190c97ac971f888c63875970979e72018daef33f"
+        }
+      ]
+    },
+    {
+      "id": "office-editor-jszip-pako",
+      "referenceRevision": "v1.0.11",
+      "source": "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz",
+      "file": "plugins/office-editor/ui/vendor/LICENSE-pako.txt",
+      "sha256": "a04665b3b2de56c66730c1f720f528175739e4104f79073614aa611da1e85539",
+      "importRevision": null,
+      "provenance": "The JSZip bundle header declares embedded pako under MIT. This retained pako@1.0.11 license is a pinned reference, not an assertion that the unrecorded embedded source revision is known.",
+      "roots": [
+        "plugins/office-editor/ui/vendor/jszip.min.js"
+      ],
+      "scope": "Pako-derived portions embedded in the unmodified JSZip browser bundle only.",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "plugins/office-editor/ui/vendor/jszip.min.js",
+          "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+        }
+      ]
     }
   ],
   "patches": [
@@ -27419,9 +28424,24 @@
       "sha256": "36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97"
     },
     {
+      "package": "@radix-ui/react-collapsible@1.1.12",
+      "file": "patches/@radix-ui__react-collapsible@1.1.12.patch",
+      "sha256": "4b7b3781f603e111bb33aef9c4b1694ac9bacd3dff47692606de9876d4631164"
+    },
+    {
+      "package": "exceljs@4.4.0",
+      "file": "patches/exceljs@4.4.0.patch",
+      "sha256": "3fd52b48fd037d35cdf5f26c104b22405dc44bda21bf71ba9a06b1d3e158038a"
+    },
+    {
       "package": "playwright-core@1.59.1",
       "file": "patches/playwright-core@1.59.1.patch",
       "sha256": "9ae057e01fae03fcc47221009c62c58ccfd9b752b3510502ceb5f3266e8373e0"
+    },
+    {
+      "package": "unzipper@0.12.5",
+      "file": "patches/unzipper@0.12.5.patch",
+      "sha256": "cf48a31a76251b667aa270f62edbb475c143273d975d44e392a485110a475583"
     },
     {
       "package": "vitest@4.1.7",
@@ -27919,6 +28939,10 @@
     {
       "id": "React Best Practices skill",
       "reason": "Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained."
+    },
+    {
+      "id": "office-editor-superdoc",
+      "reason": "Review AGPL-covered bundle distribution and corresponding-source obligations for the intended plugin packaging; this inventory does not certify them or assert an unrecorded source revision."
     },
     {
       "id": "unsafe-pointer@0.2.0",

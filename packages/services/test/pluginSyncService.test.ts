@@ -1,9 +1,10 @@
 import { existsSync, mkdtempSync, symlinkSync } from "node:fs";
-import { chmod, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginSyncService } from "../src/plugin-sync/pluginSyncService.js";
+import { setDataBaseDir } from "../src/paths.js";
 
 function makeHome() {
   return mkdtempSync(join(tmpdir(), "zcode-plugin-sync-home-"));
@@ -13,14 +14,14 @@ async function writeZcodeUserConfig(
   home: string,
   value: Record<string, unknown>,
 ): Promise<string> {
-  const configPath = join(home, ".zcode", "cli", "config.json");
-  await mkdir(join(home, ".zcode", "cli"), { recursive: true });
+  const configPath = join(home, ".uwork", "cli", "config.json");
+  await mkdir(join(home, ".uwork", "cli"), { recursive: true });
   await writeFile(configPath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
   return configPath;
 }
 
 async function readZcodeUserConfig(home: string): Promise<Record<string, unknown>> {
-  const raw = await readFile(join(home, ".zcode", "cli", "config.json"), "utf-8");
+  const raw = await readFile(join(home, ".uwork", "cli", "config.json"), "utf-8");
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
@@ -51,6 +52,89 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown>> 
 }
 
 describe("plugin sync service", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)(
+    "清单别名 %s / 旧清单并存=%s 可导出并导入远端插件",
+    async (manifestDirectory, mixed) => {
+      const localHome = makeHome();
+      const remoteHome = makeHome();
+      try {
+        process.env.HOME = localHome;
+        setDataBaseDir(localHome);
+        const pluginRoot = join(localHome, "external", "alias-plugin");
+        await mkdir(join(pluginRoot, manifestDirectory), { recursive: true });
+        await writeFile(
+          join(pluginRoot, manifestDirectory, "plugin.json"),
+          JSON.stringify({ name: "alias-plugin", skills: "skills", version: "2.0.0" }),
+        );
+        await mkdir(join(pluginRoot, "skills", "selected"), { recursive: true });
+        await writeFile(
+          join(pluginRoot, "skills", "selected", "SKILL.md"),
+          "---\nname: selected\n---\nselected payload",
+        );
+        if (mixed) {
+          await mkdir(join(pluginRoot, ".zcode-plugin"), { recursive: true });
+          await writeFile(
+            join(pluginRoot, ".zcode-plugin", "plugin.json"),
+            JSON.stringify({ name: "legacy-plugin", version: "1.0.0" }),
+          );
+        }
+        await mkdir(join(localHome, ".uwork", "cli"), { recursive: true });
+        await writeFile(
+          join(localHome, ".uwork", "cli", "config.json"),
+          JSON.stringify({ plugins: { dirs: [pluginRoot] } }),
+        );
+        const source = createPluginSyncService();
+        const listed = await source.listLocalUserPluginCandidates();
+        expect(listed.candidates).toEqual([
+          expect.objectContaining({
+            name: "alias-plugin",
+            pluginId: "alias-plugin@inline",
+            version: "2.0.0",
+          }),
+        ]);
+        const exported = await source.exportPluginsArchive({
+          pluginIds: listed.candidates.map((candidate) => candidate.id),
+        });
+        process.env.HOME = remoteHome;
+        setDataBaseDir(remoteHome);
+        const target = createPluginSyncService();
+        const imported = await target.importPluginsArchive({
+          archive: exported.archive,
+          overwrite: false,
+        });
+        expect(imported.results).toEqual([
+          expect.objectContaining({
+            name: "alias-plugin",
+            pluginId: "alias-plugin@inline",
+            status: "synced",
+          }),
+        ]);
+        const importedRoot = join(remoteHome, ".uwork", "plugins", "alias-plugin");
+        expect(
+          JSON.parse(await readFile(join(importedRoot, manifestDirectory, "plugin.json"), "utf8"))
+            .name,
+        ).toBe("alias-plugin");
+        expect(
+          await readFile(join(importedRoot, "skills", "selected", "SKILL.md"), "utf8"),
+        ).toContain("selected payload");
+        const config = JSON.parse(
+          await readFile(join(remoteHome, ".uwork", "cli", "config.json"), "utf8"),
+        );
+        expect(config.plugins.dirs).toEqual([resolve(importedRoot)]);
+      } finally {
+        setDataBaseDir(null);
+        await Promise.all(
+          [localHome, remoteHome].map((home) => rm(home, { recursive: true, force: true })),
+        );
+      }
+    },
+  );
   let originalHome: string | undefined;
 
   beforeEach(() => {
@@ -59,11 +143,13 @@ describe("plugin sync service", () => {
 
   afterEach(() => {
     process.env.HOME = originalHome;
+    setDataBaseDir(null);
   });
 
   it("lists user inline plugins from zcode plugins.dirs as local candidates", async () => {
     const home = makeHome();
     process.env.HOME = home;
+    setDataBaseDir(home);
     const pluginRoot = await writeInlinePlugin(join(home, "external"), "remote-tools", {
       name: "remote-tools",
       mcpServers: { docs: { command: "node", args: ["server.js"] } },
@@ -101,6 +187,7 @@ describe("plugin sync service", () => {
   it("checks remote plugin and config directory write access before sync", async () => {
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const service = createPluginSyncService();
 
     const result = await service.checkRemoteUserPluginWriteAccess();
@@ -108,8 +195,8 @@ describe("plugin sync service", () => {
     expect(result).toMatchObject({
       ok: true,
       path: [
-        join(remoteHome, ".zcode", "plugins"),
-        join(remoteHome, ".zcode", "cli"),
+        join(remoteHome, ".uwork", "plugins"),
+        join(remoteHome, ".uwork", "cli"),
       ].join(", "),
     });
   });
@@ -117,28 +204,30 @@ describe("plugin sync service", () => {
   it("reports remote plugin write preflight failure when plugin root is not a directory", async () => {
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
-    await mkdir(join(remoteHome, ".zcode"), { recursive: true });
-    await writeFile(join(remoteHome, ".zcode", "plugins"), "not a directory");
+    setDataBaseDir(remoteHome);
+    await mkdir(join(remoteHome, ".uwork"), { recursive: true });
+    await writeFile(join(remoteHome, ".uwork", "plugins"), "not a directory");
     const service = createPluginSyncService();
 
     const result = await service.checkRemoteUserPluginWriteAccess();
 
     expect(result.ok).toBe(false);
-    expect(result.path).toBe(join(remoteHome, ".zcode", "plugins"));
+    expect(result.path).toBe(join(remoteHome, ".uwork", "plugins"));
     expect(result.error).toBeTruthy();
   });
 
   it("does not list marketplace installed plugin cache records as V1 candidates", async () => {
     const home = makeHome();
     process.env.HOME = home;
+    setDataBaseDir(home);
     const cachePluginRoot = await writeInlinePlugin(
-      join(home, ".zcode", "cli", "plugins", "cache", "market", "cached", "1.0.0"),
+      join(home, ".uwork", "cli", "plugins", "cache", "market", "cached", "1.0.0"),
       "cached",
       { name: "cached" },
     );
-    await mkdir(join(home, ".zcode", "cli", "plugins"), { recursive: true });
+    await mkdir(join(home, ".uwork", "cli", "plugins"), { recursive: true });
     await writeFile(
-      join(home, ".zcode", "cli", "plugins", "installed_plugins.json"),
+      join(home, ".uwork", "cli", "plugins", "installed_plugins.json"),
       `${JSON.stringify({
         plugins: [
           {
@@ -162,6 +251,7 @@ describe("plugin sync service", () => {
   it("imports selected inline plugins into the remote user plugin root and registers plugins.dirs", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const pluginRoot = await writeInlinePlugin(join(localHome, "external"), "remote-tools", {
       name: "remote-tools",
     });
@@ -181,6 +271,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const remoteService = createPluginSyncService();
     const result = await remoteService.importPluginsArchive({
       archive: exported.archive,
@@ -195,7 +286,7 @@ describe("plugin sync service", () => {
         status: "synced",
       },
     ]);
-    const remotePluginRoot = join(remoteHome, ".zcode", "plugins", "remote-tools");
+    const remotePluginRoot = join(remoteHome, ".uwork", "plugins", "remote-tools");
     expect(existsSync(join(remotePluginRoot, ".zcode-plugin", "plugin.json"))).toBe(true);
     const remoteConfig = await readZcodeUserConfig(remoteHome);
     expect(remoteConfig).toMatchObject({
@@ -214,6 +305,7 @@ describe("plugin sync service", () => {
     }
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const pluginRoot = await writeInlinePlugin(join(localHome, "external"), "remote-tools", {
       name: "remote-tools",
       commands: ["commands"],
@@ -231,6 +323,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const remoteService = createPluginSyncService();
     await remoteService.importPluginsArchive({
       archive: exported.archive,
@@ -239,7 +332,7 @@ describe("plugin sync service", () => {
 
     const remoteCommandPath = join(
       remoteHome,
-      ".zcode",
+      ".uwork",
       "plugins",
       "remote-tools",
       "commands",
@@ -254,6 +347,7 @@ describe("plugin sync service", () => {
     }
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const pluginRoot = await writeInlinePlugin(join(localHome, "external"), "remote-tools", {
       name: "remote-tools",
     });
@@ -266,9 +360,10 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     await writeZcodeUserConfig(remoteHome, {});
-    const remoteConfigDir = join(remoteHome, ".zcode", "cli");
-    const remotePluginRoot = join(remoteHome, ".zcode", "plugins", "remote-tools");
+    const remoteConfigDir = join(remoteHome, ".uwork", "cli");
+    const remotePluginRoot = join(remoteHome, ".uwork", "plugins", "remote-tools");
     const remoteService = createPluginSyncService();
 
     await chmod(remoteConfigDir, 0o555);
@@ -309,6 +404,7 @@ describe("plugin sync service", () => {
   it("skips remote import when the same plugin id already exists in remote plugins.dirs", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const pluginRoot = await writeInlinePlugin(join(localHome, "external"), "remote-tools", {
       name: "remote-tools",
     });
@@ -327,6 +423,7 @@ describe("plugin sync service", () => {
     );
     await writeZcodeUserConfig(remoteHome, { plugins: { dirs: [existingRemoteRoot] } });
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const remoteService = createPluginSyncService();
 
     const result = await remoteService.importPluginsArchive({
@@ -347,10 +444,11 @@ describe("plugin sync service", () => {
   it("reports remote statuses by target directory and plugin id", async () => {
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const existingRemoteRoot = await writeInlinePlugin(join(remoteHome, "existing"), "known", {
       name: "known",
     });
-    await writeInlinePlugin(join(remoteHome, ".zcode", "plugins"), "known", {
+    await writeInlinePlugin(join(remoteHome, ".uwork", "plugins"), "known", {
       name: "other-known",
     });
     await writeZcodeUserConfig(remoteHome, { plugins: { dirs: [existingRemoteRoot] } });
@@ -377,6 +475,7 @@ describe("plugin sync service", () => {
     }
     const home = makeHome();
     process.env.HOME = home;
+    setDataBaseDir(home);
     const pluginRoot = await writeInlinePlugin(join(home, "external"), "remote-tools", {
       name: "remote-tools",
     });
@@ -396,6 +495,7 @@ describe("plugin sync service", () => {
   it("exports and imports a mirrored directory marketplace source", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     await writeInlinePlugin(marketplaceRoot, "formatter", { name: "formatter" });
     await writeFile(
@@ -422,6 +522,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const remoteService = createPluginSyncService();
     const imported = await remoteService.importMarketplaceSourceArchive({
       archive: exported.archive,
@@ -432,7 +533,7 @@ describe("plugin sync service", () => {
       marketplaceId: "team-market",
       status: "synced",
     });
-    expect(imported.path.startsWith(join(remoteHome, ".zcode", "plugins", "marketplace-sources"))).toBe(true);
+    expect(imported.path.startsWith(join(remoteHome, ".uwork", "plugins", "marketplace-sources"))).toBe(true);
     const mirroredManifest = await readJsonFile(join(imported.path, "marketplace.json"));
     expect(mirroredManifest).toMatchObject({
       name: "team-market",
@@ -454,6 +555,7 @@ describe("plugin sync service", () => {
   it("rejects absolute marketplace plugin source paths outside the marketplace root", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     const externalPluginRoot = await writeInlinePlugin(join(localHome, "external"), "formatter", {
       name: "formatter",
@@ -485,6 +587,7 @@ describe("plugin sync service", () => {
   it("rejects mirrored marketplace plugin source directories without a plugin manifest", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     await mkdir(join(marketplaceRoot, "formatter"), { recursive: true });
     await writeFile(join(marketplaceRoot, "formatter", "README.md"), "not a plugin\n", "utf-8");
@@ -514,6 +617,7 @@ describe("plugin sync service", () => {
   it("changes mirrored marketplace source directory when local plugin contents change", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     const pluginRoot = await writeInlinePlugin(marketplaceRoot, "formatter", {
       name: "formatter",
@@ -542,6 +646,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const remoteService = createPluginSyncService();
     const beforeImport = await remoteService.importMarketplaceSourceArchive({
       archive: before.archive,
@@ -558,6 +663,7 @@ describe("plugin sync service", () => {
   it("mirrors same-marketplace dependencies with the selected marketplace plugin", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     await writeInlinePlugin(marketplaceRoot, "formatter", { name: "formatter" });
     await writeInlinePlugin(marketplaceRoot, "helper", { name: "helper" });
@@ -580,6 +686,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const imported = await createPluginSyncService().importMarketplaceSourceArchive({
       archive: exported.archive,
       overwrite: false,
@@ -597,6 +704,7 @@ describe("plugin sync service", () => {
   it("exports a file marketplace source with plugin paths relative to the marketplace file", async () => {
     const localHome = makeHome();
     process.env.HOME = localHome;
+    setDataBaseDir(localHome);
     const marketplaceRoot = join(localHome, "team-market");
     await writeInlinePlugin(marketplaceRoot, "formatter", { name: "formatter" });
     const marketplaceFile = join(marketplaceRoot, "marketplace.json");
@@ -616,6 +724,7 @@ describe("plugin sync service", () => {
     });
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const imported = await createPluginSyncService().importMarketplaceSourceArchive({
       archive: exported.archive,
       overwrite: false,
@@ -627,6 +736,7 @@ describe("plugin sync service", () => {
   it("exports a settings marketplace source without local cache fallback when entries are remote", async () => {
     const home = makeHome();
     process.env.HOME = home;
+    setDataBaseDir(home);
     const service = createPluginSyncService();
 
     const exported = await service.exportMarketplaceSourceArchive({
@@ -649,6 +759,7 @@ describe("plugin sync service", () => {
 
     const remoteHome = makeHome();
     process.env.HOME = remoteHome;
+    setDataBaseDir(remoteHome);
     const imported = await createPluginSyncService().importMarketplaceSourceArchive({
       archive: exported.archive,
       overwrite: false,
@@ -670,6 +781,7 @@ describe("plugin sync service", () => {
   it("rejects settings marketplace entries whose local source root cannot be reconstructed", async () => {
     const home = makeHome();
     process.env.HOME = home;
+    setDataBaseDir(home);
     const service = createPluginSyncService();
 
     await expect(

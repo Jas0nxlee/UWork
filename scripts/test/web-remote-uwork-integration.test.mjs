@@ -17,10 +17,15 @@ test("every phone attachment entry explicitly uses the existing Host identity re
   for (const [start, end] of [
     ["const renderExternalRelayRoot =", "const renderExternalRelayHomeOnlyRoot ="],
     ["const renderExternalRelayHomeOnlyRoot =", "bootstrapPairedSession ="],
-    ["const renderBridgeRoot =", "const openWorkspaceBridge ="],
   ]) {
     assert.match(between(source, start, end), /enterpriseIdentityReadOnly\b/, start);
   }
+  const bootstrap = between(source, "async function resolveWebBootstrap()", "async function");
+  assert.match(
+    bootstrap,
+    /if \(remoteId\)\s*\{\s*return \{ wsUrl, enterpriseIdentityReadOnly: true \}/,
+  );
+  assert.match(source, /enterpriseIdentityReadOnly=\{bootstrap\.enterpriseIdentityReadOnly\}/);
 });
 
 test("Root preserves the phone bridge projection and selects replayable workbench semantics", async () => {
@@ -30,26 +35,41 @@ test("Root preserves the phone bridge projection and selects replayable workbenc
   for (const field of [
     "webRemoteControlWorkspaceSwitcher",
     "initialWebRemoteControlMobileNavigationIntent",
-    "initialWebRemoteControlWorkspaceList",
     "webRemoteControlTerminalTransportState",
   ]) {
     assert.match(rootInner, new RegExp(`\\b${field}\\b`));
     assert.match(workspaceContent, new RegExp(`${field}=\\{\\s*${field}\\s*\\}`));
   }
+  // 项目树重构后，Host 目录整组替代旧 initial workspace/task 快照；禁止恢复第二份行集合。
+  assert.match(source, /<ProjectDirectoryProvider\b/);
+  const tree = await readSource("packages/ui/src/project-sidebar/useProjectTree.ts");
+  assert.match(tree, /services\.windowProjectDirectory \?\? services/);
+  assert.match(tree, /readProjectSidebarTree\(\{/);
+  assert.match(tree, /projectService: service/);
   assert.match(
     source,
     /workbenchGroupClientMode:\s*isWebRemoteControlRoot\s*\?\s*"web-remote-replayable"\s*:\s*"desktop-continuous"/,
   );
 });
 
-test("wide remote Sidebar consumes the same task index and switching lifecycle callbacks", async () => {
-  const source = await readSource("packages/ui/src/WorkspaceSidebar.tsx");
-  assert.match(source, /<WebRemoteControlTaskIndex\b/);
-  assert.match(source, /switcher=\{webRemoteControlWorkspaceSwitcher\}/);
-  assert.match(source, /onTaskOpen=\{onWebRemoteTaskOpen\}/);
-  assert.match(source, /onCrossWorkspaceSwitchingChange=\{onWebRemoteTaskSwitchingChange\}/);
-  assert.doesNotMatch(
-    source,
-    /:\s*_(?:webRemoteControlWorkspaceSwitcher|isWebRemoteControl|onWebRemoteTaskOpen|onWebRemoteTaskSwitchingChange)\b/,
+test("wide and mobile project Sidebar share the Host tree and complete switching lifecycle", async () => {
+  const entry = await readSource("packages/ui/src/WorkspaceSidebar.tsx");
+  assert.match(entry, /ProjectSidebar as WorkspaceSidebar/);
+  const sidebar = await readSource("packages/ui/src/project-sidebar/index.tsx");
+  assert.match(sidebar, /useProjectTaskNavigation\(props, tree, remoteService\)/);
+  const navigation = await readSource(
+    "packages/ui/src/project-sidebar/useProjectTaskNavigation.ts",
   );
+  assert.match(navigation, /switcher: props\.webRemoteControlWorkspaceSwitcher/);
+  assert.match(navigation, /onTaskOpen: props\.onWebRemoteTaskOpen/);
+  assert.match(navigation, /onSwitchingChange: props\.onWebRemoteTaskSwitchingChange/);
+  assert.match(navigation, /workspaceIdentity: identity/);
+  assert.match(navigation, /mobileNavigationIntent: "chat"/);
+  const shell = await readSource("packages/ui/src/app-shell/WorkspaceShellLayout.tsx");
+  assert.match(shell, /renderTaskHome=\{renderWorkspaceSidebar\}/);
+  assert.match(shell, /switcher=\{webRemoteControlWorkspaceSwitcher\}/);
+  const homeOnly = await readSource("packages/ui/src/project-sidebar/useHomeOnlyWorkspaces.ts");
+  assert.match(homeOnly, /switcher\.listWorkspaces\(\)/);
+  assert.match(homeOnly, /switcher\.onWorkspaceListUpdated/);
+  assert.match(homeOnly, /request === generation\.current/);
 });

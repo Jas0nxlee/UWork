@@ -4,7 +4,7 @@
  * 与那两个同口径：远端先探写能力；保存是显式的、带版本比对与 sibling 备份；产物校验不过不写盘。
  * 差别在**保真策略**：不做"整份重写"，只在源 zip 上替换被改过的那几张幻灯片 XML，其余部件逐字节保留。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openPptxDocumentForEdit } from "./pptOpen.js";
 import { savePptxDocument } from "./pptSave.js";
@@ -38,7 +38,7 @@ export function editKey(partName: string, blockIndex: number): PptxEditKey {
 }
 
 export interface UsePptxDocumentInput {
-  fileService: IFileService;
+  fileService: OfficeEditorFilePort;
   path: string;
   remote?: boolean;
   onDirtyChange?: ((dirty: boolean) => void) | undefined;

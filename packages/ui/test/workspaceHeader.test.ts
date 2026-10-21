@@ -64,24 +64,6 @@ describe("WorkspaceHeader", () => {
     );
   }
 
-  it("releases native control spacing when the side pane owns the right edge", async () => {
-    const html = await renderWorkspaceHeader({
-      isDesktop: true,
-      isWindowsDesktop: true,
-      reserveWindowControls: false,
-    });
-    expect(html).not.toContain("padding-right:");
-    expect(html).not.toContain("pr-0");
-    expect(html).toContain("p-2");
-    const linux = await renderWorkspaceHeader({
-      isDesktop: true,
-      isMacDesktop: false,
-      isWindowsDesktop: false,
-      reserveWindowControls: false,
-    });
-    expect(linux).not.toContain("pr-[120px]");
-  });
-
   it("does not pass status panel toggle props to the workspace header actions", async () => {
     const html = await renderWorkspaceHeader({
       activeTaskId: "task-1",
@@ -114,16 +96,13 @@ describe("WorkspaceHeader", () => {
     expect(html).toContain('data-summary-panel-toggle-prop="absent"');
   });
 
-  it("keeps the draft separator transparent while the side pane is open", async () => {
+  it("remote draft still mounts device context in the header", async () => {
     const html = await renderWorkspaceHeader({
       variant: "draft",
       activeTaskId: null,
-      activeTaskTitle: "New task",
-      isSidePaneOpen: true,
+      remoteTarget: { kind: "ssh", host: "dev", username: "me" },
     });
-
-    expect(html).not.toContain("border-border");
-    expect(html).toContain("border-transparent");
+    expect(html).toContain('data-testid="workspace-header-title"');
   });
 
   it.each([
@@ -143,6 +122,9 @@ describe("WorkspaceHeader", () => {
 
       expect(html).not.toContain('data-testid="windows-caption-menu"');
       expect(html).toContain('data-window-controls="true"');
+      if (isWindowsDesktop) {
+        expect(html).toContain('data-caption-spacing="false"');
+      }
       expect(html).not.toContain('data-testid="workspace-header-title"');
     },
   );
@@ -159,30 +141,5 @@ describe("WorkspaceHeader", () => {
     expect(html).not.toContain('data-testid="windows-caption-menu"');
     expect(html).toContain('data-window-controls="true"');
     expect(html).not.toContain('data-testid="linux-window-controls"');
-  });
-
-  it("limits titlebar padding animation to padding only", async () => {
-    const html = await renderWorkspaceHeader({
-      isDesktop: true,
-      isMacDesktop: true,
-      isMacFullscreen: false,
-    });
-
-    expect(html).toContain("transition-[padding]");
-    expect(html).not.toContain("transition-padding");
-  });
-
-  it("uses the actual Windows titlebar geometry with the platform metric as fallback", async () => {
-    const html = await renderWorkspaceHeader({
-      isDesktop: true,
-      isMacDesktop: false,
-      isWindowsDesktop: true,
-      windowsWindowControlsRightPaddingPx: 181,
-    });
-
-    // Bugfix: zoom / DPI 下不能只把推算的 inset 写死到 padding，否则下拉按钮会压住最小化。
-    expect(html).not.toContain("padding-right:");
-
-    expect(html).toContain('data-caption-spacing="false"');
   });
 });

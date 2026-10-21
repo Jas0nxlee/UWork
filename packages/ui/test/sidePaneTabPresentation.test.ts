@@ -18,6 +18,7 @@ const labels: SidePaneTabPresentationLabels = {
   whiteboardTitle: "Whiteboard",
   modelTrajectoryTitle: "Model trajectory",
   developerToolsTitle: "Developer tools",
+  pluginMarketTitle: "Plugins",
   terminalTitle: "Terminal",
   subagentTypeLabel: "Subagent",
   subagentDirectoryTitle: "Subagents",
@@ -27,7 +28,6 @@ const labels: SidePaneTabPresentationLabels = {
   workflowActorTitle: "Workflow subagent",
   workflowArtifactTitle: "Artifact",
   workflowScriptTitle: "Script steps",
-  imTitle: "Messages",
 };
 
 const workflowActorTab: Extract<WorkspaceSidePaneTab, { type: "workflow-actor-session" }> = {
@@ -79,7 +79,6 @@ describe("workflow-run tab presentation", () => {
 
   it("labels the type as a workflow run rather than falling through to code preview", () => {
     expect(getSidePaneTabTypeLabel(workflowRunTab, labels)).toBe("Workflow run");
-    expect(getSidePaneTabTypeLabel(workflowRunTab, labels)).not.toBe(labels.codeViewerTitle);
   });
 
   it("localizes the generic title but keeps a captured workflow name verbatim", () => {
@@ -102,9 +101,6 @@ describe("workflow-actor-session tab presentation", () => {
 
   it("labels the type as a workflow actor rather than falling through to code preview", () => {
     expect(getSidePaneTabTypeLabel(workflowActorTab, labels)).toBe("Workflow subagent");
-    expect(getSidePaneTabTypeLabel(workflowActorTab, labels)).not.toBe(labels.codeViewerTitle);
-    // 也不能被标成 subagent：actor 会话不是子智能体的子会话，两者的回收语义都不同。
-    expect(getSidePaneTabTypeLabel(workflowActorTab, labels)).not.toBe(labels.subagentTypeLabel);
   });
 
   it("keeps the script-authored actor name verbatim and always carries the instance ordinal", () => {
@@ -129,7 +125,6 @@ describe("workflow-artifact tab presentation", () => {
 
   it("labels the type as an artifact rather than falling through to code preview", () => {
     expect(getSidePaneTabTypeLabel(workflowArtifactTab, labels)).toBe("Artifact");
-    expect(getSidePaneTabTypeLabel(workflowArtifactTab, labels)).not.toBe(labels.codeViewerTitle);
   });
 
   it("keeps the captured title verbatim, then the artifact id, then the generic label", () => {
@@ -166,8 +161,6 @@ describe("workflow-workspace tab presentation", () => {
 
   it("labels the type as a workflow workspace rather than falling through to code preview", () => {
     expect(getSidePaneTabTypeLabel(workflowWorkspaceTab, labels)).toBe("Script steps");
-    expect(getSidePaneTabTypeLabel(workflowWorkspaceTab, labels)).not.toBe(labels.codeViewerTitle);
-    expect(getSidePaneTabTypeLabel(workflowWorkspaceTab, labels)).not.toBe(labels.workflowRunTitle);
   });
 
   it("titles the tab with the run name and falls back to the generic label", () => {
@@ -179,28 +172,16 @@ describe("workflow-workspace tab presentation", () => {
 
 // 回归：**无 source 字段**的 tab 类型曾把总览打崩——getSidePaneTabSearchHint 与
 // getSidePaneTabTitle 的兜底都直接读 `tab.source.*`，于是 undefined.path 抛错、
-// 整棵 workspace 子树挂掉（browser-use 踩过一次，本轮 messages tab 又踩一次）。
+// 整棵 workspace 子树挂掉（browser-use 踩过一次）。
 // 类型检查拦不住这类问题：本仓 tsconfig 没开 strictNullChecks，`tab.source.path` 是合法 TS。
-// 所以这里对"新类型 + 完全未知类型"各钉一条，兜底必须给中性结果而不是抛错。
-const messagesTab: Extract<WorkspaceSidePaneTab, { type: "messages" }> = {
-  id: "messages:%2Fworkspace",
-  type: "messages",
-  workspaceKey: "/workspace",
-  workspacePath: "/workspace",
-};
-
+// 所以这里对"完全未知的类型"钉一条，兜底必须给中性结果而不是抛错。
 describe("无 source 字段的 tab 类型", () => {
-  it("messages：搜索提示、类型标签、标题三处都可用", () => {
-    expect(() => getSidePaneTabSearchHint(messagesTab)).not.toThrow();
-    expect(getSidePaneTabSearchHint(messagesTab)).toContain("messages");
-    expect(getSidePaneTabTypeLabel(messagesTab, labels)).toBe("Messages");
-    expect(getLocalizedSidePaneTabTitle(messagesTab, labels)).toBe("Messages");
-  });
-
   it("未来新增的未知类型：兜底不抛错，只给中性结果", () => {
     const unknownTab = {
-      ...messagesTab,
+      id: "brand-new-kind:%2Fworkspace",
       type: "brand-new-kind",
+      workspaceKey: "/workspace",
+      workspacePath: "/workspace",
     } as unknown as WorkspaceSidePaneTab;
     expect(() => getSidePaneTabSearchHint(unknownTab)).not.toThrow();
     expect(getSidePaneTabSearchHint(unknownTab)).toBe("");

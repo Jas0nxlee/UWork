@@ -8,14 +8,14 @@
  *
  * 单独成文件的原因：编辑位的文件要守 400 行；这块也确实是"打开门之前的检查"，与编辑逻辑无关。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 import { base64ToArrayBuffer } from "./binary.js";
 import { probeWriteSupport } from "./fileWriteSupport.js";
 
 export interface PptxOpenChecks {
   /** 应用内编辑的体积上限。 */
   maxBytes: number;
-  fileService: IFileService;
+  fileService: OfficeEditorFilePort;
   path: string;
   remote?: boolean | undefined;
 }
