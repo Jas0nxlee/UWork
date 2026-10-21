@@ -288,19 +288,22 @@ sequenceDiagram
 
 **回调域名必须逐组织核对（2026-10-08 生产实测）**：企微在授权页按「该企业应用后台配置的授权回调域名」校验 `redirect_uri`，**端口参与匹配**。生产 openresty 为三家公司各起一个 server 块（`/www/sites/pivot{,-nj,.ansilic}*`）：`pivot.ucas.com.cn:23090`、`pivot-nj.ucas.com.cn:23091`、`pivot.ansilic.com:23092`（都反代 `127.0.0.1:23080` 的同一份 SPA）。用企微授权页做「3 个应用 × 候选域名」矩阵实测，**只有对角组合出二维码**，交叉组合（含"正确域名 + 错误端口"如 `pivot-nj.ucas.com.cn:23090`）全部报「redirect_uri 与配置的授权完成回调域名不一致」。所以 `callbackUrl` 必须逐组织取、且与企微后台逐字一致（含端口）；不要按"同域名不同端口"或 443 默认端口推断。
 
-**天津组织接入（2026-10-21）**
+**天津组织配置记录（2026-10-21）**
 
-| 项            | 值                                                                                                               |
-| ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `orgId`       | `80f0a35d-d5f7-4e7e-bc3a-d02d2a1a2360`（slug `tianjin`）                                                         |
-| 企微应用      | `corpId=wwb6eecb2e8c0f9d8a`、`agentId=1000003`                                                                   |
-| 入口          | `https://pivot-tj.ucas.com.cn`（校园网关 443 → 本机 23083 → 容器 23080；`/api/auth/orgs`、`/callback` 实测 200） |
-| `callbackUrl` | `https://pivot-tj.ucas.com.cn/callback`（**无端口**，与其它三家"域名+端口"的形态不同）                           |
+以下生产接口和数据库结果来自接入 PR 的记录，本次合并仅核对客户端配置读取与组织校验源码；不代表已复验生产环境或完成企微扫码验收。
 
-- 生产库核对（只读 `organizations` 表）：`custom_domain=pivot-tj.ucas.com.cn`、`new_api_group=beijing`，与其它三家共用同一控制面与模型组。
+| 项            | 值                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------- |
+| `orgId`       | `80f0a35d-d5f7-4e7e-bc3a-d02d2a1a2360`（slug `tianjin`）                               |
+| 企微应用      | `corpId=wwb6eecb2e8c0f9d8a`、`agentId=1000003`                                         |
+| 入口          | `https://pivot-tj.ucas.com.cn`（接入记录报告 `/api/auth/orgs`、`/callback` 返回 200）  |
+| `callbackUrl` | `https://pivot-tj.ucas.com.cn/callback`（**无端口**，与其它三家"域名+端口"的形态不同） |
+
+- 接入记录中的生产库只读核对（`organizations` 表）：`custom_domain=pivot-tj.ucas.com.cn`、`new_api_group=beijing`，与其它三家共用同一控制面与模型组。
 - **客户端不需要改代码**：登录卡片按配置清单渲染，加一条即出现「天津」；组织校验仍是"请求 `org_id` / 回包 `org_id` / 续期 `tenantId` 三处一致"。
-- 配置落点：本机/dev = `{appConfigDir}/enterprise-identity.json` 覆盖（优先级高于包内）与 `packages/desktop/.release-config/enterprise-identity.json`；正式安装包 = CI 加密配置 `UWORK_ENTERPRISE_IDENTITY_CONFIG`（GitHub Actions secret，改动后需重新构建才生效）。
-- **待人工核对**：天津企微应用后台的「授权回调域名」须与上表 `callbackUrl` 逐字一致——443 无端口只是我们的入口事实，企微侧配置无法从代码侧确认。
+- 配置读取只有两层：先读本机 `{appConfigDir}/enterprise-identity.json`；仅文件不存在时，才读当前运行形态的内置配置。开发态内置路径为 `packages/desktop/.release-config/enterprise-identity.json`，安装包内置路径为 `Resources/config/enterprise-identity.json`，两者不是依次回退的三层。旧单组织本机文件也会完整覆盖内置清单；无效本机文件会报错，不静默换组织。
+- 正式安装包内置参数由 CI 的 `UWORK_ENTERPRISE_IDENTITY_CONFIG` 生成；本 PR 不更新该 secret，也不构建或部署安装包，默认天津入口是否生效仍待配置与重新构建验收。
+- **待人工核对**：在天津企微应用后台核对上表回调 URL 对应的授权回调域名设置，并以实际扫码回调验证；不要把带 `/callback` 路径的完整 URL 当成域名字段值。HTTPS 默认端口的入口记录不能证明企微后台配置正确。
 
 **二维码阶段的回头路**：多组织时等待扫码的卡片提供「重新选择公司」——取消当前尝试、保留登录入口并回到选择器（与「跳过登录」的区别是不关闭弹窗）。
 
