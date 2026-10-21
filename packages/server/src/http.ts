@@ -162,7 +162,7 @@ function readTrimmedEnv(name: string): string | undefined {
 
 export function resolveHttpServerId(options: HttpServerOptions = {}): string {
   return (
-    options.serverId?.trim() || readTrimmedEnv("ZCODE_SERVER_ID") || hostname() || "zcode-server"
+    options.serverId?.trim() || readTrimmedEnv("ZCODE_SERVER_ID") || hostname() || "uwork-server"
   );
 }
 

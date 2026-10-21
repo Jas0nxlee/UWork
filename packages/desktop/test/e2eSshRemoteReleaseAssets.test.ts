@@ -8,10 +8,10 @@ const RELEASE_DIR = "/repo/packages/desktop/mock-cdn/releases/3.12.0";
 // 的实际产物一致：descriptor 最后原子写入，四个 archive 按 target 命名。
 const RELEASE_FILES = [
   "source-server-release.json",
-  "zcode-server-linux-x64.tar.gz",
-  "zcode-server-linux-arm64.tar.gz",
-  "zcode-server-darwin-x64.tar.gz",
-  "zcode-server-darwin-arm64.tar.gz",
+  "uwork-server-linux-x64.tar.gz",
+  "uwork-server-linux-arm64.tar.gz",
+  "uwork-server-darwin-x64.tar.gz",
+  "uwork-server-darwin-arm64.tar.gz",
 ];
 
 function createFakeExists(existing: Set<string>) {
@@ -102,7 +102,7 @@ describe("ensureSshRemoteReleaseAssets", () => {
     const prepareReleaseAssets = vi.fn();
     const existing = new Set([
       `${RELEASE_DIR}/source-server-release.json`,
-      `${RELEASE_DIR}/zcode-server-linux-x64.tar.gz`,
+      `${RELEASE_DIR}/uwork-server-linux-x64.tar.gz`,
     ]);
 
     expect(() =>
@@ -112,7 +112,7 @@ describe("ensureSshRemoteReleaseAssets", () => {
         releaseDir: RELEASE_DIR,
       }),
     ).toThrow(
-      /prepare:remote-assets.*\/releases\/3\.12\.0.*zcode-server-linux-arm64\.tar\.gz, zcode-server-darwin-x64\.tar\.gz, zcode-server-darwin-arm64\.tar\.gz/u,
+      /prepare:remote-assets.*\/releases\/3\.12\.0.*uwork-server-linux-arm64\.tar\.gz, uwork-server-darwin-x64\.tar\.gz, uwork-server-darwin-arm64\.tar\.gz/u,
     );
     expect(prepareReleaseAssets).toHaveBeenCalledOnce();
   });

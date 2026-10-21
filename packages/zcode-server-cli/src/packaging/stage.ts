@@ -51,7 +51,7 @@ export interface StagedRelease {
 }
 
 const POSIX_LAUNCHER = `#!/bin/sh
-# 由 zcode-server staging 生成：定位发行根后用随包 Node 启动 Server CLI。
+# 由 uwork-server staging 生成：定位发行根后用随包 Node 启动 Server CLI。
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 exec "$DIR/runtime/node" "$DIR/runtime/server-cli.js" "$@"
 `;
@@ -189,12 +189,12 @@ async function copyNativeTools(
   return copied;
 }
 
-/** 组装 `zcode-server-<os>-<arch>/` 发行目录（spec §7.1）；只做本地组装，不上传、不发布。 */
+/** 组装 `uwork-server-<os>-<arch>/` 发行目录（spec §7.1）；只做本地组装，不上传、不发布。 */
 export async function stageRelease(options: StageOptions): Promise<StagedRelease> {
   for (const [name, value] of Object.entries(options.notices)) {
     if (!value.trim()) throw new Error(`Missing distribution notice: ${name}`);
   }
-  const releaseName = `zcode-server-${options.target}`;
+  const releaseName = `uwork-server-${options.target}`;
   const outputRoot = resolve(options.outputDir);
   const releaseDir = join(outputRoot, releaseName);
   const runtimeDir = join(releaseDir, "runtime");
@@ -314,7 +314,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
   const launcherPath = join(
     releaseDir,
     "bin",
-    options.target.startsWith("win32-") ? "zcode.cmd" : "zcode",
+    options.target.startsWith("win32-") ? "uwork.cmd" : "uwork",
   );
   await writeFile(launcherPath, POSIX_LAUNCHER, "utf8");
   if (options.target.startsWith("win32-")) {

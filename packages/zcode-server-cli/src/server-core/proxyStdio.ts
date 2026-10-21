@@ -32,7 +32,7 @@ export async function runProxyStdio(options: ProxyStdioOptions): Promise<void> {
   ) {
     throw new ProxyStdioError(
       "daemon-not-ready",
-      "ZCode Server daemon is not ready for proxy-stdio",
+      "UWork Server daemon is not ready for proxy-stdio",
     );
   }
 
@@ -48,7 +48,7 @@ export async function runProxyStdio(options: ProxyStdioOptions): Promise<void> {
     socket.destroy();
     throw new ProxyStdioError(
       "daemon-connect-failed",
-      "Unable to connect proxy-stdio to the ZCode Server daemon",
+      "Unable to connect proxy-stdio to the UWork Server daemon",
       { cause: error },
     );
   }

@@ -17,12 +17,19 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
+/** 发行归档根目录前缀：新身份优先，旧身份仍要能解包安装（已发布 archive 用的是旧名）。 */
+const RELEASE_ROOT_PREFIXES = ["uwork-server-", "zcode-server-"] as const;
+
 async function flattenArchiveRoot(extractDir: string): Promise<void> {
   const entries = await readdir(extractDir, { withFileTypes: true });
   // macOS tar 可能额外写入 `._*` PAX/resource-fork 条目，不能因为这些旁路文件
   // 让唯一发行根目录识别失败，否则后续会误报 manifest.json 缺失。
-  const rootEntries = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith("zcode-server-"));
-  if (rootEntries.length > 1) throw new Error("Release archive contains multiple zcode-server roots");
+  const rootEntries = entries.filter(
+    (entry) =>
+      entry.isDirectory() &&
+      RELEASE_ROOT_PREFIXES.some((prefix) => entry.name.startsWith(prefix)),
+  );
+  if (rootEntries.length > 1) throw new Error("Release archive contains multiple server roots");
   const rootEntry = rootEntries[0];
   if (!rootEntry) return;
   const nested = join(extractDir, rootEntry.name);

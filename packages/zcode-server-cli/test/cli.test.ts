@@ -162,7 +162,7 @@ describe("Server CLI routing", () => {
 
     expect(textOutput.join("").trim()).toBe(ZCODE_VERSION);
     expect(JSON.parse(jsonOutput.join(""))).toEqual({
-      product: "zcode-server",
+      product: "uwork-server",
       version: ZCODE_VERSION,
     });
     expect(legacyDelegate).not.toHaveBeenCalled();

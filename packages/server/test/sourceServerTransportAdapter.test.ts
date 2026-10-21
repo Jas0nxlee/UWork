@@ -21,6 +21,9 @@ function completedStream(stdoutText: string, stderrText = "", code = 0): StdioSt
   return { stdin, stdout, stderr, onClose: closed.event };
 }
 
+/** transportAdapter 解析安装根的命令固定以该片段输出结果。 */
+const RESOLVE_SERVER_ROOT_PROBE_FRAGMENT = `printf '%s\\n' "$SERVER_ROOT"`;
+
 class FakeBackend implements IRemoteBackend {
   readonly commands: string[] = [];
   readonly uploads: Array<{ localPath: string; remotePath: string }> = [];
@@ -39,6 +42,8 @@ class FakeBackend implements IRemoteBackend {
       exitCode: number;
     },
     private readonly tarAvailable = true,
+    // 远端解析出的安装根：默认新根；旧安装用例传 `~/.zcode/server` 的绝对形式。
+    private readonly resolvedServerRoot = "/home/alice/.uwork/server",
   ) {}
 
   async detect() {
@@ -51,6 +56,13 @@ class FakeBackend implements IRemoteBackend {
 
   async exec(command: string): Promise<StdioStream> {
     this.commands.push(command);
+    // 安装前先解析远端生效的安装根（新根优先、旧根回退）；probe 自带同一片段，不在此分支。
+    if (
+      !command.includes("__ZCODE_PROBE_") &&
+      command.includes(RESOLVE_SERVER_ROOT_PROBE_FRAGMENT)
+    ) {
+      return completedStream(`${this.resolvedServerRoot}\n`);
+    }
     if (command.includes("__ZCODE_PROBE_PLATFORM__")) {
       const releaseSection = command.includes("__ZCODE_PROBE_RELEASE__")
         ? `__ZCODE_PROBE_RELEASE__\n${JSON.stringify({ version: "3.8.0", archiveSha256: "c".repeat(64) })}\n`
@@ -309,25 +321,25 @@ function contract(name: string, target: RemoteTarget): void {
       await adapter.installOrUpdate(
         target,
         {
-          localArchivePath: "/tmp/zcode-server-linux-x64.tar.gz",
+          localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
           target: "linux-x64",
           version: "3.8.0",
           sha256: "a".repeat(64),
           sizeBytes: 1024,
-          urls: ["https://cdn.example.test/zcode-server-linux-x64.tar.gz"],
+          urls: ["https://cdn.example.test/uwork-server-linux-x64.tar.gz"],
         },
         {},
         { force: true },
       );
       expect(backend.uploads).toHaveLength(1);
       expect(backend.uploads[0]?.remotePath).toMatch(
-        /^~\/\.zcode\/server\/\.bootstrap-[^/]+\/zcode-server\.tar\.gz$/u,
+        /^\/home\/alice\/\.uwork\/server\/\.bootstrap-[^/]+\/uwork-server\.tar\.gz$/u,
       );
       expect(backend.uploads[0]?.remotePath).not.toContain("/tmp/");
       const prepareCommand = backend.commands.find(
         (command) => command.includes("mkdir -p") && command.includes(".bootstrap-"),
       );
-      expect(prepareCommand).toContain('"$HOME/.zcode/server"/.bootstrap-*');
+      expect(prepareCommand).toContain("'/home/alice/.uwork/server'/.bootstrap-*");
       expect(prepareCommand).toContain("1800000");
       expect(prepareCommand).toContain("date +%s");
       const updateCommand = backend.commands.find((command) =>
@@ -376,6 +388,85 @@ function contract(name: string, target: RemoteTarget): void {
 }
 
 for (const target of targets) contract(target.kind, target);
+
+it("解析远端安装根与启动器时新名优先、旧名回退", async () => {
+  const target = targets[0]!;
+  const backend = new FakeBackend();
+  const adapter = createSourceServerTransportAdapter("ssh", {
+    createBackend: async () => backend,
+  });
+
+  await adapter.probe(target, {});
+  const probeCommand = backend.commands.at(-1)!;
+  expect(probeCommand).toContain('SERVER_ROOT="$HOME/.uwork/server"');
+  expect(probeCommand).toContain('[ -d "$HOME/.zcode/server" ]');
+  expect(probeCommand).toContain('"$SERVER_ROOT/bin/uwork"');
+  expect(probeCommand).toContain('"$SERVER_ROOT/bin/zcode"');
+
+  await adapter.exec(target, ["status", "--json"], {});
+  const execCommand = backend.commands.at(-1)!;
+  expect(execCommand).toContain('SERVER_ROOT="$HOME/.uwork/server"');
+  expect(execCommand).toContain('"$SERVER_ROOT/bin/uwork"');
+  expect(execCommand).toContain('"$SERVER_ROOT/bin/zcode"');
+  expect(execCommand).toContain('--server-root "$SERVER_ROOT"');
+});
+
+it("旧安装（只有 ~/.zcode/server）继续作为安装目标，不新建新根", async () => {
+  const backend = new FakeBackend(
+    "3.8.0\n",
+    undefined,
+    undefined,
+    true,
+    "/home/alice/.zcode/server",
+  );
+  const adapter = createSourceServerTransportAdapter("ssh", {
+    createBackend: async () => backend,
+  });
+
+  await adapter.installOrUpdate(
+    { kind: "ssh", host: "example.com", username: "alice" },
+    {
+      localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
+      target: "linux-x64",
+      version: "3.8.0",
+      sha256: "a".repeat(64),
+      sizeBytes: 1024,
+      urls: [],
+    },
+    {},
+  );
+
+  expect(backend.uploads[0]?.remotePath).toMatch(
+    /^\/home\/alice\/\.zcode\/server\/\.bootstrap-[^/]+\/uwork-server\.tar\.gz$/u,
+  );
+  const updateCommand = backend.commands.find((command) =>
+    command.includes("update --from-archive"),
+  );
+  expect(updateCommand).toContain("--server-root '/home/alice/.zcode/server'");
+  expect(updateCommand).not.toContain("/home/alice/.uwork/server");
+});
+
+it("新根没有 ingress token 时回退读旧根", async () => {
+  const target = targets[0]!;
+  const backend = new FakeBackend();
+  backend.readFile = async (remotePath: string) => {
+    backend.readPaths.push(remotePath);
+    if (remotePath.startsWith("~/.zcode/server")) return "legacy-ingress-token\n";
+    throw new Error("ENOENT");
+  };
+  const adapter = createSourceServerTransportAdapter("ssh", {
+    createBackend: async () => backend,
+  });
+
+  await expect(adapter.ensureDaemon(target, {})).resolves.toEqual({
+    port: 43123,
+    ingressToken: "legacy-ingress-token",
+  });
+  expect(backend.readPaths).toEqual([
+    "~/.uwork/server/run/ingress-token",
+    "~/.zcode/server/run/ingress-token",
+  ]);
+});
 
 it.each(targets)("forwards $kind install progress before command completion", async (target) => {
   const backend = new FakeBackend();
@@ -467,12 +558,12 @@ it("preserves a public archive update guard from CLI JSON", async () => {
     adapter.installOrUpdate(
       { kind: "docker", container: "busy" },
       {
-        localArchivePath: "/tmp/zcode-server-linux-x64.tar.gz",
+        localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
         target: "linux-x64",
         version: "3.9.0",
         sha256: "b".repeat(64),
         sizeBytes: 2048,
-        urls: ["https://cdn.example.test/zcode-server-linux-x64.tar.gz"],
+        urls: ["https://cdn.example.test/uwork-server-linux-x64.tar.gz"],
       },
       {},
     ),
@@ -486,9 +577,9 @@ it("preserves a public archive update guard from CLI JSON", async () => {
   );
   expect(updateCommand).toMatch(/trap .* EXIT/u);
   expect(updateCommand).toContain(".bootstrap-");
-  expect(updateCommand).toContain("zcode-server.tar.gz");
-  expect(updateCommand).not.toContain("/tmp/zcode-server-bootstrap-");
-  expect(updateCommand).toContain('"$HOME/.zcode/server"/.bootstrap-');
+  expect(updateCommand).toContain("uwork-server.tar.gz");
+  expect(updateCommand).not.toContain("/tmp/uwork-server-bootstrap-");
+  expect(updateCommand).toContain("'/home/alice/.uwork/server/.bootstrap-");
 });
 
 it.each(targets)(
@@ -508,7 +599,7 @@ it.each(targets)(
       adapter.installOrUpdate(
         target,
         {
-          localArchivePath: "/tmp/zcode-server-linux-x64.tar.gz",
+          localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
           target: "linux-x64",
           version: "3.9.0",
           sha256: "b".repeat(64),
@@ -589,7 +680,7 @@ describe("SSH gateway that merges remote stderr into stdout", () => {
       adapter.installOrUpdate(
         target,
         {
-          localArchivePath: "/tmp/zcode-server-linux-x64.tar.gz",
+          localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
           target: "linux-x64",
           version: "3.9.0",
           sha256: "b".repeat(64),
@@ -612,12 +703,12 @@ it("fails before uploading when the remote host cannot extract the archive", asy
     adapter.installOrUpdate(
       { kind: "ssh", host: "example.com", username: "alice" },
       {
-        localArchivePath: "/tmp/zcode-server-linux-x64.tar.gz",
+        localArchivePath: "/tmp/uwork-server-linux-x64.tar.gz",
         target: "linux-x64",
         version: "3.8.1",
         sha256: "d".repeat(64),
         sizeBytes: 4096,
-        urls: ["https://cdn.example.test/zcode-server-linux-x64.tar.gz"],
+        urls: ["https://cdn.example.test/uwork-server-linux-x64.tar.gz"],
       },
       {},
     ),
@@ -644,7 +735,7 @@ it("downloads and verifies the Source Server archive on the SSH target when requ
       version: "3.9.0",
       sha256: "c".repeat(64),
       sizeBytes: 4096,
-      urls: ["https://cdn.example.test/zcode-server-linux-x64.tar.gz"],
+      urls: ["https://cdn.example.test/uwork-server-linux-x64.tar.gz"],
     },
     { onLog },
   );
@@ -681,7 +772,7 @@ it("uploads an explicitly resolved local development archive despite the SSH dow
       version: "3.8.1",
       sha256: "d".repeat(64),
       sizeBytes: 4096,
-      urls: ["https://cdn.example.test/zcode-server-linux-x64.tar.gz"],
+      urls: ["https://cdn.example.test/uwork-server-linux-x64.tar.gz"],
     },
     {},
   );
@@ -690,7 +781,7 @@ it("uploads an explicitly resolved local development archive despite the SSH dow
     {
       localPath: "/tmp/current-development-source-server.tar.gz",
       remotePath: expect.stringMatching(
-        /^~\/\.zcode\/server\/\.bootstrap-[^/]+\/zcode-server\.tar\.gz$/u,
+        /^\/home\/alice\/\.uwork\/server\/\.bootstrap-[^/]+\/uwork-server\.tar\.gz$/u,
       ),
     },
   ]);

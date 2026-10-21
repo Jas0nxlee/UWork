@@ -8,6 +8,11 @@ export const SOURCE_SERVER_RELEASE_TARGETS = [
 ] as const;
 export const SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME = "source-server-release.json";
 
+/** 远端正向发行归档的基名：`uwork-server-<target>.tar.gz`（descriptor 的 fileName 与之对应）。 */
+export const SOURCE_SERVER_ARCHIVE_BASENAME = "uwork-server";
+/** 兼容基名：3.16.2 之前发布的 descriptor/archive 用的是 `zcode-server-<target>.tar.gz`。 */
+export const LEGACY_SOURCE_SERVER_ARCHIVE_BASENAME = "zcode-server";
+
 export const sourceServerArtifactPolicySchema = z.enum([
   "release-versioned",
   "development-content-addressed",
@@ -41,12 +46,17 @@ export const sourceServerReleaseArchiveSchema = z
   })
   .strict()
   .superRefine((archive, context) => {
-    const expectedFileName = `zcode-server-${archive.target}.tar.gz`;
-    if (archive.fileName !== expectedFileName) {
+    // 接受新基名与旧基名：已发布的 CDN descriptor（含 cached descriptor）仍是旧基名，
+    // 变更身份后必须继续可解析，否则旧版本升级会因 descriptor 校验失败而无法更新。
+    const expectedFileNames = [
+      `${SOURCE_SERVER_ARCHIVE_BASENAME}-${archive.target}.tar.gz`,
+      `${LEGACY_SOURCE_SERVER_ARCHIVE_BASENAME}-${archive.target}.tar.gz`,
+    ];
+    if (!expectedFileNames.includes(archive.fileName)) {
       context.addIssue({
         code: "custom",
         path: ["fileName"],
-        message: `Source Server release fileName must be ${expectedFileName}`,
+        message: `Source Server release fileName must be ${expectedFileNames.join(" or ")}`,
       });
     }
   });

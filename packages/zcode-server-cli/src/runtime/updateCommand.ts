@@ -125,14 +125,14 @@ export async function runLocalArchiveUpdateCommand(
     await updateDaemonHandoff?.converge({ layout, previous, target: prepared });
     const result = { applied: true, installed: false, version: prepared.version };
     if (json) stdout(io, result);
-    else stdout(io, `ZCode Server ${prepared.version} updated`);
+    else stdout(io, `UWork Server ${prepared.version} updated`);
     return 0;
   }
   await releaseManager.applyPendingWithTransaction(previous);
   await releaseManager.completeUpdate();
   const result = { applied: true, installed: previous === null, version: prepared.version };
   if (json) stdout(io, result);
-  else stdout(io, `ZCode Server ${prepared.version} ${previous ? "updated" : "installed"}`);
+  else stdout(io, `UWork Server ${prepared.version} ${previous ? "updated" : "installed"}`);
   return 0;
 }
 
@@ -202,7 +202,7 @@ export async function runUpdateCommand(
     await updateDaemonHandoff?.converge({ layout, previous, target });
     const result = { applied: true, version: target.version };
     if (json) stdout(io, result);
-    else stdout(io, `ZCode Server ${target.version} updated`);
+    else stdout(io, `UWork Server ${target.version} updated`);
     return 0;
   } catch (error: unknown) {
     if (isRunningTaskUpdateGuard(error)) {

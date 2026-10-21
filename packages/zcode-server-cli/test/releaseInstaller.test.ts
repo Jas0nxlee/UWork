@@ -33,7 +33,7 @@ describe("release installer", () => {
   it("installs a tar release, writes pending and creates a stable launcher", async () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-release-installer-"));
     const layout = resolveServerLayout(join(root, "server"));
-    const archiveRoot = join(root, "zcode-server-linux-x64");
+    const archiveRoot = join(root, "uwork-server-linux-x64");
     await mkdir(join(archiveRoot, "runtime"), { recursive: true });
     await writeFile(join(archiveRoot, "runtime", "node"), "node", "utf8");
     await writeFile(join(archiveRoot, "runtime", "server-cli.js"), "", "utf8");
@@ -47,7 +47,7 @@ describe("release installer", () => {
     await writeFile(
       join(archiveRoot, "manifest.json"),
       JSON.stringify({
-        product: "zcode-server",
+        product: "uwork-server",
         target: "linux-x64",
         appVersion: "1.2.3",
         nodeVersion: "22.16.0",
@@ -66,7 +66,7 @@ describe("release installer", () => {
     const archivePath = join(root, "release.tar.gz");
     const { execFile } = await import("node:child_process");
     await new Promise<void>((resolve, reject) =>
-      execFile("tar", ["-czf", archivePath, "zcode-server-linux-x64"], { cwd: root }, (error) =>
+      execFile("tar", ["-czf", archivePath, "uwork-server-linux-x64"], { cwd: root }, (error) =>
         error ? reject(error) : resolve(),
       ),
     );
@@ -93,7 +93,7 @@ describe("release installer", () => {
   it("installs a Windows zip and writes a launcher that is safe for quoted paths", async () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-release-installer-win-"));
     const layout = resolveServerLayout(join(root, "server"));
-    const archiveRoot = join(root, "zcode-server-win32-x64");
+    const archiveRoot = join(root, "uwork-server-win32-x64");
     await mkdir(join(archiveRoot, "runtime"), { recursive: true });
     await writeFile(join(archiveRoot, "runtime", "node.exe"), "node", "utf8");
     await writeFile(join(archiveRoot, "runtime", "server-cli.js"), "", "utf8");
@@ -123,8 +123,8 @@ describe("release installer", () => {
       execFile(
         process.platform === "win32" ? "tar" : "zip",
         process.platform === "win32"
-          ? ["-acf", archivePath, "zcode-server-win32-x64"]
-          : ["-qr", archivePath, "zcode-server-win32-x64"],
+          ? ["-acf", archivePath, "uwork-server-win32-x64"]
+          : ["-qr", archivePath, "uwork-server-win32-x64"],
         { cwd: root },
         (error) => (error ? reject(error) : resolve()),
       ),
@@ -180,7 +180,7 @@ describe("release installer", () => {
       await mkdir(join(root, "var", "services"), { recursive: true });
       await symlink(join(root, "volume1", "homes"), join(root, "var", "services", "homes"));
       const aliasServerRoot = join(root, "var", "services", "homes", "dev", ".zcode", "server");
-      const archiveRoot = join(root, "zcode-server-linux-x64");
+      const archiveRoot = join(root, "uwork-server-linux-x64");
       await mkdir(join(archiveRoot, "runtime"), { recursive: true });
       await writeFile(join(archiveRoot, "runtime", "node"), "node", "utf8");
       await writeFile(join(archiveRoot, "runtime", "server-cli.js"), "", "utf8");
@@ -205,7 +205,7 @@ describe("release installer", () => {
       const archivePath = join(root, "release.tar.gz");
       const { execFile } = await import("node:child_process");
       await new Promise<void>((resolve, reject) =>
-        execFile("tar", ["-czf", archivePath, "zcode-server-linux-x64"], { cwd: root }, (error) =>
+        execFile("tar", ["-czf", archivePath, "uwork-server-linux-x64"], { cwd: root }, (error) =>
           error ? reject(error) : resolve(),
         ),
       );
@@ -239,7 +239,7 @@ describe("release installer", () => {
   it("reuses an identical immutable release without deleting or replacing its live directory", async () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-release-installer-immutable-"));
     const layout = resolveServerLayout(join(root, "server"));
-    const archiveRoot = join(root, "zcode-server-linux-x64");
+    const archiveRoot = join(root, "uwork-server-linux-x64");
     await mkdir(join(archiveRoot, "runtime"), { recursive: true });
     await writeFile(join(archiveRoot, "runtime", "node"), "node", "utf8");
     await writeFile(join(archiveRoot, "runtime", "server-cli.js"), "", "utf8");
@@ -269,7 +269,7 @@ describe("release installer", () => {
     const archivePath = join(root, "release.tar.gz");
     const { execFile } = await import("node:child_process");
     await new Promise<void>((resolve, reject) =>
-      execFile("tar", ["-czf", archivePath, "zcode-server-linux-x64"], { cwd: root }, (error) =>
+      execFile("tar", ["-czf", archivePath, "uwork-server-linux-x64"], { cwd: root }, (error) =>
         error ? reject(error) : resolve(),
       ),
     );
@@ -299,7 +299,7 @@ describe("release installer", () => {
   it("rejects an existing release whose immutable archive identity is missing", async () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-release-installer-conflict-"));
     const layout = resolveServerLayout(join(root, "server"));
-    const archiveRoot = join(root, "zcode-server-linux-x64");
+    const archiveRoot = join(root, "uwork-server-linux-x64");
     await mkdir(join(archiveRoot, "runtime"), { recursive: true });
     await writeFile(join(archiveRoot, "runtime", "node"), "node", "utf8");
     await writeFile(join(archiveRoot, "runtime", "server-cli.js"), "", "utf8");
@@ -324,7 +324,7 @@ describe("release installer", () => {
     const archivePath = join(root, "release.tar.gz");
     const { execFile } = await import("node:child_process");
     await new Promise<void>((resolve, reject) =>
-      execFile("tar", ["-czf", archivePath, "zcode-server-linux-x64"], { cwd: root }, (error) =>
+      execFile("tar", ["-czf", archivePath, "uwork-server-linux-x64"], { cwd: root }, (error) =>
         error ? reject(error) : resolve(),
       ),
     );

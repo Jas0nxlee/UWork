@@ -123,9 +123,25 @@ export interface CreateSourceServerTransportAdapterOptions {
   createBackend?: (target: RemoteTarget) => Promise<IRemoteBackend>;
 }
 
-const SERVER_ROOT_READ_PATH = "~/.zcode/server";
-const SERVER_ROOT_SHELL = '"$HOME/.zcode/server"';
-const SERVER_BIN_SHELL = '"$HOME/.zcode/server/bin/zcode"';
+// 新安装根 / 旧安装根：`$HOME/.uwork/server` 优先；它不存在而旧 `$HOME/.zcode/server` 存在时
+// 继续用旧根（旧安装不迁移、不重装，继续被接管与更新）。
+const SERVER_ROOT_READ_PATH = "~/.uwork/server";
+const LEGACY_SERVER_ROOT_READ_PATH = "~/.zcode/server";
+const SERVER_ROOT_SHELL = '"$HOME/.uwork/server"';
+const LEGACY_SERVER_ROOT_SHELL = '"$HOME/.zcode/server"';
+/**
+ * 远端安装根解析：内联进每条命令，避免为探测多花一次 round-trip。归档内启动器同样双名
+ * 兼容（新 `bin/uwork`，旧 `bin/zcode`），旧 archive 安装出来的目录仍可直接被驱动。
+ */
+const RESOLVE_SERVER_ROOT_SHELL = [
+  `SERVER_ROOT=${SERVER_ROOT_SHELL}`,
+  `if [ ! -d "$SERVER_ROOT" ] && [ -d ${LEGACY_SERVER_ROOT_SHELL} ]; then SERVER_ROOT=${LEGACY_SERVER_ROOT_SHELL}; fi`,
+].join("; ");
+const RESOLVE_SERVER_BIN_SHELL = [
+  RESOLVE_SERVER_ROOT_SHELL,
+  'SERVER_BIN="$SERVER_ROOT/bin/uwork"',
+  'if [ ! -f "$SERVER_BIN" ] && [ -f "$SERVER_ROOT/bin/zcode" ]; then SERVER_BIN="$SERVER_ROOT/bin/zcode"; fi',
+].join("; ");
 const STALE_BOOTSTRAP_AGE_MS = 30 * 60 * 1_000;
 const INSTALL_PROGRESS_MESSAGES: Record<SourceServerInstallProgress["phase"], string> = {
   "verify-archive": "Verifying Source Server archive",
@@ -137,6 +153,34 @@ const INSTALL_PROGRESS_MESSAGES: Record<SourceServerInstallProgress["phase"], st
 type DirectChannelBackend = IRemoteBackend & {
   openDirectTcpChannel?: (port: number) => Promise<Duplex>;
 };
+
+/** 解析远端真正生效的安装根（新根优先，旧根回退）；拿不到绝对路径时 fail-closed，不猜路径。 */
+async function resolveRemoteServerRoot(backend: IRemoteBackend): Promise<string> {
+  const result = await collectCommand(
+    await backend.exec(`${RESOLVE_SERVER_ROOT_SHELL}; printf '%s\\n' "$SERVER_ROOT"`),
+  );
+  const resolved = (result.stdout.trim().split(/\r?\n/u).pop() ?? "").trim();
+  if (result.exitCode !== 0 || !resolved.startsWith("/")) {
+    throw new Error(result.stderr.trim() || "Source Server install root could not be resolved");
+  }
+  return resolved;
+}
+
+/**
+ * ingress token 属于 daemon 当前使用的安装根：先读新根，读不到再读旧根。
+ * 旧安装（只有 `~/.zcode/server`）因此不需要迁移就能继续连接，新装也不会退化。
+ */
+async function readIngressToken(backend: IRemoteBackend): Promise<string> {
+  try {
+    return (await backend.readFile(`${SERVER_ROOT_READ_PATH}/run/ingress-token`)).trim();
+  } catch (error) {
+    const fallback = await backend
+      .readFile(`${LEGACY_SERVER_ROOT_READ_PATH}/run/ingress-token`)
+      .catch(() => null);
+    if (fallback === null) throw error;
+    return fallback.trim();
+  }
+}
 
 class BackendSourceServerTransportAdapter implements SourceServerTransportAdapter {
   private readonly backends = new WeakMap<object, Promise<IRemoteBackend>>();
@@ -213,14 +257,19 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
     throwIfAborted(context.signal);
     const backend = await this.getBackend(target);
     const operationId = `${process.pid}-${Date.now()}`;
-    const bootstrapRootShell = `${SERVER_ROOT_SHELL}/.bootstrap-${operationId}`;
+    // upload / remote-download 需要具体路径，bootstrap staging 也必须落在真正生效的安装根里：
+    // 在新根不存在而旧根存在（旧安装）时，若把 staging 写到 `~/.uwork/server`，会凭空造出新根，
+    // 让后续解析从旧安装跳到空的新目录。先问一次远端，再全部使用解析结果。
+    const remoteServerRoot = await resolveRemoteServerRoot(backend);
+    const serverRootShell = quoteShellArg(remoteServerRoot);
+    const bootstrapRootShell = quoteShellArg(`${remoteServerRoot}/.bootstrap-${operationId}`);
     const bootstrapDirShell = `${bootstrapRootShell}/extract`;
-    const remoteArchive = `~/.zcode/server/.bootstrap-${operationId}/zcode-server.tar.gz`;
-    const remoteArchiveShell = `${bootstrapRootShell}/zcode-server.tar.gz`;
+    const remoteArchive = `${remoteServerRoot}/.bootstrap-${operationId}/uwork-server.tar.gz`;
+    const remoteArchiveShell = `${bootstrapRootShell}/uwork-server.tar.gz`;
     const cleanupCommand = `rm -rf ${bootstrapRootShell}`;
     const cleanupStaleBootstrapRootsCommand =
       "now_ms=$(($(date +%s) * 1000)); " +
-      `for candidate in ${SERVER_ROOT_SHELL}/.bootstrap-*; do ` +
+      `for candidate in ${serverRootShell}/.bootstrap-*; do ` +
       '[ -d "$candidate" ] || continue; ' +
       "name=${candidate##*/}; " +
       "created_ms=${name##*-}; " +
@@ -317,9 +366,11 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
       `rm -rf ${bootstrapDirShell}`,
       `mkdir -p ${bootstrapDirShell}`,
       `tar -xzf ${remoteArchiveShell} -C ${bootstrapDirShell} --strip-components=1`,
+      // 兼容：本轮 archive 的启动器是 bin/uwork；旧 archive（3.16.2 之前）是 bin/zcode。
+      `if [ -x ${bootstrapDirShell}/bin/uwork ]; then BOOTSTRAP_BIN=${bootstrapDirShell}/bin/uwork; else BOOTSTRAP_BIN=${bootstrapDirShell}/bin/zcode; fi`,
       // Bug 原因：update 现在会重启完整 daemon；若不把既有 transport 能力边界传给目标
       // bootstrap CLI，WSL/Docker 会在 handoff 时误尝试注册不可用的 systemd user service。
-      `${this.kind === "ssh" ? "" : "ZCODE_SERVER_SKIP_SERVICE_REGISTRATION=1 "}${bootstrapDirShell}/bin/zcode update --from-archive ${remoteArchiveShell}${options.force ? " --force" : ""} --server-root ${SERVER_ROOT_SHELL} --json --progress`,
+      `${this.kind === "ssh" ? "" : "ZCODE_SERVER_SKIP_SERVICE_REGISTRATION=1 "}"$BOOTSTRAP_BIN" update --from-archive ${remoteArchiveShell}${options.force ? " --force" : ""} --server-root ${serverRootShell} --json --progress`,
     ].join(" && ");
     // 上传完成后命令仍需解压、整树校验和 daemon 换代；必须实时消费阶段，不能等退出才显示。
     const result = await collectCommand(await backend.exec(command), (line) => {
@@ -331,7 +382,10 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
       }
       const event = sourceServerInstallProgressSchema.safeParse(value);
       if (event.success) {
-        context.onLog?.({ phase: event.data.phase, message: INSTALL_PROGRESS_MESSAGES[event.data.phase] });
+        context.onLog?.({
+          phase: event.data.phase,
+          message: INSTALL_PROGRESS_MESSAGES[event.data.phase],
+        });
       }
     });
     if (result.exitCode !== 0) {
@@ -407,9 +461,7 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
       });
     }
     const backend = await this.getBackend(target);
-    const ingressToken = (
-      await backend.readFile(`${SERVER_ROOT_READ_PATH}/run/ingress-token`)
-    ).trim();
+    const ingressToken = await readIngressToken(backend);
     if (!ingressToken) throw new Error("Source Server ingress token is missing");
     return { port: port as number, ingressToken };
   }
@@ -433,7 +485,7 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
     }
     return duplexFromStdio(
       await backend.exec(
-        `${SERVER_BIN_SHELL} server proxy-stdio --server-root ${SERVER_ROOT_SHELL}`,
+        `${RESOLVE_SERVER_BIN_SHELL}; "$SERVER_BIN" server proxy-stdio --server-root "$SERVER_ROOT"`,
       ),
     );
   }
@@ -453,9 +505,9 @@ class BackendSourceServerTransportAdapter implements SourceServerTransportAdapte
     const command = [
       // Bug 原因：WSL/Docker 没有稳定的用户级服务管理器；若沿用 SSH 命令会尝试
       // 注册 systemd user service 并在常见环境中失败。两者必须显式进入 detached fallback。
-      `${daemonEnvironment}${SERVER_BIN_SHELL}`,
+      `${RESOLVE_SERVER_BIN_SHELL}; ${daemonEnvironment}"$SERVER_BIN"`,
       ...argv.map(quoteShellArg),
-      ...(hasServerRoot ? [] : ["--server-root", SERVER_ROOT_SHELL]),
+      ...(hasServerRoot ? [] : ["--server-root", '"$SERVER_ROOT"']),
     ].join(" ");
     return await collectCommand(await backend.exec(command));
   }

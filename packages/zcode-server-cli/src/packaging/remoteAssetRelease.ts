@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { access, copyFile, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  SOURCE_SERVER_ARCHIVE_BASENAME,
   SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME,
   SOURCE_SERVER_RELEASE_TARGETS,
   sourceServerReleaseDescriptorSchema,
@@ -53,8 +54,8 @@ export async function collectSourceServerRemoteReleaseArchives(options: {
   });
   const sources = (options.targets ?? SOURCE_SERVER_REMOTE_RELEASE_TARGETS).map((target) => ({
     target,
-    fileName: `zcode-server-${target}.tar.gz`,
-    path: join(options.distReleaseDir, `zcode-server-${target}.tar.gz`),
+    fileName: `${SOURCE_SERVER_ARCHIVE_BASENAME}-${target}.tar.gz`,
+    path: join(options.distReleaseDir, `${SOURCE_SERVER_ARCHIVE_BASENAME}-${target}.tar.gz`),
   }));
   for (const source of sources) {
     try {

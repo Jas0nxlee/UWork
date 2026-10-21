@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
+  SOURCE_SERVER_ARCHIVE_BASENAME,
   SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME,
   SOURCE_SERVER_RELEASE_TARGETS,
 } from "@zcode/shared";
@@ -31,7 +32,7 @@ function resolveReleaseAssetPaths(releaseDir: string): string[] {
   return [
     join(releaseDir, SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME),
     ...SOURCE_SERVER_RELEASE_TARGETS.map((target) =>
-      join(releaseDir, `zcode-server-${target}.tar.gz`),
+      join(releaseDir, `${SOURCE_SERVER_ARCHIVE_BASENAME}-${target}.tar.gz`),
     ),
   ];
 }

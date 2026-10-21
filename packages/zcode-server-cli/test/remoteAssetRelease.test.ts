@@ -26,7 +26,7 @@ describe("Source Server remote release assets", () => {
     const root = await mkdtemp(join(tmpdir(), "zcode-source-release-missing-"));
     const distReleaseDir = join(root, "dist-release");
     await mkdir(distReleaseDir, { recursive: true });
-    await writeFile(join(distReleaseDir, "zcode-server-linux-x64.tar.gz"), "linux-x64");
+    await writeFile(join(distReleaseDir, "uwork-server-linux-x64.tar.gz"), "linux-x64");
     const versionReleaseDir = join(root, "releases", "3.8.0");
     await mkdir(versionReleaseDir, { recursive: true });
     const descriptorPath = join(versionReleaseDir, SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME);
@@ -48,7 +48,7 @@ describe("Source Server remote release assets", () => {
     const versionReleaseDir = join(root, "releases", "3.8.0");
     await mkdir(distReleaseDir, { recursive: true });
     for (const target of SOURCE_SERVER_REMOTE_RELEASE_TARGETS) {
-      await writeFile(join(distReleaseDir, `zcode-server-${target}.tar.gz`), target);
+      await writeFile(join(distReleaseDir, `uwork-server-${target}.tar.gz`), target);
     }
 
     const collected = await collectSourceServerRemoteReleaseArchives({
@@ -58,7 +58,7 @@ describe("Source Server remote release assets", () => {
     });
 
     expect(collected.map((path) => path.split("/").at(-1))).toEqual(
-      SOURCE_SERVER_REMOTE_RELEASE_TARGETS.map((target) => `zcode-server-${target}.tar.gz`),
+      SOURCE_SERVER_REMOTE_RELEASE_TARGETS.map((target) => `uwork-server-${target}.tar.gz`),
     );
     await expect(
       Promise.all(collected.map(async (path) => await readFile(path, "utf8"))),
@@ -83,10 +83,10 @@ describe("Source Server remote release assets", () => {
     expect(descriptor.archives[0]).toEqual({
       target: "linux-x64",
       version: "3.8.0",
-      fileName: "zcode-server-linux-x64.tar.gz",
+      fileName: "uwork-server-linux-x64.tar.gz",
       sha256: "2cc29203eb8483cf10595a15013d5b2e6305a1472b38c933ef0cbaaa27989735",
       sizeBytes: 9,
-      urls: ["zcode-server-linux-x64.tar.gz"],
+      urls: ["uwork-server-linux-x64.tar.gz"],
     });
   });
 
@@ -97,7 +97,7 @@ describe("Source Server remote release assets", () => {
       const versionReleaseDir = join(root, "releases", "3.8.0");
       await mkdir(distReleaseDir, { recursive: true });
       for (const target of SOURCE_SERVER_REMOTE_RELEASE_TARGETS) {
-        await writeFile(join(distReleaseDir, `zcode-server-${target}.tar.gz`), target);
+        await writeFile(join(distReleaseDir, `uwork-server-${target}.tar.gz`), target);
       }
       await collectSourceServerRemoteReleaseArchives({
         distReleaseDir,
@@ -106,11 +106,11 @@ describe("Source Server remote release assets", () => {
       });
       const targets = ["linux-x64", "linux-arm64"] as const;
       for (const target of targets) {
-        await writeFile(join(distReleaseDir, `zcode-server-${target}.tar.gz`), `new-${target}`);
+        await writeFile(join(distReleaseDir, `uwork-server-${target}.tar.gz`), `new-${target}`);
       }
       // macOS 源包缺失也必须能发布 Linux，且旧发布目录的 macOS 条目不能混入新 descriptor。
       for (const target of ["darwin-x64", "darwin-arm64"]) {
-        await rm(join(distReleaseDir, `zcode-server-${target}.tar.gz`));
+        await rm(join(distReleaseDir, `uwork-server-${target}.tar.gz`));
       }
       const collected = await collectSourceServerRemoteReleaseArchives({
         distReleaseDir,
@@ -119,7 +119,7 @@ describe("Source Server remote release assets", () => {
         targets,
       });
       expect(collected).toEqual(
-        targets.map((target) => join(versionReleaseDir, `zcode-server-${target}.tar.gz`)),
+        targets.map((target) => join(versionReleaseDir, `uwork-server-${target}.tar.gz`)),
       );
       expect(await Promise.all(collected.map((path) => readFile(path, "utf8")))).toEqual(
         targets.map((target) => `new-${target}`),
@@ -135,7 +135,7 @@ describe("Source Server remote release assets", () => {
         sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
 
-      await rm(join(distReleaseDir, "zcode-server-linux-arm64.tar.gz"));
+      await rm(join(distReleaseDir, "uwork-server-linux-arm64.tar.gz"));
       await expect(
         collectSourceServerRemoteReleaseArchives({
           distReleaseDir,

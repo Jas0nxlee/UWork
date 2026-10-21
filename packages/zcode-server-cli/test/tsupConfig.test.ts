@@ -62,7 +62,7 @@ it("loads the real ESM Server CLI bundle before handling a version probe", async
       },
     );
     expect(JSON.parse(stdout)).toEqual({
-      product: "zcode-server",
+      product: "uwork-server",
       version: expect.any(String),
     });
   } finally {

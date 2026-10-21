@@ -218,7 +218,7 @@ export async function createCoreHttpServer(
   }
   const ingressToken = options.ingressToken?.trim();
   const info: ServerRemoteInfo = serverRemoteInfoOutputSchema.parse({
-    serverId: options.serverId ?? hostname() ?? "zcode-server",
+    serverId: options.serverId ?? hostname() ?? "uwork-server",
     version: ZCODE_VERSION,
     protocolVersion: SERVER_REMOTE_PROTOCOL_VERSION,
     authRequired: Boolean(ingressToken),

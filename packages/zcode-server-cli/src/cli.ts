@@ -116,7 +116,7 @@ export async function runServerCli(
     if (command === "version" || command === "--version") {
       // Bug 原因：Server --version 过去落入 legacy delegate，实际输出取决于旁边的 Agent
       // zcode.cjs，Desktop probe 无法稳定判断 Server compatibility。
-      stdout(io, json ? { product: "zcode-server", version: ZCODE_VERSION } : ZCODE_VERSION);
+      stdout(io, json ? { product: "uwork-server", version: ZCODE_VERSION } : ZCODE_VERSION);
       return 0;
     }
     const proxyStdioRequested =
@@ -171,7 +171,7 @@ export async function runServerCli(
       case "update": {
         const updateLock = await acquireLifecycleCommandLock(
           layout,
-          "Another ZCode Server update is already running",
+          "Another UWork Server update is already running",
         );
         const updateDaemonHandoff =
           runtimeOptions.updateDaemonHandoff ?? createUpdateDaemonHandoff();
@@ -201,7 +201,7 @@ export async function runServerCli(
       case "uninstall": {
         const uninstallLock = await acquireLifecycleCommandLock(
           layout,
-          "A ZCode Server update is already running",
+          "A UWork Server update is already running",
         );
         try {
           return await runUninstall(io, json, layout);

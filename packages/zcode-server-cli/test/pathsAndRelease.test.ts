@@ -92,7 +92,7 @@ describe("server runtime layout", () => {
     )).resolves.toHaveLength(50);
 
     expect(JSON.parse(await readFile(layout.installFile, "utf8"))).toMatchObject({
-      product: "zcode-server",
+      product: "uwork-server",
       schemaVersion: 1,
       canonicalServerRoot: await realpath(layout.serverRoot),
     });
