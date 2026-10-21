@@ -7,7 +7,7 @@
  * 上游没有打包 xlsx 读写，也没有发布 readOnly 之外的裁剪版，所以工具栏/功能区都是我们自己的。
  *
  * 与产品其余部分一致：
- * - 字节来自 `IFileService.readBinaryPreview`，保存走 `writeBinaryFile`（写前比对 size/mtime、sibling 备份、原子替换）；
+ * - 字节来自 `OfficeEditorFilePort.readBinaryPreview`，保存走 `writeBinaryFile`（写前比对 size/mtime、sibling 备份、原子替换）；
  * - 保存是显式的，冲突时拒绝写入；**护栏命中的工作簿只给只读**（图表/透视表/宏…会被重写丢掉）；
  * - 产物校验不过就不写盘（打不开/少表/内容掉两成就拒写）。
  *
@@ -18,7 +18,7 @@
 import type { Sheet } from "@fortune-sheet/core";
 import { Workbook, type WorkbookInstance } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorPaneProps } from "./contract.js";
 import { createRoot } from "react-dom/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
@@ -28,13 +28,7 @@ import { runExcelCommand, selectionLabel } from "./excelCommands.js";
 import { useExcelDocument } from "./useExcelDocument.js";
 import type { RibbonStyle } from "./officeRibbonModel.js";
 
-export interface ExcelEditorPaneProps {
-  fileService: IFileService;
-  path: string;
-  remote?: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-  onExit?: () => void;
-}
+export type ExcelEditorPaneProps = OfficeEditorPaneProps;
 
 /** 空白工作表：引擎在 data 为空时不渲染任何东西，首屏必须是"一张空表"。 */
 function emptySheet(): Sheet[] {

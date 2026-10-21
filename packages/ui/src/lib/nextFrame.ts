@@ -12,12 +12,8 @@
  *   防止"刚排上队窗口就被遮挡/切到后台"这种竞态。谁先到谁执行，另一个取消。
  * - 主动 cancel：两条路都不再执行。
  */
-export interface RunOnNextFrameOptions {
-  /** 兜底定时器；默认 250ms（60fps 下相当于 15 帧，正常永远走 rAF）。 */
-  fallbackMs?: number;
-  /** 便于测试注入；默认取 `document.visibilityState`。 */
-  visibilityState?: DocumentVisibilityState | undefined;
-}
+import type { RunOnNextFrameOptions } from "../next-frame/contract.js";
+export type { RunOnNextFrameOptions } from "../next-frame/contract.js";
 
 const DEFAULT_FALLBACK_MS = 250;
 

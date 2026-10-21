@@ -4,7 +4,7 @@
  * 拆出来的原因：仓库规矩单文件 ≤400 行；而"格式"与"几何/身份"本来也是两件事。
  * 粒度：当前是**整个形状统一**（不做"选中一段"），这是本轮的范围。
  */
-import { P_NS, shapeByName, writeBack, type ShapeRunFormat } from "./pptShapes.js";
+import { P_NS, shapeByName, writeBack, type ShapeRunFormat } from "./pptShapeXml.js";
 
 const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 

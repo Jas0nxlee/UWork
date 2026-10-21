@@ -6,7 +6,7 @@
  * docx 插件 711 KB），光标/选区/分页/格式工具栏/表格/图片俱全，大文档也顺，体积只有 1.5 MB（对手 25 MB）。
  *
  * 与产品的其余部分保持一致：
- * - 字节来自 `IFileService.readBinaryPreview`，保存走 `writeBinaryFile`（写前比对 size/mtime、sibling 备份、原子替换）；
+ * - 字节来自 `OfficeEditorFilePort.readBinaryPreview`，保存走 `writeBinaryFile`（写前比对 size/mtime、sibling 备份、原子替换）；
  * - 保存是显式的，冲突时拒绝写入并提示；**导入前先过护栏**（`docxPreflight.ts`）：引擎保不住的特性
  *   （修订/超链接/公式/批注/脚注/编号…）会先列清楚再让用户决定，绝不静默改坏文档。
  *
@@ -15,7 +15,7 @@
  */
 import Editor from "@hufe921/canvas-editor";
 import docxPlugin from "@hufe921/canvas-editor-plugin-docx";
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorPaneProps } from "./contract.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CommentAnchor } from "./useCommentGroups.js";
 import { OfficeCommentList } from "./OfficeCommentList.js";
@@ -51,15 +51,7 @@ interface EngineOptions {
   trace?: { disabled?: boolean };
 }
 
-export interface CanvasOfficeEditorPaneProps {
-  fileService: IFileService;
-  path: string;
-  /** 远端工作区：载入前先探一次写能力（老远端没有 writeBinaryFile）。 */
-  remote?: boolean;
-  /** 脏标记外报：外层在切换文件/退出编辑态时据此拦一下，避免静默丢改动。 */
-  onDirtyChange?: (dirty: boolean) => void;
-  onExit?: () => void;
-}
+export type CanvasOfficeEditorPaneProps = OfficeEditorPaneProps;
 
 export function CanvasOfficeEditorPane({
   fileService,

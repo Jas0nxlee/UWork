@@ -5,13 +5,13 @@
  * 这一块也确实是独立的一步（输入：源字节 + 基线 + 当前三份映射；输出：校验结果与写盘回执）。
  * 校验不过**一律不写盘**——那是保真的最后一道闸门。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorFilePort } from "./contract.js";
 import { bytesToBase64 } from "./binary.js";
 import { writeDeckSlides } from "./pptText.js";
 import { validatePptxCandidate } from "./pptxValidate.js";
 
 export interface SavePptxInput {
-  fileService: IFileService;
+  fileService: OfficeEditorFilePort;
   path: string;
   /** 当前源 zip（可能已经过幻灯片/图片这类"包级补丁"）。 */
   source: ArrayBuffer;

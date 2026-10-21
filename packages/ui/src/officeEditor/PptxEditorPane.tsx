@@ -10,7 +10,7 @@
  * 左栏真缩略图 + 中间画布（右下缩放）+ 右栏「设置形状格式」。不用富文本编辑器的理由见
  * specs/office-editors-triad.md：可用的 OSS pptx 编辑器只有 AGPL 的 PPTist（它的交互库 moveable 是 MIT）。
  */
-import type { IFileService } from "@zcode/services";
+import type { OfficeEditorPaneProps } from "./contract.js";
 import { useCallback as useStableCallback } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfficeEditorToolbar } from "./OfficeEditorToolbar.js";
@@ -26,13 +26,7 @@ import { shapeLines } from "./pptShapes.js";
 import { usePptxDocument } from "./usePptxDocument.js";
 import { usePptxPreview } from "./usePptxPreview.js";
 
-export interface PptxEditorPaneProps {
-  fileService: IFileService;
-  path: string;
-  remote?: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-  onExit?: () => void;
-}
+export type PptxEditorPaneProps = OfficeEditorPaneProps;
 
 export function PptxEditorPane({
   fileService,

@@ -36,3 +36,10 @@ export interface IElement {
 export interface IEditorData {
   main: IElement[];
 }
+
+export interface FindSession {
+  keyword: string;
+  /** 命中范围：由引擎 `getKeywordRangeList` 给出（含表格单元格坐标），我们不自己算下标。 */
+  ranges: Array<Record<string, unknown>>;
+  current: number;
+}

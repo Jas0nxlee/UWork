@@ -8,6 +8,7 @@ export const projectSidebarModule = {
     "services",
     "shared",
     "ui",
+    "next-frame",
     "conversation-workspace-target",
     "web-remote-control-ui",
     "remote-connection-flow",

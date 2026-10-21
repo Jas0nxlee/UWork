@@ -6,7 +6,7 @@
  *     （"压测"返回 {11,12}，直接用只选中"测"；"段"返回 {5,5}，直接用是空选区）。两种长度都只差起点减 1；
  *   - 引擎的 search 只高亮、**不移动选区**，所以"上一个/下一个"要我们显式设选区。
  */
-import type { FindSession } from "./officeEditorCommands.js";
+import type { FindSession } from "./engineTypes.js";
 
 /**
  * 选中一处命中。

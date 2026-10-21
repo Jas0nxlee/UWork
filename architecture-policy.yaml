@@ -139,6 +139,7 @@ modules:
       - services
       - shared
       - ui
+      - next-frame
       - conversation-workspace-target
       - web-remote-control-ui
       - remote-connection-flow
@@ -447,6 +448,7 @@ modules:
       - client
       - desktop
       - shared
+      - services
       - web-remote-relay
     publicEntrypoints:
       - packages/desktop/src/main/web-remote-relay/index.ts
@@ -726,6 +728,36 @@ modules:
     layers:
       app: .
     owner: desktop
+  # next-frame：既有 UI 帧调度器，DOM/时间 IO 只有这一条实现路径。
+  - id: next-frame
+    roots:
+      - packages/ui/src/next-frame
+      - packages/ui/src/lib/nextFrame.ts
+    managed: true
+    requires: []
+    publicEntrypoints:
+      - packages/ui/src/lib/nextFrame.ts
+      - packages/ui/src/next-frame/contract.ts
+    layers:
+      contract: contract.ts
+      adapters: .
+    layerOrder: [contract, adapters]
+    owner: ui
+  # office-editor：预览宿主注入文件端口；格式处理和引擎细节在本模块内。
+  - id: office-editor
+    roots: [packages/ui/src/officeEditor]
+    managed: true
+    requires: [ui, services]
+    publicEntrypoints:
+      - packages/ui/src/officeEditor/contract.ts
+      - packages/ui/src/officeEditor/CanvasOfficeEditorPane.tsx
+      - packages/ui/src/officeEditor/ExcelEditorPane.tsx
+      - packages/ui/src/officeEditor/PptxEditorPane.tsx
+    layers:
+      contract: contract.ts
+      ui: .
+    layerOrder: [contract, ui]
+    owner: office
   # side-pane-full-view：由 architecture:adopt 登记
   - id: side-pane-full-view
     roots:
@@ -755,6 +787,16 @@ global:
   acceptedUpstreamSnapshot: scripts/architecture/upstream-snapshot.json
 
 exceptions:
+  - id: uwork-source-server-existing-brand-compat-edit
+    rule: unmanaged-new-file
+    paths:
+      - packages/server/src/source-server/sourceServerProbe.ts
+      - packages/server/src/source-server/transportAdapter.ts
+      - packages/shared/src/source-server/release.ts
+      - packages/zcode-server-cli/src/packaging/remoteAssetRelease.ts
+      - packages/zcode-server-cli/src/runtime/updateHandoff.ts
+      - packages/zcode-server-cli/src/server-core/proxyStdio.ts
+    reason: 核对 3c5b2276 原文件与当前 diff 后，仅接纳既有 Source Server owner 内的 UWork 名称、发行归档基名与旧安装根/启动器兼容编辑；probe、安装、daemon handoff、stdio 职责和接口所有者未改变。这些本地修改不属于原样上游，不能写入 upstream snapshot；例外只允许这六个既有路径的新增模块登记，依赖/环/类型与回归检查仍执行。证据见 docs/architecture/uwork-source-server-admission.md。
   - id: side-pane-full-view-shortcut-command-edit
     rule: unmanaged-new-file
     paths: [packages/shared/src/shortcutCommands.ts]
