@@ -124,6 +124,8 @@ export const ServiceChannels = {
   EnterpriseIdentity: "enterprise-identity",
   /** 企业网关（ucas-proxy control-plane）自动配置、套餐与用量读取。 */
   UcasGateway: "ucas-gateway",
+  /** 基础 IM：会话、消息收发与实时投递（服务端是 ucas-proxy 的 msgbus）。 */
+  Im: "im",
   /** 新 Provider Config 的设置读写 Facade */
   ProviderSettings: "provider-settings",
   /** 新 Provider Registry 的模型选择 Facade */
@@ -204,6 +206,8 @@ export const PlatformChannels = {
   SelectFiles: "zcode:select-files",
   /** Renderer → Main：写入宿主 ~/.zcode 临时文本附件 */
   CreateTempTextAttachment: "zcode:create-temp-text-attachment",
+  SaveImAttachment: "zcode:save-im-attachment",
+  SetImBadgeCount: "zcode:set-im-badge-count",
   /** Renderer → Main：把 dwf 产物某一版的字节落成本机副本（「作为文件打开」） */
   MaterializeWorkflowArtifactFile: "zcode:materialize-workflow-artifact-file",
   /** Renderer → Main：通过原生另存为对话框保存文件 */

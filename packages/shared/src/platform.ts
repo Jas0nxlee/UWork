@@ -268,6 +268,23 @@ export interface CreateTempTextAttachmentResult {
  *
  * ⚠ 术语：artifact = 脚本经 `artifact.*` 发布给用户看的产出，不是引擎的 `RunSettlement.artifact`。
  */
+export interface SetImBadgeCountRequest {
+  /** 未读总数（0 表示清除角标）。 */
+  count: number;
+}
+
+export interface SaveImAttachmentRequest {
+  /** 原始文件名（可能带中文/空格/路径分隔符，宿主办会清洗）。 */
+  name: string;
+  bytes: Uint8Array;
+}
+
+export interface SaveImAttachmentResult {
+  path: string;
+  name: string;
+  sizeBytes: number;
+}
+
 export interface MaterializeWorkflowArtifactFileRequest {
   runId: string;
   artifactId: string;
@@ -699,6 +716,19 @@ export interface IPlatformService {
   createTempTextAttachment?(
     payload: CreateTempTextAttachmentRequest,
   ): Promise<CreateTempTextAttachmentResult>;
+
+  /**
+   * 设置 IM 未读角标（macOS Dock / Windows 任务栏）。
+   * 未读是渲染层算出来的（要排静音会话），所以由它推给宿主。
+   * 返回值是宿主**实际写回**的数字（角标 = 任务未读 + IM 未读，平台不支持则为 0）。
+   */
+  setImBadgeCount?(payload: SetImBadgeCountRequest): Promise<number>;
+
+  /**
+   * 把 IM 附件字节落到本机（"下载"目录下的 UWork 子目录），返回绝对路径。
+   * 渲染层的 `<a download>` 在 Electron 里不会真的落盘，所以下载必须走宿主。
+   */
+  saveImAttachment?(payload: SaveImAttachmentRequest): Promise<SaveImAttachmentResult>;
 
   /**
    * 把 dwf 产物某一版的字节写成宿主本机上的一份副本（只在路径为空时写），返回其路径。

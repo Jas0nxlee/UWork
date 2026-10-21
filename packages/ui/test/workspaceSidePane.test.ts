@@ -31,6 +31,7 @@ import {
   findBrowserSidePaneTabByUrl,
   openCodeViewerSidePane,
   openCodeViewerSidePanes,
+  openMessagesSidePane,
   openTerminalSidePane,
   reorderSidePaneTab,
   resolveActiveTabForOwner,
@@ -2610,5 +2611,33 @@ describe("workspaceSidePane", () => {
         resolveActiveTabForOwner(opened, { workspaceKey: "ws-1", ownerTaskId: "task-b" }),
       ).toBeNull();
     });
+  });
+});
+
+describe("IM（消息）侧栏 tab", () => {
+  it("打开后是可用的全局 tab，重复打开只保留一个", () => {
+    const first = openMessagesSidePane(null, { workspacePath: "/tmp/ws", workspaceKey: "/tmp/ws" });
+    const tab = first.tabs.find((item) => item.type === "messages");
+    expect(tab).toBeDefined();
+    expect(isWorkspaceGlobalSidePaneTab(tab!)).toBe(true);
+    expect(first.activeTabId).toBe(tab!.id);
+
+    const again = openMessagesSidePane(first, {
+      workspacePath: "/tmp/ws",
+      workspaceKey: "/tmp/ws",
+    });
+    expect(again.tabs.filter((item) => item.type === "messages")).toHaveLength(1);
+  });
+
+  it("没打开项目（workspaceKey 为空）时依然可见", () => {
+    // 真机上的现象：点了侧栏"消息"入口什么都不出现。
+    // 原因是空 workspaceKey 既不是 null 也不等于当前 key，被 workspace 过滤挡掉了。
+    const opened = openMessagesSidePane(null, { workspacePath: "", workspaceKey: "" });
+    expect(
+      getVisibleSidePaneTabs(opened.tabs, { workspaceKey: null, ownerTaskId: null }),
+    ).toHaveLength(1);
+    expect(
+      getVisibleSidePaneTabs(opened.tabs, { workspaceKey: "/tmp/ws", ownerTaskId: "task-a" }),
+    ).toHaveLength(1);
   });
 });

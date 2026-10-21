@@ -42,6 +42,62 @@ sequenceDiagram
 
 对应验证：Root 装配回归、手机入口只读装配回归、现有 workspaceSidebarWebRemoteMobileLayout / workspaceShellRemoteMobileLayout / webRemoteControlMobileShell 回归，以及真实 Web 入口浏览器场景。不得删除或跳过失败用例。
 
+## 桌面端入口接线（2026-10-17）
+
+上游 v3.15.1 合并把 `WorkspaceWebRemoteControlTrigger` 组件带进来了，但**渲染点连同 footer 的账号/套餐/用量入口一起被
+UWork 裁剪掉**，于是桌面侧栏看不到远控入口，而 `workspaceSidebarFooterWebRemoteControlTooltip.test.ts` 里
+「入口不被二次 tooltip 包裹」这条断言一直失败。本节固定这条接线的契约。
+
+产品规则与所有者：
+
+- 入口只在**桌面窗口**（`isDesktop`）且当前 workspace 有 `workspacePath` 时渲染。手机远控页自身是被控端视图，
+  不需要「再远控一台桌面」的入口；Web 宿主（`isDesktop = false`）一律不渲染。
+- 入口的显示开关仍归 `WebRemoteControlFeatureProvider`（默认开启，Root 可整体关闭）。关闭时不进入依赖
+  TabStore 的 session resolver——这条是上游既有 bugfix，接线后必须保持。
+- 侧栏只做**透传**，不新增远控状态所有者：`workspacePath` 取当前 workspace；`workspaceIdentity` 沿用侧栏已有的
+  active tab identity（远程 workspace 与本地同路径靠它区分）；`remoteSessionId` 取 Shell 传入的
+  `workspaceRemoteSessionId`（不再丢弃），由 `useResolvedRemoteWorkspaceSessionId` 按 identity 校验后取 live session；
+  `initialTaskId` 取侧栏已有的 `activeTaskId`。
+- 入口位置在 footer 尾部操作区、设置按钮之前；UWork 追加的 IM 按钮插在远控入口与设置按钮之间。设置按钮保持在最后。
+- 本次接线**不恢复**上游被裁剪的账号、套餐、奖励、用量入口；也不恢复「入口外包一层 tooltip」的旧写法——
+  入口名称与连接状态合并由组件内部那一个 tooltip 表达。
+
+验收与回归：
+
+1. `packages/ui/test/workspaceSidebarFooterWebRemoteControlTooltip.test.ts` 中
+   「does not wrap the remote control trigger in a second tooltip」通过（入口出现在 footer 且无 `data-tooltip-title="webRemoteControl.trigger"` 外层）。
+2. `packages/ui/test/webRemoteControl*.test.ts`、`workspaceWebRemoteControlTrigger*.test.ts`、
+   `workspaceSidebarWebRemoteMobileLayout.test.ts` 全过；`pnpm typecheck` 全绿。
+3. 打包后桌面侧栏可见远控入口、能开弹层出二维码（需要真实桌面 + relay，见下节「验证记录」）。
+
+### 2026-10-17 验证记录
+
+已执行（在本机 `chore/upstream-v3.15.1-sync` 上）：
+
+- 改前基线：`workspaceSidebarFooterWebRemoteControlTooltip.test.ts` 19 项里 6 项失败，其中
+  「does not wrap the remote control trigger in a second tooltip」正是入口缺失。接线后该项通过（余 5 项为下述既有欠账）。
+- 新增 `packages/ui/test/workspaceSidebarFooterWebRemoteEntry.test.ts`（4 项，全过）：透传四参、`activeTaskId` 为空时不传空串、
+  无 `workspacePath` 不渲染、非桌面不渲染。
+- 扩写 `packages/ui/test/workspaceSidebarWebRemoteMobileLayout.test.ts`（8 项，全过）：侧栏把 remote `workspaceIdentity` 与 live
+  `workspaceRemoteSessionId` 传进 footer；本地 workspace 不伪造这两个值。这两条钉住「合并上游时被裁掉的那段」。
+- 远控全链路单测全过：`packages/ui/test/webRemoteControl*`（88）、`workspaceWebRemoteControlTrigger*`、
+  `packages/shared/test/webRemoteControl*`（87，含 HMAC 测试向量）、`packages/desktop/test/webRemoteControl*`（99）、
+  `packages/client/test/webRemoteControlRelayProtocol*`。
+- `pnpm typecheck` 全绿（exit 0）；`oxfmt --check`、`oxlint` 对改动文件无告警。
+
+未验证 / 已知边界：
+
+- **未做真实端到端**：没有真实桌面 + 真实 relay 的扫码配对，因此「入口能开弹层出二维码、手机能连上」只在组件与单测层面成立。
+  浏览器 E2E（`packages/ui/test/*.e2e.mjs`、`packages/web/test/e2e/**`）需要手动授权远程调试，本次未运行。
+- **入口默认仍指向 ZCode 侧**：`resolveWebRemoteControlRelayWsUrl` 对任何 endpoint 都返回 `wss://zcode.z.ai/ws`，手机页默认
+  `https://zcode.z.ai/remote/v4`。接线只让功能可见可用，**不等于自建**；自建 relay / 静态页 / 配置注入仍是
+  `specs/mobile-web-control-self-hosted.md` 的 P1–P3。
+- `workspaceSidebarFooterWebRemoteControlTooltip.test.ts` 仍有 5 项失败，全部是上游「已裁 OAuth/账号套餐/用量/旧 Footer 假设」
+  的陈旧断言（奖励菜单、计划徽标、用量摘要、profile 分组），既有欠账，按 `docs/upstream-sync-v3.15.1-status.md` 第 2 条
+  逐项按 UWork 产品契约修正，不在本次接线范围内，未删除或跳过。
+- 手机页测试有 2 项既有失败（`webRemoteControlBootstrapShell.test.ts` 的 `theme-color` 期望 `#f8f8f8`、实际 `#f5f5f5`），
+  来自 UWork 主题取值差异，与入口接线无关。
+
 ## 2026-10-14 浏览器验证边界
 
 - `node packages/web/test/e2e/manual-review/pending/uwork-remote-integration.mjs`：真实 Web main → Root → 手机壳/宽屏 Sidebar；离线 relay 夹具首次握手、已有 disconnected workspace/task 投影、手机重连请求，390px / 1200px、Zai Light / Zai Dark 四种组合通过，无页面 JS 异常。

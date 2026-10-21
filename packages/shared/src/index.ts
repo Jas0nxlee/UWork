@@ -233,6 +233,10 @@ export type {
   RemoteConnectionRuntimeLog,
   RemoteSessionClosedEvent,
   RemoteServiceSession,
+  SaveImAttachmentRequest,
+  WindowControlsOverlayReadyPayload,
+  SaveImAttachmentResult,
+  SetImBadgeCountRequest,
   SSHConfigAliasOption,
   TaskNotificationPayload,
   UpdateCheckResultPayload,
@@ -341,6 +345,7 @@ export { redactFeedbackText } from "./feedbackPrivacy.js";
 export * from "./enterprise-identity.js";
 export * from "./wecom-identity-config.js";
 export * from "./ucas-gateway.js";
+export * from "./im.js";
 export * from "./uwork-paths.js";
 export { API_KEY_USAGE_SCENE, type ApiKeyCreationUsageScene } from "./api-key-usage-scene.js";
 export {

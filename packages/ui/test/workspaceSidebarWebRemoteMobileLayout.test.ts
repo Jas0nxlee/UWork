@@ -7,10 +7,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IPlatformService } from "@zcode/shared";
 
-const { setPendingSettingsSectionMock, remoteTaskIndexProps } = vi.hoisted(() => ({
-  setPendingSettingsSectionMock: vi.fn(),
-  remoteTaskIndexProps: vi.fn(),
-}));
+const { setPendingSettingsSectionMock, remoteTaskIndexProps, sidebarFooterProps, tabStoreTabs } =
+  vi.hoisted(() => ({
+    setPendingSettingsSectionMock: vi.fn(),
+    remoteTaskIndexProps: vi.fn(),
+    sidebarFooterProps: vi.fn(),
+    /** 让单个用例把侧栏切到远程 tab（带 workspaceIdentity），其余用例保持本地 tab。 */
+    tabStoreTabs: { current: null as unknown },
+  }));
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -126,7 +130,10 @@ vi.mock("@/WorkspaceGroupedTasksSection.js", () => ({
 }));
 
 vi.mock("@/WorkspaceSidebarFooter.js", () => ({
-  WorkspaceSidebarFooter: () => createElement("footer", { "data-testid": "sidebar-footer" }),
+  WorkspaceSidebarFooter: (props: Record<string, unknown>) => {
+    sidebarFooterProps(props);
+    return createElement("footer", { "data-testid": "sidebar-footer" });
+  },
 }));
 
 vi.mock("@/SortableWorkspaceSidebar.js", () => ({
@@ -163,12 +170,19 @@ vi.mock("@/store/StoreProvider.js", () => ({
     selector({ setTheme: vi.fn() }),
 }));
 
-vi.mock("@/store/TabStoreProvider.js", () => ({
-  useTabStore: (selector: (state: typeof tabStoreState) => unknown) => selector(tabStoreState),
-  // 企业身份 badge 读取可选 tab store；保留真实桌面 header 的依赖形状。
-  useOptionalTabStore: (selector: (state: typeof tabStoreState) => unknown) =>
-    selector(tabStoreState),
-}));
+vi.mock("@/store/TabStoreProvider.js", () => {
+  const resolveState = () => ({
+    ...tabStoreState,
+    tabs: (tabStoreTabs.current as typeof tabStoreState.tabs) ?? tabStoreState.tabs,
+  });
+
+  return {
+    useTabStore: (selector: (state: typeof tabStoreState) => unknown) => selector(resolveState()),
+    // 企业身份 badge 读取可选 tab store；保留真实桌面 header 的依赖形状。
+    useOptionalTabStore: (selector: (state: typeof tabStoreState) => unknown) =>
+      selector(resolveState()),
+  };
+});
 
 vi.mock("@/settings/CodingPlanUpgradeDialogProvider.js", () => ({
   useCodingPlanUpgradeDialog: () => ({
@@ -236,6 +250,40 @@ describe("WorkspaceSidebar Web remote mobile layout", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    tabStoreTabs.current = null;
+  });
+
+  it("forwards the remote workspace identity and live session into the footer entry", async () => {
+    tabStoreTabs.current = [{ ...workspaceTab, workspaceIdentity: "remote:ssh:host-a" }];
+
+    render(
+      await createSidebarElement({
+        isDesktop: true,
+        workspaceRemoteSessionId: "session-a",
+      }),
+    );
+
+    // 合并上游时这一段曾被裁掉：session id 被丢弃、footer 收不到远控参数，
+    // 结果桌面侧栏的远控入口整体消失。
+    expect(sidebarFooterProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDesktop: true,
+        workspacePath: workspaceTab.workspacePath,
+        workspaceIdentity: "remote:ssh:host-a",
+        workspaceRemoteSessionId: "session-a",
+        activeTaskId: "task-1",
+      }),
+    );
+  });
+
+  it("keeps the remote entry params unset for a plain local workspace", async () => {
+    render(await createSidebarElement({ isDesktop: true }));
+
+    const footerProps = sidebarFooterProps.mock.lastCall?.[0] as Record<string, unknown>;
+    expect(footerProps.isDesktop).toBe(true);
+    expect(footerProps.workspacePath).toBe(workspaceTab.workspacePath);
+    expect(footerProps.workspaceRemoteSessionId).toBeUndefined();
+    expect(footerProps.workspaceIdentity).toBeUndefined();
   });
 
   it("forwards the attachment switcher and cross-workspace lifecycle to the remote task index", async () => {

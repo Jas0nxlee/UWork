@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { Info, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
+import { runOnNextFrame } from "@/lib/nextFrame.js";
 
 export type ToastPosition = "top-center" | "top-right" | "bottom-left" | "bottom-center";
 type ToastVariant = "default" | "update" | "info" | "warning";
@@ -241,11 +242,12 @@ function ToastMessage({
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // 触发进入动画
-    requestAnimationFrame(() => setVisible(true));
+    // 触发进入动画。窗口被遮挡时 rAF 不触发，toast 会永远停在 opacity-0
+    // （到点又被自动移除，用户回来什么都看不到），所以走保证会执行的下一帧调度。
+    const cancelEnter = runOnNextFrame(() => setVisible(true));
 
     if (!Number.isFinite(item.durationMs) || item.durationMs <= 0) {
-      return undefined;
+      return cancelEnter;
     }
 
     const timer = setTimeout(() => {
@@ -254,7 +256,10 @@ function ToastMessage({
       setTimeout(() => onDone(item.id), TOAST_TRANSITION_DURATION_MS);
     }, item.durationMs);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelEnter();
+      clearTimeout(timer);
+    };
     // 持续中的 Toast 使用 duration=0；切换到终态时更新 duration，重新启动自动消失计时器。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.durationMs]);

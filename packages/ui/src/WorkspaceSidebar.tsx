@@ -224,12 +224,13 @@ function resolveSidebarTaskViewMode(params: {
 
 export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   workspacePath,
-  workspaceRemoteSessionId: _workspaceRemoteSessionId,
+  workspaceRemoteSessionId,
   activePreviewPath,
   onSelectTask,
   onStartDraftInWorkspace,
   onOpenCodeViewer,
   onOpenBrowserUrl,
+  onOpenMessages,
   fileTreeOpenRequest,
   onCreateTask,
   onCreateConversationTask,
@@ -287,6 +288,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenRemoteWorkspace?: () => void;
   webRemoteControlWorkspaceSwitcher?: import("@/root/types.js").WebRemoteControlWorkspaceSwitcherApi;
   theme: Theme;
+  /** 打开 IM 侧边面板；未提供时页脚不渲染消息入口（Host 没注册 IM 服务时就是这种情形）。 */
+  onOpenMessages?: () => void;
   onConnectRemote: (options: RemoteTarget, requestId?: string) => Promise<string>;
   onSelectRemoteProject: (
     sessionId: string,
@@ -1891,7 +1894,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             onLocaleChange={handleLocaleChange}
             onThemeChange={handleThemeChange}
             onSettingsButtonClick={openSettingsTab}
+            onMessagesButtonClick={onOpenMessages}
             isDesktop={isDesktop}
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            workspaceRemoteSessionId={workspaceRemoteSessionId}
+            activeTaskId={activeTaskId}
           />
         </div>
         <div

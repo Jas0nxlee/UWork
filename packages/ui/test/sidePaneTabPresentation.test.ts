@@ -27,6 +27,7 @@ const labels: SidePaneTabPresentationLabels = {
   workflowActorTitle: "Workflow subagent",
   workflowArtifactTitle: "Artifact",
   workflowScriptTitle: "Script steps",
+  imTitle: "Messages",
 };
 
 const workflowActorTab: Extract<WorkspaceSidePaneTab, { type: "workflow-actor-session" }> = {
@@ -173,5 +174,37 @@ describe("workflow-workspace tab presentation", () => {
     expect(getLocalizedSidePaneTabTitle(workflowWorkspaceTab, labels)).toBe("Fan-out review");
     const { workflowName: _dropped, ...unnamed } = workflowWorkspaceTab;
     expect(getLocalizedSidePaneTabTitle(unnamed, labels)).toBe("Script steps");
+  });
+});
+
+// 回归：**无 source 字段**的 tab 类型曾把总览打崩——getSidePaneTabSearchHint 与
+// getSidePaneTabTitle 的兜底都直接读 `tab.source.*`，于是 undefined.path 抛错、
+// 整棵 workspace 子树挂掉（browser-use 踩过一次，本轮 messages tab 又踩一次）。
+// 类型检查拦不住这类问题：本仓 tsconfig 没开 strictNullChecks，`tab.source.path` 是合法 TS。
+// 所以这里对"新类型 + 完全未知类型"各钉一条，兜底必须给中性结果而不是抛错。
+const messagesTab: Extract<WorkspaceSidePaneTab, { type: "messages" }> = {
+  id: "messages:%2Fworkspace",
+  type: "messages",
+  workspaceKey: "/workspace",
+  workspacePath: "/workspace",
+};
+
+describe("无 source 字段的 tab 类型", () => {
+  it("messages：搜索提示、类型标签、标题三处都可用", () => {
+    expect(() => getSidePaneTabSearchHint(messagesTab)).not.toThrow();
+    expect(getSidePaneTabSearchHint(messagesTab)).toContain("messages");
+    expect(getSidePaneTabTypeLabel(messagesTab, labels)).toBe("Messages");
+    expect(getLocalizedSidePaneTabTitle(messagesTab, labels)).toBe("Messages");
+  });
+
+  it("未来新增的未知类型：兜底不抛错，只给中性结果", () => {
+    const unknownTab = {
+      ...messagesTab,
+      type: "brand-new-kind",
+    } as unknown as WorkspaceSidePaneTab;
+    expect(() => getSidePaneTabSearchHint(unknownTab)).not.toThrow();
+    expect(getSidePaneTabSearchHint(unknownTab)).toBe("");
+    expect(() => getSidePaneTabTypeLabel(unknownTab, labels)).not.toThrow();
+    expect(() => getLocalizedSidePaneTabTitle(unknownTab, labels)).not.toThrow();
   });
 });

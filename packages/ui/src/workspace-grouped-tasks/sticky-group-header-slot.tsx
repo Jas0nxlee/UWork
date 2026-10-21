@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/components/lib/utils.js";
+import { runOnNextFrame } from "@/lib/nextFrame.js";
 
 const STICKY_GROUP_HEADER_EXIT_MS = 150;
 
@@ -11,8 +12,9 @@ export function StickyGroupHeaderSlot({ header }: { header: ReactNode | null }) 
   useEffect(() => {
     if (header) {
       setRenderedHeader(header);
-      const animationFrame = window.requestAnimationFrame(() => setVisible(true));
-      return () => window.cancelAnimationFrame(animationFrame);
+      // 用 runOnNextFrame 而不是裸 rAF：窗口被遮挡时 rAF 不触发，
+      // 粘性表头会永久停在 opacity-0（内容在，只是永远看不见）。
+      return runOnNextFrame(() => setVisible(true));
     }
 
     setVisible(false);

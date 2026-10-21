@@ -5,6 +5,13 @@ export {
   type EnterpriseIdentityAdapter,
 } from "./enterprise-identity/contract.js";
 export { IUcasGatewayService } from "./ucas-gateway/contract.js";
+export {
+  IImService,
+  type ImView,
+  type ImMessagesView,
+  type ImRealtimeEvent,
+  type ImConnectionStatus,
+} from "./im/contract.js";
 export { ServiceCollection } from "./collection.js";
 export {
   IModelSelectionService,
