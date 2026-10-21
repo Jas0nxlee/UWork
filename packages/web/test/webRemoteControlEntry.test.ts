@@ -12,6 +12,7 @@ function setup(
   jwt: string | null = null,
   href = "https://zcode.z.ai/remote/v4?app_version=3.13.0&sid=device-1&mid=mid-1&name=Desktop",
   account: WebRemoteControlDeviceListAccount | null = null,
+  protocol?: "hmac-v1" | "oauth-v2",
 ) {
   const auth = {
     getZCodeJwtToken: () => jwt,
@@ -37,6 +38,7 @@ function setup(
   };
   const entry = new WebRemoteControlEntry({
     auth,
+    protocol,
     token,
     connect,
     onView,
@@ -648,5 +650,43 @@ describe("本地记住的设备名与平台", () => {
     expect(JSON.parse(h.storage.get(DEVICE_NAMES_KEY)!)).toEqual([
       ["abcdefgh-1234", "Alice’s MacBook"],
     ]);
+  });
+});
+
+describe("UWork HMAC 手机 admission", () => {
+  it("完整 QR 无账号即可进入配对，选择其它设备只回扫码页，不请求官方设备或登录", async () => {
+    const h = setup(
+      null,
+      "https://relay.example/remote/v4?sid=device-1&hash=secret&t=1",
+      null,
+      "hmac-v1",
+    );
+    await h.entry.start();
+    expect(h.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        protocol: "hmac-v1",
+        params: expect.objectContaining({ deviceSid: "device-1", passHash: "secret" }),
+      }),
+    );
+    expect(h.token).not.toHaveBeenCalled();
+    expect(h.devices).not.toHaveBeenCalled();
+    await h.entry.chooseOtherDevice();
+    expect(h.onView).toHaveBeenLastCalledWith({ kind: "scan" });
+    expect(new URL(h.href).searchParams.has("hash")).toBe(false);
+    h.entry.startLogin("zai");
+    expect(h.auth.startLogin).not.toHaveBeenCalled();
+    expect(h.auth.logout).not.toHaveBeenCalled();
+  });
+  it("不完整配对材料失败关闭；无链接展示扫码页", async () => {
+    const malformed = setup(null, "https://relay.example/remote/v4?sid=x&hash=y", null, "hmac-v1");
+    await malformed.entry.start();
+    expect(malformed.onView).toHaveBeenLastCalledWith({
+      kind: "failure",
+      failure: { reason: "invalid-mobile-connection" },
+    });
+    expect(malformed.connect).not.toHaveBeenCalled();
+    const empty = setup(null, "https://relay.example/remote/v4", null, "hmac-v1");
+    await empty.entry.start();
+    expect(empty.onView).toHaveBeenLastCalledWith({ kind: "scan" });
   });
 });

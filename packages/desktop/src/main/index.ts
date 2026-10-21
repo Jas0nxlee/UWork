@@ -131,7 +131,11 @@ import {
   resolveExplicitStartupWorkspaceBootstrap,
 } from "./startupWorkspaceDeepLinkGate.js";
 import { createWebRemoteControlManager } from "./webRemoteControlManager.js";
-import { createWebRemoteControlDeviceStorage } from "#src/main/web-remote-relay/index.js";
+import {
+  createNodeWebRemoteControlRelayAuthProvider,
+  createWebRemoteControlRelayAuthStorageProvider,
+  createWebRemoteControlDeviceStorage,
+} from "#src/main/web-remote-relay/index.js";
 import { createWebRemoteControlFeatureGate } from "./webRemoteControlFeatureGate.js";
 import { reconnectWebRemoteControlWorkspaceInRenderer } from "./webRemoteControlRendererReconnect.js";
 import { sendWebRemoteControlStatusChangedToWindow } from "./webRemoteControlStatusEvents.js";
@@ -839,11 +843,6 @@ const remoteSessionManager = createRemoteWorkspaceSessionManager({
   webRemoteControlManagerRef,
 });
 
-// 复用既有只读账号入口；HTTP 由 main 的 Node fetch 执行，不触发 host OAuth 登出。
-const loadRemoteControlUserId = createTelemetryUserIdLoader(webRemoteControlCredentialService);
-const loadRemoteControlAuthorization = createTelemetryAuthorizationLoader(
-  webRemoteControlCredentialService,
-);
 const webRemoteControlSharedHostAttachments = createWebRemoteControlSharedHostAttachments({
   windowHostProcessMap,
   attachRemoteWorkspaceSessionHost: remoteSessionManager.attachRemoteWorkspaceSessionHost,
@@ -924,6 +923,15 @@ let startupOpenWorkspaceRequest: ExplicitStartupWorkspaceRequest | null =
       : null;
 
 const webRemoteControlManager = createWebRemoteControlManager({
+  hmacRelay: {
+    authProvider: createNodeWebRemoteControlRelayAuthProvider(),
+    authStorageProvider: createWebRemoteControlRelayAuthStorageProvider({
+      credentialService: webRemoteControlCredentialService,
+      loadSettings: () => mainSettingService.get(),
+      patchSettings: (patch) => mainSettingService.update(patch),
+      logger,
+    }),
+  },
   getEndpointUrls: async () => {
     const derived = buildZCodeEndpointUrls(await resolveCurrentZCodeEndpointOrigin(), {
       appVersion: webRemoteControlAppVersion,
@@ -945,11 +953,8 @@ const webRemoteControlManager = createWebRemoteControlManager({
   deviceMid,
   deviceName: hostname(),
   appVersion: webRemoteControlAppVersion,
-  getLogin: async () => {
-    const userId = await loadRemoteControlUserId();
-    const authorization = await loadRemoteControlAuthorization(userId);
-    return authorization ? { userId, jwt: authorization.slice("Bearer ".length) } : undefined;
-  },
+  // UWork 不提供官方账号；HMAC 分支不调用该 V2 兼容端口。
+  getLogin: async () => undefined,
   deviceStorage: createWebRemoteControlDeviceStorage({
     deleteLegacyCredential: () =>
       webRemoteControlCredentialService.delete("web-remote-control:external-relay:pass_hash"),

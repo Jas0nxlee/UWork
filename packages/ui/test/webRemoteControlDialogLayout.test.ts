@@ -41,7 +41,10 @@ const feedbackMocks = vi.hoisted(() => ({
   info: vi.fn(),
   toast: vi.fn(),
   requestLoginEntry: vi.fn(),
+  confirm: vi.fn(async () => true),
 }));
+
+vi.mock("@/hooks/useConfirmDialog.js", () => ({ useConfirmDialog: () => feedbackMocks.confirm }));
 
 vi.mock("@/components/ui/toast.js", () => ({ toast: feedbackMocks.toast }));
 
@@ -53,6 +56,7 @@ const platformMock = vi.hoisted(() => ({
   getWebRemoteControlStatus: vi.fn(async () => ({ status: "idle" })),
   startWebRemoteControl: vi.fn(async () => ({ status: "running" })),
   stopWebRemoteControl: vi.fn(async () => {}),
+  refreshWebRemoteControlPairing: vi.fn(async () => ({ status: "running" })),
 }));
 
 vi.mock("@/hooks/usePlatform.js", () => ({
@@ -101,9 +105,42 @@ describe("WebRemoteControlDialog layout", () => {
     platformMock.getWebRemoteControlStatus.mockClear();
     platformMock.startWebRemoteControl.mockClear();
     platformMock.stopWebRemoteControl.mockClear();
+    platformMock.refreshWebRemoteControlPairing.mockClear();
+    feedbackMocks.confirm.mockClear();
     feedbackMocks.error.mockClear();
     feedbackMocks.info.mockClear();
     feedbackMocks.toast.mockClear();
+  });
+
+  it("刷新自建二维码先确认，再透传 identity/session 到唯一平台轮换命令", async () => {
+    platformMock.getWebRemoteControlStatus.mockResolvedValueOnce({
+      status: "running",
+      connectUrl: "https://relay.example/remote/v4?sid=x&hash=y&t=1",
+    } as never);
+    const view = render(
+      createElement(WebRemoteControlDialog, {
+        open: true,
+        onOpenChange: vi.fn(),
+        workspacePath: "/tmp/project",
+        workspaceIdentity: "remote-host:workspace",
+        remoteSessionId: "session-current",
+        initialTaskId: "task-current",
+      }),
+    );
+    const refresh = await view.findByRole("button", { name: "webRemoteControl.refreshQr" });
+    feedbackMocks.confirm.mockResolvedValueOnce(false);
+    fireEvent.click(refresh);
+    await waitFor(() => expect(feedbackMocks.confirm).toHaveBeenCalled());
+    expect(platformMock.refreshWebRemoteControlPairing).not.toHaveBeenCalled();
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(platformMock.refreshWebRemoteControlPairing).toHaveBeenCalledWith({
+        workspacePath: "/tmp/project",
+        workspaceIdentity: "remote-host:workspace",
+        remoteSessionId: "session-current",
+        initialTaskId: "task-current",
+      }),
+    );
   });
 
   it("auth-required 显示登录入口，无二维码、生成中、复制链接或错误toast", async () => {
@@ -304,16 +341,22 @@ describe("WebRemoteControlDialog layout", () => {
     expect(html).toContain("webRemoteControl.copyLink.description");
   });
 
-  it("V2弹窗只保留复制链接，移除刷新二维码入口", () => {
-    const html = renderToStaticMarkup(
-      createElement(WebRemoteControlDialog, {
-        open: true,
-        onOpenChange: vi.fn(),
-        workspacePath: "/tmp/project",
-      }),
-    );
-    expect(html).toContain("webRemoteControl.copyLink</button>");
-    expect(html).not.toContain("webRemoteControl.refreshQr");
+  it("无轮换能力的 V2 平台只保留复制链接", () => {
+    const refresh = platformMock.refreshWebRemoteControlPairing;
+    Object.assign(platformMock, { refreshWebRemoteControlPairing: undefined });
+    try {
+      const html = renderToStaticMarkup(
+        createElement(WebRemoteControlDialog, {
+          open: true,
+          onOpenChange: vi.fn(),
+          workspacePath: "/tmp/project",
+        }),
+      );
+      expect(html).toContain("webRemoteControl.copyLink</button>");
+      expect(html).not.toContain("webRemoteControl.refreshQr");
+    } finally {
+      Object.assign(platformMock, { refreshWebRemoteControlPairing: refresh });
+    }
   });
 
   it("uses the paired mobile device name for the status tag instead of session id", () => {

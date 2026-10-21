@@ -126,7 +126,7 @@ describe("Web Remote Control IPC telemetry", () => {
     expect(h.showMessageBox).not.toHaveBeenCalled();
   });
 
-  it("只注册start/stop/status，不再暴露刷新配对IPC", async () => {
+  it("注册start/stop/status与经窗口授权的自建配对轮换IPC", async () => {
     const { registerWebRemoteControlIpcHandlers } =
       await import("../src/main/desktopWebRemoteControlIpc.js");
     registerWebRemoteControlIpcHandlers({
@@ -141,6 +141,7 @@ describe("Web Remote Control IPC telemetry", () => {
       [
         PlatformChannels.StartWebRemoteControl,
         PlatformChannels.StopWebRemoteControl,
+        PlatformChannels.ResetWebRemoteControlPairing,
         PlatformChannels.GetWebRemoteControlStatus,
       ].sort(),
     );

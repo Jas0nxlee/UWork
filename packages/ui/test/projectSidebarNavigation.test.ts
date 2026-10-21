@@ -87,3 +87,18 @@ it("SBV02: filter has project, group and recent update choices", async () => {
   fireEvent.click(screen.getByTestId("sidebar-view-timeline"));
   expect(onViewChange).toHaveBeenCalledWith("timeline");
 });
+
+it("UWork 手机/宽屏远控隐藏 Automations，插件入口仍可打开", () => {
+  const onOpenAutomations = vi.fn();
+  const onOpenPluginStore = vi.fn();
+  render(
+    createElement(ProjectSidebarNavigation, {
+      props: { isWebRemoteControl: true, onOpenAutomations, onOpenPluginStore },
+      onCreate: vi.fn(),
+    }),
+  );
+  expect(screen.queryByTestId("automations-open")).toBeNull();
+  fireEvent.click(screen.getByTestId("plugin-store-sidebar-open"));
+  expect(onOpenPluginStore).toHaveBeenCalledOnce();
+  expect(onOpenAutomations).not.toHaveBeenCalled();
+});

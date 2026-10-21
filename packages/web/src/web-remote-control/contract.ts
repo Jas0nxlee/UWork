@@ -33,12 +33,13 @@ export type WebRemoteControlDeviceListView = {
 };
 
 export type WebRemoteControlEntryView =
-  | { kind: "callback" | "login" }
+  | { kind: "callback" | "login" | "scan" }
   | WebRemoteControlDeviceListView
   | { kind: "failure"; failure: WebRemoteControlFailure };
 
 export interface WebRemoteControlEntryConnection {
-  params: WebRemoteControlV2QrParams & { deviceSid: string };
+  params: WebRemoteControlV2QrParams & { deviceSid: string; passHash?: string };
+  protocol?: "hmac-v1" | "oauth-v2";
   signal: AbortSignal;
   getToken(signal: AbortSignal): Promise<string>;
   onPaired(): void;
@@ -46,6 +47,7 @@ export interface WebRemoteControlEntryConnection {
 }
 
 export interface WebRemoteControlEntryOptions {
+  protocol?: "hmac-v1" | "oauth-v2";
   // 浏览器 location/history/storage 经现有边界注入，不另存一份登录事实。
   auth: Pick<WebAuthService, "getZCodeJwtToken" | "getActiveAccount" | "startLogin" | "logout">;
   getHref(): string;

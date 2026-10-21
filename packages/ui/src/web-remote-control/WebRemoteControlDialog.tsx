@@ -16,6 +16,7 @@ import {
   CopyIcon,
   LoaderCircle,
   MonitorSmartphone,
+  RefreshCw,
   Smartphone,
   Unplug,
   XIcon,
@@ -33,6 +34,7 @@ import {
 import { toast } from "@/components/ui/toast.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useOAuth } from "@/hooks/useOAuth.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
@@ -93,6 +95,7 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
   initialTaskId?: string;
 }) {
   const platform = usePlatform();
+  const confirmDialog = useConfirmDialog();
   const { intl } = useZCodeIntl();
   const [status, setStatus] = useState<WebRemoteControlStatus>({
     status: "idle",
@@ -302,6 +305,59 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
     }
   };
 
+  const handleRefreshQr = async () => {
+    // Bugfix: 刷新二维码会废弃之前复制或扫码得到的 sid/hash 链接。
+    // 之前按钮和复制链接并排，误触会让已发出的手机链接立即失效；这里先用统一确认弹窗保护。
+    const confirmed = await confirmDialog({
+      title: intl.formatMessage({ id: "webRemoteControl.refreshQr.confirmTitle" }),
+      description: intl.formatMessage({
+        id: "webRemoteControl.refreshQr.confirmDescription",
+      }),
+      confirmLabel: intl.formatMessage({ id: "webRemoteControl.refreshQr" }),
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    if (!platform.refreshWebRemoteControlPairing) return;
+    setLoading(true);
+    try {
+      const nextStatus = await platform.refreshWebRemoteControlPairing({
+        workspacePath,
+        workspaceIdentity,
+        remoteSessionId,
+        initialTaskId,
+      });
+      if (nextStatus.status === "cancelled") {
+        // 兼容可取消的平台实现：保持当前运行状态，不显示成功或失败反馈。
+        return;
+      }
+      // Bugfix: 泄露后的旧二维码包含 sid/hash，单纯重新绘制图片只会更新时间戳。
+      // 这里走平台层 reset，确保 main 清掉持久化配对材料后重新注册 relay 设备。
+      setStatus(nextStatus);
+      toast(intl.formatMessage({ id: "webRemoteControl.refreshQr.success" }));
+      logger.info("[WebRemoteControlDialog] 已刷新 Web 远程控制二维码", {
+        workspacePath,
+        workspaceIdentity: workspaceIdentity ?? "none",
+        remoteSessionId: remoteSessionId ?? "none",
+        initialTaskId: initialTaskId ?? "none",
+        sessionId: nextStatus.sessionId ?? "none",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast(intl.formatMessage({ id: "webRemoteControl.refreshQr.failed" }, { error: message }));
+      logger.error("[WebRemoteControlDialog] 刷新 Web 远程控制二维码失败", {
+        workspacePath,
+        workspaceIdentity: workspaceIdentity ?? "none",
+        remoteSessionId: remoteSessionId ?? "none",
+        initialTaskId: initialTaskId ?? "none",
+        error: message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStop = async () => {
     setLoading(true);
     try {
@@ -502,6 +558,19 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
                             id: "webRemoteControl.copyLink.description",
                           })}
                         </div>
+                        {platform.refreshWebRemoteControlPairing ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="default"
+                            className="shrink-0 gap-2 enabled:cursor-pointer"
+                            onClick={() => void handleRefreshQr()}
+                            disabled={loading}
+                          >
+                            <RefreshCw className="size-3.5" />
+                            {intl.formatMessage({ id: "webRemoteControl.refreshQr" })}
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"

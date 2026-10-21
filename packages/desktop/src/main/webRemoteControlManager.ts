@@ -10,6 +10,7 @@ import {
 } from "@zcode/client";
 import {
   buildWebRemoteControlExternalQrUrl,
+  buildWebRemoteControlHmacQrUrl,
   buildWebRemoteControlBridgeResultTelemetry,
   buildWebRemoteControlPairResultTelemetry,
   classifyRemoteUsageError,
@@ -51,6 +52,10 @@ import {
   type WebRemoteControlDeviceTransportState,
   createWebRemoteControlV2Http,
   type WebRemoteControlLogin,
+  WebRemoteControlHmacDeviceTransport,
+  type WebRemoteControlHmacDeviceTransportOptions,
+  type WebRemoteControlRelayAuthProvider,
+  type WebRemoteControlRelayAuthStorageProvider,
 } from "#src/main/web-remote-relay/index.js";
 import type { WebRemoteControlDeviceStorage } from "#src/main/web-remote-relay/index.js";
 
@@ -155,6 +160,14 @@ interface WindowControlRuntime {
 }
 
 interface WebRemoteControlManagerDependencies {
+  /** UWork 自建配对明确装配 HMAC；省略时保留上游 V2 门禁，不能由登录状态降级。 */
+  hmacRelay?: {
+    authProvider: WebRemoteControlRelayAuthProvider;
+    authStorageProvider: WebRemoteControlRelayAuthStorageProvider;
+    createDeviceTransport?: (
+      options: WebRemoteControlHmacDeviceTransportOptions,
+    ) => WebRemoteControlDeviceTransportLike;
+  };
   getEndpointUrls?: () => Promise<ZCodeEndpointUrls> | ZCodeEndpointUrls;
   relayWsUrl: string;
   mobileRemoteControlUrl: string;
@@ -309,6 +322,12 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
   const windowLifecycles = new Map<number, WindowControlLifecycle>();
   const authRequiredWindows = new Set<number>();
   let registrationQueue: Promise<unknown> = Promise.resolve();
+  let hmacPersistenceQueue: Promise<unknown> = Promise.resolve();
+  function persistHmac<T>(operation: () => Promise<T>): Promise<T> {
+    const task = hmacPersistenceQueue.then(operation);
+    hmacPersistenceQueue = task.catch(() => {});
+    return task;
+  }
   const startAuthorizations = new Map<string, WebRemoteControlStartAuthorization>();
   const availableWorkspacesByWindowId = new Map<number, WebRemoteControlWorkspaceTarget[]>();
 
@@ -1473,6 +1492,178 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
     });
   }
 
+  async function startHmac(
+    windowId: number,
+    context: WebRemoteControlContext,
+  ): Promise<WebRemoteControlStartResult> {
+    const hmac = dependencies.hmacRelay!;
+    clearStartAuthorizationsForWindow(windowId);
+    dependencies.featureGate.assertEnabled();
+    startupRestoreClaimed = true;
+    // 自建 relay 每个 SID 只有一个 device 槽；窗口切换必须先撤销旧 owner，不能靠 KICKED 争抢。
+    const stopped = Promise.all(
+      [...new Set([...windowLifecycles.keys(), ...runtimes.keys(), windowId])].map((id) =>
+        stopWindowRuntime(id, id === windowId ? "restart" : "hmac-owner-switched"),
+      ),
+    );
+    const controller = new AbortController();
+    windowLifecycles.set(windowId, { controller });
+    const assertActive = () => controller.signal.throwIfAborted();
+    let runtime: WindowControlRuntime | undefined;
+    try {
+      await stopped;
+      assertActive();
+      const endpoint = await dependencies.getEndpointUrls?.();
+      const relayWsUrl = endpoint?.relayWsUrl ?? dependencies.relayWsUrl;
+      const mobileRemoteControlUrl = endpoint?.remoteUrl ?? dependencies.mobileRemoteControlUrl;
+      // 修复原因：HMAC 只能发往明确配置的自建端点；不能把配对密钥送到官方 V2 服务。
+      if (
+        [relayWsUrl, mobileRemoteControlUrl].some((url) => new URL(url).hostname === "zcode.z.ai")
+      )
+        throw new Error("UWork self-hosted relay endpoints are required");
+      const stored = await persistHmac(async () => {
+        assertActive();
+        return hmac.authStorageProvider.load();
+      });
+      assertActive();
+      let auth = stored;
+      const transportAuth = stored
+        ? { mode: "persisted" as const, ...stored }
+        : {
+            mode: "register" as const,
+            passHash: hmac.authProvider.createPassHash(hmac.authProvider.createPassword()),
+          };
+      let settleReady: (error?: Error) => void = () => {};
+      const ready = new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const aborted = () => finish(new Error("Web remote control start cancelled"));
+        const timer = setTimeout(
+          () => finish(new Error("HMAC relay QR-ready timeout")),
+          EXTERNAL_RELAY_QR_READY_TIMEOUT_MS,
+        );
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", aborted);
+          if (error) reject(error);
+          else resolve();
+        };
+        settleReady = finish;
+        controller.signal.addEventListener("abort", aborted, { once: true });
+      });
+      const options: WebRemoteControlHmacDeviceTransportOptions = {
+        relayWsUrl,
+        deviceMid: dependencies.deviceMid,
+        auth: transportAuth,
+        meta: {
+          platform: process.platform,
+          version: dependencies.appVersion,
+          name: dependencies.deviceName,
+        },
+        authProvider: hmac.authProvider,
+        logger: dependencies.logger,
+        relayMessageLogger: dependencies.relayMessageLogger,
+        onRegisteredAuth: (value) => {
+          auth = value;
+        },
+        onStateChange: (state) => {
+          if (!runtime || controller.signal.aborted) return;
+          mapTransportState(runtime, state === "registering" ? "authenticating" : state);
+          if ((state === "waiting_terminal" || state === "paired") && auth) settleReady();
+          if (state === "kicked") settleReady(new Error("session-conflict"));
+        },
+        onPayload: (payload) => {
+          if (runtime && !controller.signal.aborted) routePayload(runtime, payload);
+        },
+        onRawTransportPayload: (payload) =>
+          runtime && !controller.signal.aborted
+            ? routeRawTransportCandidate(runtime, payload)
+            : false,
+        onRawTransportFault: (reason) =>
+          runtime?.currentBridge?.relayProtocol?.markDegraded(reason),
+        onSendReady: (event) => {
+          if (!runtime || controller.signal.aborted) return;
+          flushPendingOutboundPayloads(runtime);
+          const first = !runtime.hasObservedSendReadyForPairing;
+          runtime.hasObservedSendReadyForPairing = true;
+          if (first || event.kind === "reconnected-socket") {
+            sendPendingBridgeInvalidation(runtime);
+            requestMobileTaskView(runtime);
+          }
+          const protocol = runtime.currentBridge?.relayProtocol;
+          if (protocol && !protocol.isDegraded()) protocol.replayUnacknowledged();
+        },
+        onError: (error) =>
+          dependencies.logger.warn("[web-remote-control] HMAC relay error", {
+            message: error.message,
+          }),
+        onInvalidPersistedAuth: () =>
+          persistHmac(async () => {
+            assertActive();
+            await hmac.authStorageProvider.clear();
+          }),
+      };
+      const transport =
+        hmac.createDeviceTransport?.(options) ?? new WebRemoteControlHmacDeviceTransport(options);
+      runtime = {
+        windowId,
+        ...context,
+        status: "starting",
+        deviceSid: stored?.deviceSid ?? "pending",
+        deviceMid: dependencies.deviceMid,
+        connectUrl: "",
+        qrUrl: "",
+        transport,
+        mobileConnected: false,
+        hasEverPaired: false,
+        hasObservedSendReadyForPairing: false,
+        pendingOutboundPayloads: [],
+      };
+      runtimes.set(windowId, runtime);
+      emitRuntimeStatus(runtime);
+      transport.start();
+      await ready;
+      assertActive();
+      if (!auth) throw new Error("HMAC pairing material missing after auth_ack");
+      // 修复原因：stop/轮换必须排在在途写入之后，否则迟到保存会恢复旧凭据或已启用意图。
+      const acceptedAuth = auth;
+      await persistHmac(async () => {
+        assertActive();
+        await hmac.authStorageProvider.save(acceptedAuth);
+        assertActive();
+        await dependencies.startupRestoreStorageProvider.save({
+          workspacePath: context.workspacePath,
+          workspaceIdentity: context.workspaceIdentity,
+          initialTaskId: context.initialTaskId,
+        });
+      });
+      assertActive();
+      runtime.deviceSid = auth.deviceSid;
+      runtime.qrUrl = runtime.connectUrl = buildWebRemoteControlHmacQrUrl({
+        baseUrl: mobileRemoteControlUrl,
+        ...auth,
+        timestamp: Date.now(),
+        deviceMid: dependencies.deviceMid,
+        deviceName: dependencies.deviceName,
+        appVersion: dependencies.appVersion,
+      });
+      emitRuntimeStatus(runtime);
+      return {
+        status: runtime.status === "active" ? "active" : "running",
+        sessionId: auth.deviceSid,
+        windowControlSessionId: auth.deviceSid,
+        qrUrl: runtime.qrUrl,
+        connectUrl: runtime.connectUrl,
+        ...context,
+      };
+    } catch (error) {
+      if (windowLifecycles.get(windowId)?.controller === controller)
+        await stopWindowRuntime(windowId, "hmac-start-failed");
+      throw error;
+    }
+  }
+
   return {
     authorizeStart,
     async startAuthorized(
@@ -1487,6 +1678,7 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
       windowId: number,
       context: WebRemoteControlContext,
     ): Promise<WebRemoteControlStartResult> {
+      if (dependencies.hmacRelay) return startHmac(windowId, context);
       clearStartAuthorizationsForWindow(windowId);
       dependencies.featureGate.assertEnabled();
       startupRestoreClaimed = true;
@@ -1743,6 +1935,31 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
       }
     },
 
+    async resetPairingAuthorized(
+      windowId: number,
+      context: WebRemoteControlContext,
+      authorization: WebRemoteControlStartAuthorization,
+    ): Promise<WebRemoteControlStartResult> {
+      consumeStartAuthorization(windowId, context, authorization);
+      const hmac = dependencies.hmacRelay;
+      if (!hmac) throw new Error("Pairing rotation requires a self-hosted HMAC relay");
+      const revision = ++lifecycleRevision;
+      // 修复原因：旧 sid/hash 链接即控制权，必须先断开所有共用配对材料的窗口再轮换。
+      for (const id of new Set([...windowLifecycles.keys(), ...runtimes.keys(), windowId])) {
+        clearStartAuthorizationsForWindow(id);
+        await stopWindowRuntime(id, "pairing-rotated");
+      }
+      const rotation = { controller: new AbortController() };
+      windowLifecycles.set(windowId, rotation);
+      await persistHmac(() => hmac.authStorageProvider.clear());
+      if (
+        revision !== lifecycleRevision ||
+        windowLifecycles.get(windowId) !== rotation ||
+        rotation.controller.signal.aborted
+      )
+        throw new Error("Pairing rotation cancelled");
+      return startHmac(windowId, context);
+    },
     async stop(windowId: number): Promise<void> {
       lifecycleRevision += 1;
       authNotificationRevision += 1;
@@ -1752,7 +1969,9 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
       // Bugfix: 清除自动恢复设置需要写磁盘，失败时不能阻止用户关闭当前远控连接。
       // 先释放 transport 和 attachment，再把持久化错误返回 UI，保证本次运行立即停止。
       await stopWindowRuntime(windowId, "manual-stop");
-      await dependencies.startupRestoreStorageProvider.clear();
+      if (dependencies.hmacRelay)
+        await persistHmac(() => dependencies.startupRestoreStorageProvider.clear());
+      else await dependencies.startupRestoreStorageProvider.clear();
     },
 
     async suspend(windowId: number, reason: string): Promise<void> {
@@ -1764,6 +1983,8 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
       windowId: number,
       change: WebRemoteControlAuthStateChange,
     ): Promise<void> {
+      // 修复原因：UWork 的随机配对凭据不属于已退役 OAuth，展示态清理不得撤销 HMAC runtime。
+      if (dependencies.hmacRelay) return;
       const revision = ++authNotificationRevision;
       if (change.state === "signed-in") {
         const login = await dependencies.getLogin();

@@ -24,6 +24,11 @@ export interface WebRemoteControlIpcManager {
     context: WebRemoteControlContext,
     authorization: WebRemoteControlStartAuthorization,
   ) => Promise<WebRemoteControlStartResult>;
+  resetPairingAuthorized?: (
+    windowId: number,
+    context: WebRemoteControlContext,
+    authorization: WebRemoteControlStartAuthorization,
+  ) => Promise<WebRemoteControlStartResult>;
   notifyAuthStateChanged(windowId: number, change: WebRemoteControlAuthStateChange): Promise<void>;
   stop(windowId: number): Promise<void>;
   getStatus(windowId: number): WebRemoteControlStatus;
@@ -119,6 +124,23 @@ export function registerWebRemoteControlIpcHandlers(
           const manager = dependencies.webRemoteControlManager;
           const authorization = manager.authorizeStart(windowId, context);
           return manager.startAuthorized(windowId, context, authorization);
+        },
+        reportRemoteUsageEvent: dependencies.reportRemoteUsageEvent,
+      }),
+  );
+
+  ipcMain.handle(
+    PlatformChannels.ResetWebRemoteControlPairing,
+    async (event, context: WebRemoteControlContext) =>
+      runStartOperation({
+        context,
+        sender: event.sender,
+        missingWindowMessage: "未找到当前窗口，无法刷新 Web 远程控制二维码",
+        operation: (windowId) => {
+          const manager = dependencies.webRemoteControlManager;
+          const authorization = manager.authorizeStart(windowId, context);
+          if (!manager.resetPairingAuthorized) throw new Error("Pairing rotation unavailable");
+          return manager.resetPairingAuthorized(windowId, context, authorization);
         },
         reportRemoteUsageEvent: dependencies.reportRemoteUsageEvent,
       }),

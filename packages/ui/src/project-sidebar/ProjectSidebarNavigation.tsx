@@ -32,7 +32,8 @@ export function ProjectSidebarNavigation({
       {/* Relay V2 远控：当前电脑是项目与任务的上一级，放在导航首行；手机端占用原顶部留白。 */}
       {deviceNavigation ? <WebRemoteControlDeviceHeader navigation={deviceNavigation} /> : null}
       <NewTaskButtonGroup onCreateTask={onCreate} />
-      {props.onOpenAutomations ? (
+      {/* 修复原因：手机附件仅投影现有任务，不能恢复 UWork 已禁止的远控 Automations 导航。 */}
+      {!props.isWebRemoteControl && props.onOpenAutomations ? (
         <Button
           variant="ghost"
           size="lg"

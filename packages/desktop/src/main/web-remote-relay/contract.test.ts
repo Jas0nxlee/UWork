@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createWebRemoteControlDeviceStorage,
+  createNodeWebRemoteControlRelayAuthProvider,
   createWebRemoteControlV2Http,
 } from "#src/main/web-remote-relay/index.js";
 
@@ -32,4 +33,15 @@ describe("desktop relay public boundary", () => {
       retryable: false,
     });
   });
+});
+
+it("公开 HMAC port 以随机口令派生配对材料，角色绑定 proof，不含账号依赖", () => {
+  const provider = createNodeWebRemoteControlRelayAuthProvider();
+  const first = provider.createPassword(),
+    second = provider.createPassword();
+  expect(first).not.toBe(second);
+  const hash = provider.createPassHash(first);
+  expect(provider.calculateProof(hash, "nonce", "device", "sid")).not.toBe(
+    provider.calculateProof(hash, "nonce", "terminal", "sid"),
+  );
 });

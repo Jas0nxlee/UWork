@@ -795,6 +795,11 @@ export interface IPlatformService {
     context: WebRemoteControlContext,
   ): Promise<WebRemoteControlStartOperationResult>;
 
+  /** 轮换自建 relay 配对材料并使已复制的旧链接失效。 */
+  refreshWebRemoteControlPairing?(
+    context: WebRemoteControlContext,
+  ): Promise<WebRemoteControlStartOperationResult>;
+
   /** 关闭当前窗口已开启的 Web 远程控制能力 */
   stopWebRemoteControl(): Promise<void>;
 

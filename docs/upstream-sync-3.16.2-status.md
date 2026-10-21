@@ -32,14 +32,14 @@
    - `config/provider/zcode-builtin.json`：JSON 按键三方合并 —— 保留 ucas、维持 zai/bigmodel 模板删除、补上游新模型规则与 `xiaomi-mimo-token-plan`（18 个模板）。
    - 其它：README（我方重写 + 上游 changelog 折叠）、feature-graph（裁剪图 + 上游 3.16.2 新节点）。
 
-## 三、遗留（未在本分支处理，需产品/后续决定）
+## 三、集成修复与验收边界（2026-10-21 更新）
 
 1. **IM（消息/频道）已按决定从本分支剥离**（提交 `dcc30bf1`）：这批 UI 组件是并行会话误提交进来的半成品，其契约从未提交（`packages/shared/src/im.ts`、`packages/services/src/im/`、`IImService`、`IPlatformService.setImBadgeCount`、`IServiceAccessor.imService` 全树都找不到），98 个 typecheck 错误全部来自它。已删除 `packages/ui/src/im/**`（37 文件）+ 8 个 IM 测试、拔除 15 个共享文件里的接线、移除仅 IM 使用的 127 个 i18n 键 ×2 语言；剥离后 `pnpm typecheck` 由 98 → **0**。**IM 的 UI 可从 `8ba8704a` 取回**，契约齐备后与 UI 一起单独提 PR；设计稿仍在 `specs/messaging-and-channels.md`。副作用：`sidePaneTabMatchesWorkspace` 的"空 workspaceKey 仍可见"不变式暂时没有用例钉住。
-2. **账号体系取舍**：`oauthService` 保持"退役桩"（不发网络登录），上游 3.16.2 的账号实现未收下，相关上游测试仍会红。
-3. **远控任务同步**：上游删掉 Root 层的 `webRemoteControlTaskSync*`；`useWebRemoteControlAuthSync` 与我方"已移除账号登录"的清理 effect 相抵（远控平台会长期报 signed-out）。企业身份若要覆盖手机端鉴权，需要在企业身份 Provider 接这条通道。
-4. **生成物**：`THIRD-PARTY-NOTICES.md` / `third-party/inventory.json` 取上游版，发布前需在 CI 重生成。
+2. **账号体系保留退役合同**：`oauthService` 不恢复账号、不发网络登录；RPC 会话事件回归验证 signed-out 与凭据不变。套餐设置的陈旧入口断言改为验证个人 Provider 导航与刷新 owner，未为迁就上游测试恢复旧账号功能。未运行全量根 UT，不将定向测试通过描述为全仓全绿。
+3. **远控兼容已修复（2026-10-21）**：UWork Main 显式使用自建 HMAC 配对，手机构建默认 HMAC；保留现有自建端点 env 注入，缺失自建端点时失败关闭。随机配对与企业身份/OAuth 无关，不能通过企业 Provider 的 signed-in 通知或企业 JWT 替代官方 V2 JWT。上游 V2 作为隔离兼容实现保留，无账号仍拒绝。原 `webRemoteControlTaskSync*` / `initialWorkspaceList` 已由 Host projectService/windowProjectDirectory 全局项目目录替代；当前 SideBar 导航复用同一 identity/switcher，不恢复第二份任务索引。Loopback 双端互通与明暗/宽窄屏浏览器夹具已验证，真实生产 relay、企业微信和新安装包未验收。
+4. **第三方材料**：按当前生产依赖图重生成 `THIRD-PARTY-NOTICES.md` / `third-party/inventory.json` 并验证输入新鲜度。Fortune Sheet 与 saxes 补齐固定版本原文；ExcelJS 的旧 unzipper 定向升级至 0.12.5，移除 binary/buffers/chainsaw，并用两项补丁修复 workbook model 屏障和 forceStream 提前终结。材料清单仍列审查义务；新鲜度通过不代表严格完整许可审查完成。
 5. **`pnpm fmt:check` 本机红**：本地 oxfmt 0.41.0 的口径与两棵树里已提交的格式都不一致（未触碰的旧文件、上游新增文件都不过），与本次合并无关；未做全仓重排。
-6. 已知陈旧用例（既存，未修）：`modelProviderCodingPlan.test.ts`（引用已删除的纯函数）、`useDesktopUpdateMenu.test.ts`（源码模块已删）。
+6. **陈旧用例已修复**：`modelProviderCodingPlan.test.ts` 验证当前个人设置入口；`useDesktopUpdateMenu.test.ts` 直接覆盖实际 Windows 菜单，复现并修复迟到 idle 快照覆盖实时 checking 的问题。治理为 Office 与帧调度登记真实 managed 边界，消除三个 Office 依赖环；同一 contract 层支持多个精确根，不放宽层间方向。全局 lint 仍为 400 行，仅本次继承的存量大文件按精确路径保留 800 行上限。
 
 ## 四、复现与验收
 
@@ -50,3 +50,10 @@ node scripts/upstream-track.mjs status --ours chore/upstream-3.16.2-sync   # 应
 ```
 
 要点：**不要**在共享工作树里做这类大合并（本仓库常有多会话同时改同一工作树），用独立 worktree；冲突分类优先用"oxfmt 归一化 + 三方合并"，而不是逐个读冲突块。上游基线只到 3.15.1 时的方法与坑见 [`upstream-tracking.md`](./upstream-tracking.md)。
+
+## 五、本次合并验证
+
+- Node 24.14.0 / pnpm 10.33.2 冻结安装、桌面 `build:no-runtime-assets` 与 Agent CLI 构建通过。
+- 供应商/企业身份/品牌 CI 对应 Node 测试 163 项通过；菜单、个人供应商、OAuth RPC 与归档聚焦套件通过。
+- HMAC 真实 loopback、窗口 owner 交接、持久化/轮换/取消、原 V2 独立门禁及项目目录导航有定向回归；手机/宽屏 × 明暗四组合浏览器夹具通过。
+- 不包含真实生产 relay、企微扫码或新安装包的端到端验收；不发新版本、不发布安装包。

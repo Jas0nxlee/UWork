@@ -42,3 +42,6 @@ export interface WebRemoteControlDeviceTransportOptions {
   onError(error: Error): void;
   onSendReady?(event: { kind: "same-socket" | "reconnected-socket" }): void;
 }
+
+export type * from "./contracts/hmacIdentity.js";
+export type * from "./contracts/hmacTransport.js";

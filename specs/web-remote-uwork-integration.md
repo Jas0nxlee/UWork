@@ -4,8 +4,8 @@
 
 - 手机 `/remote`（external relay、token bridge 和 disconnected home-only）只投影桌面已有 Host attachment；初始化/切换不自动恢复身份会话、不提供身份登录/退出入口、不触发自动企业网关配置。此装配标志不等于所有 RPC 的权限封禁；显式网关设置写入不在本次重构范围。
 - 企业身份唯一写者仍是窗口 Local Host 的 enterprise identity service；workspace/session/runtime 及 accepted input 的所有者不变。手机不新建 Host、Agent 或独立远程会话。
-- Root 将 workspace switcher、初始手机导航意图、初始 workspace/task 列表及 terminal transport 状态完整传至现有 RootWorkspaceContent → App → WorkspaceShellLayout。
-- 窄屏使用现有 WebRemoteControlMobileShell；宽屏 Sidebar 使用同一个 switcher 的 listWorkspaces 全局任务索引，支持当前工作区任务和跨工作区切换。Sidebar 只保存折叠等局部 UI 状态。
+- Root 将 workspace switcher、初始手机导航意图及 terminal transport 状态完整传至现有 RootWorkspaceContent → App → WorkspaceShellLayout。上游项目目录架构以 Host projectService.readTree/windowProjectDirectory 为唯一全局任务集合，旧 initial workspace/task 快照不再参与 Root 装配。
+- 窄屏 WebRemoteControlMobileShell 与宽屏复用 ProjectSidebar 和 Host 全局项目/任务目录；useProjectTaskNavigation 经同一 switcher 打开当前任务或跨 workspaceIdentity 切换，并透传 task-open/switching 回调。home-only 缺少项目契约时仅投影 listWorkspaces 与更新事件，保留代际防迟到，不从路径推断任务归属。Sidebar 只保存折叠等局部 UI 状态。
 - 桌面仅在远控已启用且状态 running/active、完整 workspace 恢复后发布工作区与任务列表投影；普通桌面不订阅整张 workspace 状态表。重连请求由已有桌面连接 owner 执行。
 - UWork 已裁剪的 OAuth 账号、套餐、奖励及营销入口保持裁剪；远控修复不恢复这些产品入口。
 - 手机 attachment 不挂载桌面首次职业/迁移引导；该偏好写入和完成状态仍属于已有桌面，不因 home-only 缺少设置而在手机上重新引导。
@@ -34,7 +34,7 @@ sequenceDiagram
 ## 验收与回归
 
 1. 三种手机 Root 均显式启用企业身份只读；初次连接、跨工作区切换或 home-only 重建不显示企业登录，不调用 restoreSession/beginLogin/网关 sync。
-2. Root 透传四项远控参数；手机保持 replayable workbench 模式，桌面保持 continuous。
+2. Root 透传三项远控参数并复用 Host 全局项目目录；手机保持 replayable workbench 模式，桌面保持 continuous。
 3. 390px 手机首页可查看任务、打开当前任务、跨工作区切换；1200px 远控 Sidebar 使用全局任务索引，调用任务打开及切换中回调，隐藏 Automations，保留插件入口。
 4. disconnected home-only 显示已有 workspace 列表并可重连；新 bridge 不新建 Agent/runtime。terminal reconnecting 提示保持现有手机壳语义。
 5. 桌面远控关闭时不订阅全局任务表；开启时完整恢复后同步 pinned/timeline/archived 列表，重连请求转交既有连接 owner。
@@ -105,3 +105,7 @@ UWork 裁剪掉**，于是桌面侧栏看不到远控入口，而 `workspaceSide
 - 两者均使用 browser-harness。夹具不创建 Agent/Host，不连接企业微信、真实外部 relay 或 SSH；不能据此宣称真实配对、真实模型执行或端到端 runtime 验收。
 - home-only 宽屏没有真实 attachment，底层 V4 subscribe 仍会记录 fail-closed warn；此场景只确认列表/导航展示和没有未处理 JS 异常，不宣称已建立可聊天 runtime。
 - 中文消息按当前英文 key 补齐上游缺失译文，保留已有 UWork 定制值；空句式前缀按合法译文处理，覆盖检查使用键是否存在。
+
+## 2026-10-21 当前装配的回归落点
+
+上游已删除旧 token-bridge 的 `renderBridgeRoot`、旧 `WebRemoteControlTaskIndex` 与 `initialWebRemoteControlWorkspaceList` 全链。当前第三入口是 `resolveWebBootstrap` 的 remoteId 只读标志，经唯一最终 Root 传入；前两入口仍为 relay bridge 与 home-only Root。CI 守卫检查这些真实入口、Host 目录整组读取和 ProjectSidebar 的完整 identity/任务切换回调，不要求重建已经删除的第二份任务索引。运行时由 projectTreeWindowDirectory、projectTaskNavigationStability、projectSidebarHomeOnlyWorkspaces、webRemoteControlMobileShell 等聚焦回归守住目录范围、迟到结果、宽窄屏和切换语义。

@@ -38,6 +38,8 @@ export function createDesktopPlatform(options: {
       window.zcode.bindRemoteWorkspaceSessionContext?.(context) ??
       Promise.reject(new Error("Desktop bindRemoteWorkspaceSessionContext bridge unavailable")),
     startWebRemoteControl: (context) => window.zcode.startWebRemoteControl(context),
+    refreshWebRemoteControlPairing: (context) =>
+      window.zcode.refreshWebRemoteControlPairing(context),
     stopWebRemoteControl: () => window.zcode.stopWebRemoteControl(),
     getWebRemoteControlStatus: () => window.zcode.getWebRemoteControlStatus(),
     onWebRemoteControlStatusChanged: (handler) =>

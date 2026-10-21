@@ -14,7 +14,6 @@ import {
 import { createWebRemoteControlManager } from "@desktop/main/webRemoteControlManager.js";
 import { createWebRemoteControlDeviceStorage } from "#src/main/web-remote-relay/index.js";
 import { createWebRemoteControlFeatureGate } from "@desktop/main/webRemoteControlFeatureGate.js";
-import { createOAuthService } from "@zcode/services/node";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -247,41 +246,8 @@ describe("V2 manager public API with real relay", () => {
     ).toHaveLength(1);
   });
 
-  it("凭据清空后的 provider 清理失败仍撤销配对连接并保留启用记录", async () => {
+  it("V2 兼容模式退出完成通知立即撤销真实配对连接，并保留显式启用意图", async () => {
     const f = await fixture();
-    const credentials = new Map([
-      ["oauth:active_provider", "zai"],
-      [
-        "oauth:zai:user_info",
-        JSON.stringify({ id: "user", username: "User", displayName: "User" }),
-      ],
-      ["oauth:zai:access_token", "access"],
-      ["zcodejwttoken", "jwt"],
-    ]);
-    f.readLogin.mockImplementation(async () =>
-      credentials.has("zcodejwttoken") ? { jwt: "jwt", userId: "user" } : undefined,
-    );
-    const oauth = createOAuthService(
-      {
-        load: async (key) => credentials.get(key) ?? null,
-        save: async (key, value) => {
-          credentials.set(key, value);
-        },
-        delete: async (key) => {
-          credentials.delete(key);
-        },
-      },
-      {
-        apiClient: { request: vi.fn<typeof fetch>() },
-        onProviderLogout: async () => {
-          throw new Error("derived settings failed");
-        },
-      },
-    );
-    const subscription = oauth.onDidChangeSession((state) => {
-      void f.manager.notifyAuthStateChanged(1, { state });
-    });
-    cleanups.push(() => subscription.dispose());
     await f.start();
     const sid = f.settings.webRemoteControlRelayV2Device!.deviceSid;
     const terminal = await connectTerminal(f.relay, "jwt", sid);
@@ -289,11 +255,16 @@ describe("V2 manager public API with real relay", () => {
     await vi.waitFor(() =>
       expect(terminal.messages.some((message) => message.type === "data")).toBe(true),
     );
-    await expect(oauth.logout()).rejects.toThrow("derived settings failed");
+    // UWork OAuth 已退役，不能通过恢复旧服务证明 V2；在凭据边界注入退出事实，验证 manager 的协议合同。
+    f.setLogin(undefined);
+    await f.manager.notifyAuthStateChanged(1, { state: "signed-out" });
     await vi.waitFor(() => expect(terminal.socket.readyState).toBe(WebSocket.CLOSED));
     expect(f.manager.getStatus(1)).toEqual({ status: "auth-required" });
-    expect(credentials.has("zcodejwttoken")).toBe(false);
     expect(f.settings.webRemoteControlLastEnabledContext).toEqual({ workspacePath: "/workspace" });
+    // 后续 workspace 投影不能越过退出门禁重新建立连接。
+    await expect(
+      f.manager.restorePreviouslyEnabled(1, [{ workspacePath: "/workspace" }]),
+    ).resolves.toBe(false);
   });
   it("首次注册503交给连接退避恢复，无需再次点击启动", async () => {
     let registrations = 0;

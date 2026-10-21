@@ -82,6 +82,8 @@ import {
   createWebRemoteControlBridgeRecoveryRunner,
   getWebRemoteControlBridgeRecoveryRetryDelay,
   WebRemoteControlTerminalTransport,
+  WebRemoteControlHmacTerminalTransport,
+  createBrowserWebRemoteControlRelayAuthProvider,
   type WebRemoteControlTerminalTransportDiagnostic,
   type WebRemoteControlTerminalTransportState,
   createWebRemoteControlAppPayloadRequester,
@@ -103,6 +105,7 @@ import {
 
 import {
   WebRemoteControlDeviceListPage,
+  WebRemoteControlScanPage,
   WebRemoteControlLoadingScreen,
   type WebRemoteControlConnectingDevice,
   WebRemoteControlFailureScreen,
@@ -406,6 +409,8 @@ const webRemoteControlStorage: Pick<Storage, "getItem" | "setItem"> = {
 };
 
 const remoteEntry = new WebRemoteControlEntry({
+  protocol:
+    import.meta.env.VITE_WEB_REMOTE_CONTROL_PROTOCOL === "oauth-v2" ? "oauth-v2" : "hmac-v1",
   auth: webAuthService,
   getHref: () => window.location.href,
   replaceHref: (href) => window.history.replaceState(window.history.state, "", href),
@@ -425,7 +430,13 @@ const remoteEntry = new WebRemoteControlEntry({
     void bootstrapExternalRelayWebRemoteControl(connection);
   },
   onView: (view) => {
-    if (view.kind === "callback") renderWebAuthCallbackPage();
+    if (view.kind === "scan")
+      root.render(
+        <WebRemoteControlScanPage
+          locale={resolveWebRemoteControlScreenLocale(navigator.language)}
+        />,
+      );
+    else if (view.kind === "callback") renderWebAuthCallbackPage();
     else if (view.kind === "login") renderWebLoginPage();
     else if (view.kind === "devices") {
       document.title = "ZCode - Web Remote Control";
@@ -1044,7 +1055,10 @@ export function createHomeOnlyWebRemoteControlServices(): RootServices {
 }
 
 function resolveExternalRelayWsUrl(): string {
-  return resolveWebRemoteControlRelayWsUrl({ endpointOrigin: window.location.origin });
+  return resolveWebRemoteControlRelayWsUrl({
+    endpointOrigin: window.location.origin,
+    overrideUrl: import.meta.env.VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL,
+  });
 }
 
 function isZhLocale(): boolean {
@@ -1070,6 +1084,14 @@ async function bootstrapExternalRelayWebRemoteControl(
 ): Promise<void> {
   if (connection.signal.aborted) return;
   const { params: relayParams, getToken } = connection;
+  // 修复原因：自建 HMAC 构建必须显式配置 relay，不能把配对密钥送往默认官方 V2 服务。
+  if (
+    connection.protocol === "hmac-v1" &&
+    new URL(resolveExternalRelayWsUrl()).hostname === "zcode.z.ai"
+  ) {
+    renderWebRemoteControlFailure({ reason: "relay-unavailable" });
+    return;
+  }
   seedStableWebRemoteControlClientId(relayParams.deviceSid);
   // 平台只是展示偏好：取本机按 MID 记住的记录，扫码直连的陌生设备显示通用电脑图标。
   const connectingDevice: WebRemoteControlConnectingDevice = {
@@ -1363,7 +1385,13 @@ async function bootstrapExternalRelayWebRemoteControl(
   const taskViewPublisher = createWebRemoteControlTaskViewPublisher(
     (payload) => !terminated && !versionGuard.isBlocked() && transport.sendPayload(payload),
   );
-  const transport = new WebRemoteControlTerminalTransport({
+  const TerminalTransport =
+    connection.protocol === "hmac-v1"
+      ? WebRemoteControlHmacTerminalTransport
+      : WebRemoteControlTerminalTransport;
+  const transport = new TerminalTransport({
+    passHash: relayParams.passHash ?? "",
+    authProvider: createBrowserWebRemoteControlRelayAuthProvider(),
     relayWsUrl: resolveExternalRelayWsUrl(),
     deviceSid: relayParams.deviceSid,
     deviceMid: relayParams.deviceMid,
@@ -2040,7 +2068,10 @@ async function bootstrapWebApp() {
   if (isWebRemoteControlRoute() || isWebRemoteControlOAuthCallback(new URL(window.location.href))) {
     document.documentElement.lang = resolveWebRemoteControlScreenLocale(navigator.language);
   }
-  if (isWebOAuthCallback(params)) {
+  if (
+    isWebOAuthCallback(params) &&
+    (!isWebRemoteControlRoute() || import.meta.env.VITE_WEB_REMOTE_CONTROL_PROTOCOL === "oauth-v2")
+  ) {
     renderWebAuthCallbackPage();
     return;
   }

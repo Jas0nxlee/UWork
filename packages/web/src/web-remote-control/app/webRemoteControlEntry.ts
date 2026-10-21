@@ -5,7 +5,10 @@ import type {
   WebRemoteControlDeviceGroup,
 } from "#src/web-remote-control/contract.js";
 import type { WebRemoteControlRelayV2Device } from "@zcode/shared/web-remote-relay";
-import { parseWebRemoteControlExternalQrParams } from "@zcode/shared";
+import {
+  parseWebRemoteControlHmacQrParams,
+  parseWebRemoteControlExternalQrParams,
+} from "@zcode/shared";
 import { WebRemoteControlV2ConnectionError } from "@zcode/shared/web-remote-relay";
 import type { WebOAuthProviderId } from "#src/auth/browserOAuthCredentialRepo.js";
 import { groupWebRemoteControlDevices } from "#src/web-remote-control/domain/webRemoteControlDeviceGroups.js";
@@ -77,6 +80,20 @@ export class WebRemoteControlEntry {
   async start(): Promise<void> {
     this.reset();
     const url = new URL(this.options.getHref());
+    // 修复原因：自建配对材料与已退役账号无关；仅显式 HMAC 构建绕过 V2 登录入口。
+    if (this.options.protocol === "hmac-v1") {
+      if (!["sid", "hash", "t"].some((key) => url.searchParams.has(key))) {
+        this.options.onView({ kind: "scan" });
+        return;
+      }
+      const params = parseWebRemoteControlHmacQrParams(url.searchParams);
+      if (!params) {
+        this.options.onView({ kind: "failure", failure: { reason: "invalid-mobile-connection" } });
+        return;
+      }
+      this.connect(params);
+      return;
+    }
     if (isWebRemoteControlOAuthCallback(url)) {
       this.options.onView({ kind: "callback" });
       return;
@@ -201,6 +218,14 @@ export class WebRemoteControlEntry {
   }
 
   async chooseOtherDevice(): Promise<void> {
+    if (this.options.protocol === "hmac-v1") {
+      this.reset();
+      const url = new URL(this.options.getHref());
+      for (const key of ["sid", "hash", "t", "mid", "name"]) url.searchParams.delete(key);
+      this.options.replaceHref(url.href);
+      this.options.onView({ kind: "scan" });
+      return;
+    }
     this.reset();
     const url = new URL(this.options.getHref());
     for (const key of ["sid", "mid", "name", "hash", "t"]) url.searchParams.delete(key);
@@ -222,6 +247,7 @@ export class WebRemoteControlEntry {
     const { signal } = this.scope;
     this.options.connect({
       params,
+      protocol: this.options.protocol ?? "oauth-v2",
       signal,
       getToken: (tokenSignal) => {
         const jwt = this.options.auth.getZCodeJwtToken();
@@ -240,6 +266,7 @@ export class WebRemoteControlEntry {
   }
 
   startLogin(provider?: WebOAuthProviderId): void {
+    if (this.options.protocol === "hmac-v1") return;
     this.options.auth.startLogin({
       ...this.options.loginOptions,
       ...(provider ? { provider } : {}),
@@ -248,6 +275,7 @@ export class WebRemoteControlEntry {
   }
 
   async switchAccount(): Promise<void> {
+    if (this.options.protocol === "hmac-v1") return this.chooseOtherDevice();
     this.reset();
     const { signal } = this.scope;
     await this.options.auth.logout();

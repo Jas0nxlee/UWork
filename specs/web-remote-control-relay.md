@@ -6,6 +6,8 @@
 规划背景、分期与公网加固清单见 `specs/mobile-web-control-self-hosted.md`；手机侧装配规则见
 `specs/web-remote-uwork-integration.md`。
 
+> 当前源码边界（2026-10-21）：历史文档中的 `packages/relay` 实现未出现在当前 Git 基线；本轮恢复的是合并前已有的客户端 HMAC 能力，并用 loopback 测试夹具验证双端互通。本文 relay 部分仍作为外部部署协议合同，不宣称新增或发布独立 relay 服务。
+
 ## 一、产品规则与所有者
 
 - relay **只做四件事**：设备注册、配对鉴权、心跳应答、按配对关系透传 `data`。它不解释 payload，
@@ -250,3 +252,65 @@ relay 日志是否出现 `device registered`（mid 为那台机器）来确认�
 - 未做多实例/横向扩容：单实例内存态房间 + 落盘；要横向扩容必须按 `mid`/`device_sid` 粘滞路由。
 - 容器镜像构建与 `docker compose` 冒烟取决于部署环境，若本机无容器运行时则如实记为未验证。
 - 手机页静态托管与桌面配置注入（P2/P3）未做，因此当前链路仍指向 ZCode 侧入口，自建 relay 需配合 P3 才能真正切换。
+
+## 2026-10-21 上游 V2 同步兼容修复
+
+UWork 随包远控明确使用 `hmac-v1`，保留自建 relay 的随机口令配对；上游 OAuth V2 保留为隔离的兼容实现，不能成为 UWork 启动门禁。协议选择由桌面 Main 装配和手机构建配置拥有，不根据登录状态、URL 中的 hash 或企业身份自动降级。手机默认 HMAC；显式 `VITE_WEB_REMOTE_CONTROL_PROTOCOL=oauth-v2` 的构建保留上游门禁。自建桌面必须显式配置可信 relay/手机地址，缺失配置时失败关闭，不向官方 relay 发送 HMAC 凭据。
+
+- 自建 relay 每个 SID 只有一个 device 槽，Main 以现有 windowLifecycles/runtimes 保持单一活动 HMAC 窗口 owner；新窗口显式 start 先同步撤销旧窗口连接与 attachment，再认领当前窗口，不额外维护 owner 副本，也不通过 KICKED 竞争。并发首次 start 只允许最新 controller 完成注册/保存。Main manager 仍拥有窗口 lifecycle、已启用意图与 Host attachment，HMAC adapter 仅拥有 socket/握手；旧 SID/配对密钥由现有 credential/settings storage 持久化，不因 OAuth 退役清除；load/save/reset 与失效凭据清理均经过同一 persistence 队列并复核当前 controller。停止保留配对，刷新二维码撤销旧 socket 后轮换凭据。
+- 手机 HMAC admission 校验完整 SID/hash/t，再复用现有 bootstrap、workspaceIdentity/remoteSessionId、task-view 与 replayable bridge；无 OAuth 读取、登录或 token HTTP。只读企业 Provider 规则不变。
+- V2 的二维码 parser 继续拒绝 HMAC 参数；HMAC 使用独立 builder/parser，不更改官方 V2 信任边界；企业 JWT 绝不参与 relay 配对。
+- 桌面 `desktop-continuous` 与手机 `web-remote-replayable` 保持同一 runtime owner、lease 与已有 snapshot/gap repair；不创建第二份队列或 Host。
+
+```mermaid
+sequenceDiagram
+  participant D as Desktop Main manager
+  participant S as 配对 credential/settings
+  participant R as 自建 relay（仅配对透传）
+  participant M as 手机 HMAC entry/transport
+  participant H as 既有 Local Host/runtime owner
+  D->>S: 读取既有 SID/hash，缺失时生成随机口令
+  D->>R: register + challenge/proof（无 OAuth）
+  R-->>D: auth_ack waiting/matched
+  D->>S: 持久化配对材料与已启用意图
+  D-->>M: QR SID/hash/t
+  M->>R: challenge/proof（无企业或 OAuth JWT）
+  R-->>M: matched
+  M->>D: bootstrap / workspace bridge
+  D->>H: attachment（保留 identity/session/lease）
+  H-->>M: snapshot + replay/gap repair
+```
+
+回归必须证明：无账号桌面可启动并生成 HMAC QR；手机可无登录配对并往返 data；官方 V2 无账号仍拒绝；持久化重连、stop、轮换和停止期间迟到启动不能复活；任务/工作区上游 UI 投影仍保留。真实企业微信、生产 relay 与安装包发布不由 loopback 回归代替。
+
+### 本轮运行证据
+
+- 共享 HMAC QR 回归先在 V2 基线观察 6 项失败，恢复独立 HMAC builder/parser 后通过；V2 parser 继续拒绝 HMAC 参数。
+- 两端 HMAC transport 的既有回归 49 项通过；真实 loopback 新回归覆盖无账号配对、workspace 请求/响应、stop/持久化复用、轮换及迟到读取/保存/轮换被 stop 撤销。
+- `node --test scripts/test/web-remote-uwork-integration.test.mjs`：3 项通过，覆盖全部只读入口、Host 目录与完整任务导航接线。
+- browser-harness 运行 `uwork-remote-integration.mjs`：390/1200px × Zai Light/Dark 四组合通过，修复实际观察到的远控 Automations 入口误展示；只读身份、无引导、home-only 重连和无未处理 JS 异常成立。home-only 缺少真实 Host 项目/V4 服务产生预期 fail-closed 日志，不代表可聊天 runtime 或真实企业/生产 relay 验收。
+- Node24.14.0 下 `pnpm typecheck` 通过（2026-10-21 16:09 这一轮）；最终聚焦测试和全仓 lint/architecture 以合并审查记录为准。
+
+运行配置：Desktop 使用 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL` 与 `ZCODE_WEB_REMOTE_CONTROL_URL`；手机构建使用 `VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`，默认 `VITE_WEB_REMOTE_CONTROL_PROTOCOL=hmac-v1`。官方 V2 兼容构建仅在显式选择 `oauth-v2` 时采用其原账号门禁。地址仅为部署配置，不写入示例凭据或真实内部地址。
+
+### HMAC 单设备槽的跨窗口交接
+
+```mermaid
+sequenceDiagram
+  participant W1 as 旧窗口
+  participant W2 as 新窗口
+  participant M as Main现有窗口registry
+  participant Q as 同一配对IO串行入口
+  participant R as 自建relay单device槽
+  W2->>M: authorizeStart(windowId, identity/session) + start
+  M->>W1: 同步abort旧controller、释放attachment
+  M->>R: dispose旧socket
+  M->>M: 当前窗口controller认领
+  M->>Q: 当前controller检查 + load配对材料
+  Q-->>M: 既有SID/hash（或首次未配置）
+  M->>R: 新owner握手，不与旧socket争抢
+  R-->>M: auth_ack
+  M->>Q: 复核controller + save配对/启用意图
+  Note over M,Q: stop/轮换/失效凭据clear排在在途IO后；迟到旧owner不得写新配对
+  M-->>W2: 当前窗口QR与状态
+```

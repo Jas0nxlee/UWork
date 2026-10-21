@@ -94,6 +94,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
+      "import.meta.env.VITE_WEB_REMOTE_CONTROL_PROTOCOL": JSON.stringify(
+        env.VITE_WEB_REMOTE_CONTROL_PROTOCOL || "hmac-v1",
+      ),
+      "import.meta.env.VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL": JSON.stringify(
+        env.VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL || "",
+      ),
       __ZCODE_VERSION__: JSON.stringify(
         resolveRemoteFrontendVersion(version, process.env.WEB_REMOTE_FRONTEND_VERSION),
       ),
