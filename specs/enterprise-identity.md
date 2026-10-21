@@ -249,7 +249,7 @@ sequenceDiagram
 
 ## 多组织（多子公司）支持（2026-10-08）
 
-**背景**：ucas-proxy 一个控制面已托管三家子公司（生产实测：北京 `beijing` / 南京 `nanjing` / 厦门 `xiamen`，另有 `admin` 组织；各自的企微自建应用与 `custom_domain` 不同）。此前客户端内置配置只有一组 `{corpId, agentId, orgId}`，南京/厦门员工用当前客户端**没有登录入口**。
+**背景**：ucas-proxy 一个控制面已托管四家子公司（生产实测：北京 `beijing` / 南京 `nanjing` / 厦门 `xiamen` / **天津 `tianjin`（2026-10-21 接入）**，另有 `admin` 组织；各自的企微自建应用与 `custom_domain` 不同）。此前客户端内置配置只有一组 `{corpId, agentId, orgId}`，南京/厦门员工用当前客户端**没有登录入口**。
 
 **产品规则**
 
@@ -287,6 +287,20 @@ sequenceDiagram
 - 门禁：typecheck、lint（0 error / 56 既有警告）、fmt:check、architecture:check --changed（0 违规）通过；CI 定向测试清单 17 个文件 **103 项全通过**（含新增的多组织解析、按组织授权、回包组织不匹配拒绝、选择记忆三组）。
 
 **回调域名必须逐组织核对（2026-10-08 生产实测）**：企微在授权页按「该企业应用后台配置的授权回调域名」校验 `redirect_uri`，**端口参与匹配**。生产 openresty 为三家公司各起一个 server 块（`/www/sites/pivot{,-nj,.ansilic}*`）：`pivot.ucas.com.cn:23090`、`pivot-nj.ucas.com.cn:23091`、`pivot.ansilic.com:23092`（都反代 `127.0.0.1:23080` 的同一份 SPA）。用企微授权页做「3 个应用 × 候选域名」矩阵实测，**只有对角组合出二维码**，交叉组合（含"正确域名 + 错误端口"如 `pivot-nj.ucas.com.cn:23090`）全部报「redirect_uri 与配置的授权完成回调域名不一致」。所以 `callbackUrl` 必须逐组织取、且与企微后台逐字一致（含端口）；不要按"同域名不同端口"或 443 默认端口推断。
+
+**天津组织接入（2026-10-21）**
+
+| 项            | 值                                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `orgId`       | `80f0a35d-d5f7-4e7e-bc3a-d02d2a1a2360`（slug `tianjin`）                                                         |
+| 企微应用      | `corpId=wwb6eecb2e8c0f9d8a`、`agentId=1000003`                                                                   |
+| 入口          | `https://pivot-tj.ucas.com.cn`（校园网关 443 → 本机 23083 → 容器 23080；`/api/auth/orgs`、`/callback` 实测 200） |
+| `callbackUrl` | `https://pivot-tj.ucas.com.cn/callback`（**无端口**，与其它三家"域名+端口"的形态不同）                           |
+
+- 生产库核对（只读 `organizations` 表）：`custom_domain=pivot-tj.ucas.com.cn`、`new_api_group=beijing`，与其它三家共用同一控制面与模型组。
+- **客户端不需要改代码**：登录卡片按配置清单渲染，加一条即出现「天津」；组织校验仍是"请求 `org_id` / 回包 `org_id` / 续期 `tenantId` 三处一致"。
+- 配置落点：本机/dev = `{appConfigDir}/enterprise-identity.json` 覆盖（优先级高于包内）与 `packages/desktop/.release-config/enterprise-identity.json`；正式安装包 = CI 加密配置 `UWORK_ENTERPRISE_IDENTITY_CONFIG`（GitHub Actions secret，改动后需重新构建才生效）。
+- **待人工核对**：天津企微应用后台的「授权回调域名」须与上表 `callbackUrl` 逐字一致——443 无端口只是我们的入口事实，企微侧配置无法从代码侧确认。
 
 **二维码阶段的回头路**：多组织时等待扫码的卡片提供「重新选择公司」——取消当前尝试、保留登录入口并回到选择器（与「跳过登录」的区别是不关闭弹窗）。
 
