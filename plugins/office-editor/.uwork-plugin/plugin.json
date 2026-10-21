@@ -9,15 +9,13 @@
   "author": {
     "name": "UWork"
   },
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN README.md",
   "skills": "skills",
   "mcpServers": {
     "office": {
       "type": "stdio",
       "command": "python3",
-      "args": [
-        "${UWORK_PLUGIN_ROOT}/server/server.py"
-      ]
+      "args": ["${UWORK_PLUGIN_ROOT}/server/server.py"]
     }
   }
 }

@@ -71,6 +71,36 @@ function sampleDocument(): string {
   return result.stdout.trim();
 }
 
+test(
+  "office-editor rejects unsafe document packages and stale writes",
+  { skip: !pythonAvailable ? "python3 unavailable" : false },
+  () => {
+    const result = spawnSync(
+      "python3",
+      [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        join(pluginRoot, "verify"),
+        "-p",
+        "test_document_safety.py",
+      ],
+      { encoding: "utf8", timeout: 120_000 },
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  },
+);
+
+test("office-editor page keeps async exports bound to their document", () => {
+  const result = spawnSync(
+    process.execPath,
+    ["--test", join(pluginRoot, "verify", "page_safety.test.mjs")],
+    { encoding: "utf8", timeout: 120_000 },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
 test("office-editor passes the local plugin validator without errors", async () => {
   const diagnostics = await validateLocalPluginPath({ path: pluginRoot, storageRoot: tempRoot });
   const errors = diagnostics.filter((item) => item.severity === "error");
@@ -110,17 +140,17 @@ test(
     await client.connect(transport);
     try {
       const tools = await client.listTools();
-      assert.deepEqual(
-        tools.tools.map((tool) => tool.name).sort(),
-        [
-          "docx_comments_list",
-          "docx_current_target",
-          "docx_export_pdf",
-          "docx_open_editor",
-          "docx_revisions_list",
-          "docx_revisions_resolve",
-        ],
-      );
+      assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
+        "docx_comments_list",
+        "docx_current_target",
+        "docx_edit_paragraph",
+        "docx_export_pdf",
+        "docx_open_editor",
+        "docx_revisions_list",
+        "docx_revisions_resolve",
+        "docx_set_paragraph_format",
+        "docx_write_back",
+      ]);
       // 页面描述必须挂在 tools/list 的工具描述上（宿主只读这里；放在调用结果上不会被识别）。
       const openTool = tools.tools.find((tool) => tool.name === "docx_open_editor") as
         | { _meta?: { ui?: { resourceUri?: string } } }
@@ -149,6 +179,8 @@ test(
 
       const page = await client.readResource({ uri: "ui://office-editor/editor.html" });
       const html = (page.contents[0] as { text: string }).text;
+      const pageMeta = (page.contents[0] as { _meta?: Record<string, unknown> })._meta;
+      assert.deepEqual(pageMeta?.["zcode/csp"], { unsafeEval: true });
       assert.match(html, /Word 修订审阅/);
       assert.ok(html.length > 1000, `page too small: ${html.length}`);
     } finally {

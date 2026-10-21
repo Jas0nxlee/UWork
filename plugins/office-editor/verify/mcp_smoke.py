@@ -337,6 +337,7 @@ def main() -> int:
                 "docx_write_back",
                 path=edit_path,
                 data=base64.b64encode(original_bytes).decode("ascii"),
+                expectedEtag=engine.document_etag(edit_path),
             )
         )
         check("写回返回字节数与备份", written.get("bytes") == len(original_bytes) and os.path.exists(written.get("backup") or ""), json.dumps(written, ensure_ascii=False)[:160])
@@ -416,7 +417,7 @@ def main() -> int:
                 open_meta = tool.get("_meta") or {}
         ui_meta = (open_meta or {}).get("ui") or {}
         check("未配置镜像时不放行额外域名", "connectDomains" not in (ui_meta.get("csp") or {}), json.dumps(ui_meta, ensure_ascii=False)[:200])
-        check("声明了 unsafeEval（SuperDoc 需要）", (ui_meta.get("csp") or {}).get("unsafeEval") is True, json.dumps(ui_meta, ensure_ascii=False)[:200])
+        check("资源声明 unsafeEval（宿主只接受资源级放宽）", (page.get("_meta") or {}).get("zcode/csp", {}).get("unsafeEval") is True, json.dumps(page.get("_meta"), ensure_ascii=False)[:200])
 
         print("文档字节通道（office://docx）")
         templates = server.rpc("resources/templates/list")["resourceTemplates"]

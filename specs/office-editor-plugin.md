@@ -19,8 +19,39 @@
 
 ## 产品规则
 
+### 合并前数据与资源边界修复（2026-10-21）
+
+- 文档文件仍由 Python 插件工具唯一写入；沙箱资源读取不经过工具审批，因此只允许读取本进程中已经成功执行过工具的目标。登记真实路径与文件身份，扩展名不构成授权，路径换向或文件被外部替换后必须重新通过工具打开。
+- 资源授权检查与读取必须绑定同一文件描述符：对已批准 realpath 使用 `O_NOFOLLOW`（平台支持时）打开，随后 `fstat` 比对登记的 dev/ino；meta、分块、修订标记与段落解析都沿用该描述符，不再按路径二次打开。读取前后核对 fd 的 etag 与路径身份；页面后续块携带首次 meta 的 etag，任何换向、原地内容变化或版本不符都拒绝并要求重新打开/重载。
+- 所有 DOCX 入口在解压前检查成员数量、单部件与累计展开大小，拒绝重复或越界成员名。页面与服务端整份写回的 base64 上限统一为 8 MiB（6 MiB 文档），发送前即拒绝超限，给 10 MiB stdio 帧保留封装余量；暂不支持分块写回。写回前验证 OPC 内容类型、根关系、正文根节点与完整 ZIP 校验；验证失败不创建备份、不修改原文件。
+- 修订处理与格式修改保留原 XML 的命名空间声明，尤其是 `mc:Ignorable` 等属性值引用的前缀。段落文本工具只支持纯文本 run；遇到已有修订、超链接、域、图像或锚点等复杂内容，返回错误并保留原文件。直改的公共前缀不得重复，关闭格式需显式覆盖继承样式。
+- 页面状态、预览、编辑器、宿主启动按四个脚本分段，并按顺序内联到同一模块；只有 `page.js` 的 state 是状态所有者。SuperDoc 的 `unsafeEval` 只在 HTML 资源项 `_meta["zcode/csp"]` 声明，遵守宿主资源级权限契约。
+- 整份保存必须带 `expectedEtag`（加载时取得的版本）；文件已变化则拒绝写入。页面的编辑实例绑定路径与加载版本，换目标即销毁旧实例；异步旧加载与旧导出不得写入新目标。保存成功更新实例版本，卡片处理修订后旧编辑器保存应产生冲突，要求显式重载。
+- 验收：纯文本共享前缀直改准确；复杂段落拒绝且字节不变；接受修订后 MCE 前缀仍有效；畸形 OPC、ZIP 展开越限与版本冲突均拒绝且原文件不变；未打开文件与跨目标软链资源不可读；全部新增场景通过标准库回归，并保留原 MCP 冒烟及官方 SDK 断言。
+
+```mermaid
+sequenceDiagram
+    participant U as 用户工具审批
+    participant S as Python MCP 所有者
+    participant P as 沙箱页面
+    participant F as DOCX 文件
+    U->>S: 成功打开目标
+    S->>F: 验证 OPC 与文件身份
+    S->>S: 登记真实路径与身份
+    P->>S: 读取已登记资源
+    S-->>P: 文档字节与 etag
+    P->>S: 保存目标、expectedEtag、文档
+    S->>F: 比较版本并校验新 OPC
+    alt 版本一致且文档有效
+        S->>F: 备份、原子替换
+        S-->>P: 新 etag
+    else 冲突或校验失败
+        S-->>P: 明确错误，保留原文件
+    end
+```
+
 - **插件的形态**：插件清单声明 `mcpServers.office`（`type: "stdio"`，`command` 由宿主注入 `${UWORK_PLUGIN_ROOT}`）；服务器名由宿主命名空间化为 `plugin:office-editor:office`。
-- **工具即权限边界**：所有读写都通过工具调用发生（复用 Agent 的审批与审计路径）；插件页面本身没有任何文件系统原语，页面只能经宿主桥调用这些工具。首期不做自动保存，只有显式的「接受/拒绝/另存」动作。
+- **工具即授权边界**：写入通过工具调用发生（复用 Agent 的审批与审计路径）；页面只经宿主桥访问工具与资源，没有文件系统原语。成功工具调用登记目标后，页面可免重复工具审批读取该文件的资源；资源读取不得扩大已授权的文件范围。首期不做自动保存，只有显式的「接受/拒绝/另存」动作。
 - **文档=不可信内容**：本插件不解包渲染第三方 HTML 进主渲染进程；页面在沙箱 webview 内运行，且不把文档内容当指令执行（沿用 `docs/ui/office-file-preview.md` 的既有边界）。
 - **写入必须可回滚**：任何原地修改前先写 `<stem>_backup.docx`（已存在则 `_backup-2`…），并用「临时文件 + `os.replace`」原子替换。
 - **审阅必须给位置与上下文**（2026-10-13 真机评审反馈）：只列"改了什么"不够——审阅者不知道改动在文档哪儿、周围是什么，就无法判断该不该接受。因此每条修订必须带：段落序号、表格坐标（若在表格内）、**最近标题**、以及**变更前后文**（把被删除的文字也放进上下文）；页面按"位置 → 上下文（变更高亮）→ 元信息"呈现。
@@ -89,11 +120,11 @@ iframe/webview/沙箱目标，日志里也没有 `plugin-ui-bridge` 行（是"�
   - 挂载：`new SuperDoc({ selector: "#superdoc-host", document: File, modules: { trackChanges: true } })`；文档字节走我们既有的分块资源读，整理成 `File` 交给它。
   - 它自带完整编辑 UI（工具栏/评论/修订视图），比我们自研的"段落级编辑"完善得多。
   - **许可闸门（需公司决策）**：SuperDoc 是 **AGPL-3.0**（商业许可见 superdoc.dev）。内部/评估可用；作为商业产品分发需购买商业许可，或改选自托管的 ONLYOFFICE（AGPL，几百 MB）/ Collabora（MPL-2.0，同样重）。
-  - CSP：SuperDoc 包内有一处 `new Function`，工具描述已声明 `_meta.ui.csp = {"unsafeEval": true}`（不声明则沙箱内直接抛错）。
+  - CSP：SuperDoc 包内有一处 `new Function`，HTML 资源内容项已声明 `_meta["zcode/csp"] = {"unsafeEval": true}`（不声明则沙箱内直接抛错）。
   - **引擎必须从真实 http(s) 地址加载（2026-10-15 实测结论）**：CDN 单文件只是加载器，运行时 `import("https://cdn.jsdelivr.net/npm/@superdoc/docx-engine@0.22.0/dist-cdn/docx-engine.es.js")`；引擎自身还会 `new Worker(new URL("./assets/browser-worker-entry-*.js", import.meta.url))`，壳对引擎地址做 http(s) 白名单并硬拼路径——**离线自包含＝同时维护两份被改过的压缩 vendor**（不采纳）。
     因此引擎地址做成**配置**：`engine.json` 的 `baseUrl`（内网静态镜像，需镜像 `@superdoc/docx-engine@0.22.0/dist-cdn/` 整个目录含 `assets/*worker*` 与 `style.css`）。配置后：工具描述自动把该域名加进 `connectDomains`/`resourceDomains`，页面经 `office://superdoc/config` 读取并设置 `globalThis.SUPERDOC_ENGINE_CDN_BASE_URL`（客户端不背 13 MB，页面仍 ~2 MB，引擎首次进编辑页拉取一次）。
     **留空 baseUrl** 时编辑器不可用——侧栏**回落只读预览**并显示原因（绝不留白屏）。
-- 写回一律经插件工具（页面没有文件系统原语）：编辑器保存走 `docx_write_back(path, base64)`——校验 zip/`document.xml`（宁可不写，也不把坏文件盖到用户文档上）→ 备份 → 原子替换 → 回读计数。真正的**修订标记**来自编辑器自身（`modules.trackChanges`），Word 打开仍是未接受的修订，回到对话卡片用我们引擎逐条接受/拒绝。
+- 写回一律经插件工具（页面没有文件系统原语）：编辑器保存走 `docx_write_back(path, base64, expectedEtag)`——校验 zip/`document.xml`（宁可不写，也不把坏文件盖到用户文档上）→ 备份 → 原子替换 → 回读计数。真正的**修订标记**来自编辑器自身（`modules.trackChanges`），Word 打开仍是未接受的修订，回到对话卡片用我们引擎逐条接受/拒绝。
 
 ## 插件命名契约（UWork 命名 + 既有生态兼容）
 
