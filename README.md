@@ -6,9 +6,7 @@
   <p><a href="https://github.com/Jas0nxlee/UWork/tree/uwork">源码</a> · <a href="https://github.com/Jas0nxlee/UWork/releases">下载安装</a> · <a href="LICENSE">Apache-2.0</a></p>
 </div>
 
-UWork 是基于 [zai-org/ZCode](https://github.com/zai-org/ZCode) 定制的 AI 工作台。提供 UCAS 与自定义模型服务、助理 / 开发模式、可跳过的多企业微信登录与网关用量统计，并保留文件、终端、Git、MCP、技能和子智能体。支持 Office 文件处理，以及需自行配置 relay 的手机远程控制。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
-
-本仓库由 fork 维护者独立维护，并非上游官方发行版。**默认分支为 `uwork`**，`main` 保留上游代码，便于后续比较和同步。当前代码基线同步自上游 ZCode v3.16.2 快照（2026-10-19）。
+UWork 是定制的 AI 工作台。提供 UCAS 与自定义模型服务、助理 / 开发模式、可跳过的多企业微信登录与网关用量统计，并保留文件、终端、Git、MCP、技能和子智能体。支持 Office 文件处理，以及需自行配置 relay 的手机远程控制。原智谱 / Z.ai 模型账号与内置套餐入口已移除。
 
 客户端登录页底部显示当前构建的版本号。源码版本见 [package.json](package.json)，已发布安装包及其对应版本见 [GitHub Releases](https://github.com/Jas0nxlee/UWork/releases)。
 
