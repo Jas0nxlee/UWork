@@ -21,7 +21,8 @@ pnpm typecheck
 pnpm architecture:check
 pnpm exec vitest run packages/desktop/test/genUiVendorCheckout.test.ts \
   packages/desktop/test/packagedDesktopCdp.test.ts \
-  packages/desktop/test/enterpriseLoginIpcBindings.test.ts
+  packages/desktop/test/enterpriseLoginIpcBindings.test.ts \
+  packages/ui/test/v4ConversationDraftEmptyStateLogo.test.ts   # 该文件已随上游 3.16.2 删除：参数匹配不到文件不会失败，保留以与 CI 逐字对齐
 node scripts/build-desktop-agent-cli.mjs
 node --test packages/safe-extract-zip/test/*.test.cjs packages/safe-extract-zip/contract.test.ts \
   scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs \
@@ -40,7 +41,7 @@ pnpm exec tsx --test packages/services/test/identitySessionGuard.test.mts \
   packages/services/test/appCaCertSecurity.test.mts scripts/test/dependencySecurity.test.ts \
   scripts/test/mcpOAuthIssuer.test.ts
 pnpm exec vitest run packages/server/test/serverInfoHttp.test.ts packages/server/test/hostCapability.test.ts \
-  packages/server/test/botsHttp.test.ts packages/server/test/serverRemoteConnection.test.ts
+  packages/server/test/botsHttp.test.ts packages/desktop/test/serverRemoteConnection.test.ts
 pnpm audit --prod --audit-level=high --json > dependency-audit.json
 ```
 

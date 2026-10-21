@@ -64,7 +64,7 @@ pnpm --filter @zcode/server-cli stage:remote-assets --linux  # 仅 Linux（开�
 因此：
 
 - 运维在远端直接跑 `uwork update`（不带 `--from-archive`）会被**明确拒绝**并提示"由桌面端驱动"；在线自升级链路（`updatePreparation.ts`、`releaseDownload.ts`、`ComponentCache` 等）已从本仓库删除，运行时不再有任何拉版本的网络代码。
-- **自部署只需要发布"完整归档 + descriptor"**，不必产出组件级 `manifest-<target>.json` 与组件包。
+- **自部署只需要发布「完整归档 + descriptor」**：远端入口 `stage:remote-assets --linux` 已带 `--skip-component-archives`（不产组件包）；`manifest.json` 里的 `components` 字段仍会保留（内容哈希与大小），但不参与安装。客户端安装/升级也不再读取任何组件清单。
 - 护栏保留：`update --from-archive` 仍会通过 `prepare-update` 控制命令检查运行中的任务（需要时用 `--force`）；`apply-update` 只能应用**磁盘上已存在**的 pending release，且**启动时不会自动应用**。
 
 ## 七、不覆盖

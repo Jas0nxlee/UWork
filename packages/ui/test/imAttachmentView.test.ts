@@ -61,7 +61,7 @@ describe("附件渲染", () => {
 
   it("桌面端点击下载走宿主落盘，并显示保存路径", async () => {
     const saveImAttachment = vi.fn(async () => ({
-      path: "/Users/xin/Downloads/UWork/报告 v2.pdf",
+      path: "/tmp/uwork-im-test/报告 v2.pdf",
       name: "报告 v2.pdf",
       sizeBytes: 3,
     }));
@@ -76,7 +76,7 @@ describe("附件渲染", () => {
       bytes: expect.any(Uint8Array),
     });
     await waitFor(() =>
-      expect(container.textContent).toContain("已保存到 /Users/xin/Downloads/UWork/报告 v2.pdf"),
+      expect(container.textContent).toContain("已保存到 /tmp/uwork-im-test/报告 v2.pdf"),
     );
   });
 

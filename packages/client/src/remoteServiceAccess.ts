@@ -159,7 +159,8 @@ export class RemoteServiceAccess implements IServiceAccessor {
           channelClient.getChannel(IWindowProjectChangesService.channelName),
         ),
       };
-    }    this.fileService = ProxyChannel.toService<IFileService>(
+    }
+    this.fileService = ProxyChannel.toService<IFileService>(
       channelClient.getChannel(IFileService.channelName),
     );
     // Host 已注册 media-preview channel，但遗漏 renderer proxy 时，PreviewPane

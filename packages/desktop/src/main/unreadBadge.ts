@@ -343,5 +343,10 @@ export function createWindowsTaskbarOverlayApplier(deps: {
  * 两边各写一次必然互相抹掉——所以求和后再写回宿主，是这两个来源的唯一交汇点。
  */
 export function combineAppBadgeCount(taskUnreadCount: number, imUnreadCount: number): number {
-  return Math.max(0, Math.trunc(taskUnreadCount)) + Math.max(0, Math.trunc(imUnreadCount));
+  // 非有限值（NaN/Infinity）按 0 计：角标只接受非负整数，混进 NaN 会让 Dock/任务栏显示异常。
+  return sanitizeBadgeCount(taskUnreadCount) + sanitizeBadgeCount(imUnreadCount);
+}
+
+function sanitizeBadgeCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
