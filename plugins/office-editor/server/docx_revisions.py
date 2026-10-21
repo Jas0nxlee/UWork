@@ -471,8 +471,7 @@ def edit_paragraph(
         element.insert(insert_at + offset, child)
 
     xml_bytes = _serialize(root, _xml)
-    backup = _unique_backup_path(path)
-    shutil.copy2(path, backup)
+    backup = _create_backup(path)
     _rewrite_document_part(path, xml_bytes)
     _invalidate_cache(absolute)
     return {
@@ -530,8 +529,7 @@ def set_paragraph_format(
         node.set(f"{W}val", align)
 
     xml_bytes = _serialize(root, _xml)
-    backup = _unique_backup_path(path)
-    shutil.copy2(path, backup)
+    backup = _create_backup(path)
     _rewrite_document_part(path, xml_bytes)
     _invalidate_cache(os.path.abspath(path))
     return {
@@ -576,15 +574,22 @@ def _reject(parent: ET.Element, element: ET.Element) -> None:
     _replace_with_children(parent, element)
 
 
-def _unique_backup_path(path: str) -> str:
+def _create_backup(path: str) -> str:
     directory, name = os.path.split(path)
     stem, extension = os.path.splitext(name)
-    candidate = os.path.join(directory, f"{stem}_backup{extension}")
-    index = 2
-    while os.path.exists(candidate):
-        candidate = os.path.join(directory, f"{stem}_backup-{index}{extension}")
-        index += 1
-    return candidate
+    index = 1
+    while True:
+        suffix = "" if index == 1 else f"-{index}"
+        candidate = os.path.join(directory, f"{stem}_backup{suffix}{extension}")
+        try:
+            # exists() 会漏掉失效链接，先检查再 copy2 也有竞态；独占创建保证不跟随或覆盖已有目标。
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            index += 1
+            continue
+        with os.fdopen(fd, "wb") as target, open(path, "rb") as source:
+            shutil.copyfileobj(source, target)
+        return candidate
 
 
 def _serialize(root: ET.Element, original_xml: str) -> bytes:
@@ -639,8 +644,7 @@ def resolve_revisions(path: str, action: str, ids: list[str] | None = None) -> d
 
     _parse_cache.clear()  # 写回后全清：简单可靠，解析成本远低于误用陈旧数据的风险
     xml_bytes = _serialize(root, original_xml)
-    backup = _unique_backup_path(path)
-    shutil.copy2(path, backup)
+    backup = _create_backup(path)
     _rewrite_document_part(path, xml_bytes)
     remaining = list_revisions(path)
     return {
@@ -678,8 +682,7 @@ def write_back(path: str, data: bytes, expected_etag: str) -> dict:
     # 旧页面快照可能晚于卡片接受/拒绝修订；不比较版本会把已完成审阅静默写回旧状态。
     if not expected_etag or document_etag(path) != expected_etag:
         raise ValueError("文件已变化或缺少加载版本，请重载文档后再保存")
-    backup = _unique_backup_path(path)
-    shutil.copy2(path, backup)
+    backup = _create_backup(path)
     directory = os.path.dirname(os.path.abspath(path))
     fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory)
     try:

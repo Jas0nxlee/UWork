@@ -70,6 +70,29 @@ class DocumentSafetyTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(set(self.root.glob("*backup*")), backups)
 
+    def test_backup_reservation_never_follows_existing_symlinks_or_overwrites_files(self):
+        operations = [
+            lambda path: engine.edit_paragraph(str(path), paragraph=1, text="updated", tracked=False),
+            lambda path: engine.set_paragraph_format(str(path), paragraph=1, bold=True),
+            lambda path: engine.resolve_revisions(str(path), "accept"),
+            lambda path: engine.write_back(str(path), path.read_bytes(), engine.document_etag(str(path))),
+        ]
+        for index, operation in enumerate(operations):
+            with self.subTest(operation=index):
+                path = self.sample(f"document-{index}.docx")
+                before = path.read_bytes()
+                outside = self.root / f"outside-{index}.docx"
+                link = path.with_name(f"{path.stem}_backup.docx")
+                link.symlink_to(outside)
+                existing = path.with_name(f"{path.stem}_backup-2.docx")
+                existing.write_bytes(b"keep existing backup")
+                result = operation(path)
+                self.assertFalse(outside.exists(), "backup must not follow a dangling symlink")
+                self.assertTrue(link.is_symlink())
+                self.assertEqual(existing.read_bytes(), b"keep existing backup")
+                self.assertEqual(Path(result["backup"]), path.with_name(f"{path.stem}_backup-3.docx"))
+                self.assertEqual(Path(result["backup"]).read_bytes(), before)
+
     def test_untracked_edit_does_not_duplicate_shared_prefix(self):
         path = self.sample(paragraph="<w:r><w:t>ABC</w:t></w:r>")
         engine.edit_paragraph(str(path), paragraph=1, text="ABD", tracked=False)
