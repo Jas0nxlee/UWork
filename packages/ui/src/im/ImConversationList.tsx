@@ -3,6 +3,7 @@ import {
   parseImAttachmentBody,
   type ImConversationSummary,
   type ImDirectoryUser,
+  parseImCard,
 } from "@zcode/shared";
 import {
   BellOffIcon,
@@ -110,6 +111,11 @@ export const ImConversationList = memo(function ImConversationList({
     const last = conversation.lastMessage;
     if (last && last.kind === "system") {
       return { text: describeSystemMessage(last.body, nameOf, t).text, prefix: "" };
+    }
+    if (last && last.kind === "card" && last.deletedAt === null) {
+      // 卡片同样是 JSON 载荷：**必须有 fallback 才能当预览**（这也是协议里 fallback 必填的原因）
+      const card = parseImCard(last.body);
+      return { text: card?.fallback ?? t("im.previewCard"), prefix: "" };
     }
     if (last && last.kind === "attachment" && last.deletedAt === null) {
       const attachment = parseImAttachmentBody(last.body);

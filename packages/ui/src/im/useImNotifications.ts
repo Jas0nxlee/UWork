@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { IImService, ImRealtimeEvent } from "@zcode/services";
-import type { ImConversationSummary, ImMessage } from "@zcode/shared";
+import { parseImCard, type ImConversationSummary, type ImMessage } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import {
   getActiveImConversation,
@@ -70,7 +70,13 @@ function showNotification(title: string, conversationId: string, message: ImMess
   try {
     if (Notification.permission !== "granted") return;
     const notification = new Notification(title, {
-      body: message.kind === "attachment" ? "[附件]" : message.body.slice(0, 120),
+      // 卡片与附件都是 JSON 载荷：**不能把载荷当正文**，否则通知里直接冒出一串 {"card":...}
+      body:
+        message.kind === "attachment"
+          ? "[附件]"
+          : message.kind === "card"
+            ? (parseImCard(message.body)?.fallback ?? "新消息").slice(0, 120)
+            : message.body.slice(0, 120),
       silent: false,
     });
     notification.onclick = () => {

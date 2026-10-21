@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { BookmarkIcon, ContactIcon, MessagesSquareIcon } from "lucide-react";
+import { BookmarkIcon, ContactIcon, FileTextIcon, MessagesSquareIcon } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { IM_RAIL, IM_RAIL_INDICATOR, IM_RAIL_ITEM, IM_RAIL_ITEM_ACTIVE } from "./imChrome.js";
@@ -17,10 +17,10 @@ export const ImRail = memo(function ImRail({
   selfName,
   onSelect,
 }: {
-  view: "messages" | "directory" | "bookmarks";
+  view: "messages" | "directory" | "bookmarks" | "reports";
   unreadTotal: number;
   selfName: string;
-  onSelect: (view: "messages" | "directory" | "bookmarks") => void;
+  onSelect: (view: "messages" | "directory" | "bookmarks" | "reports") => void;
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string): string => intl.formatMessage({ id });
@@ -48,6 +48,13 @@ export const ImRail = memo(function ImRail({
         onClick={() => onSelect("bookmarks")}
       >
         <BookmarkIcon className="size-4.5" />
+      </RailItem>
+      <RailItem
+        label={t("im.reportsTitle")}
+        active={view === "reports"}
+        onClick={() => onSelect("reports")}
+      >
+        <FileTextIcon className="size-4.5" />
       </RailItem>
       <div className="mt-auto flex flex-col items-center gap-2">
         <span

@@ -16,6 +16,8 @@ export function createDesktopPlatform(options: {
     selectFile: () => window.zcode.selectFile(),
     selectFiles: () => window.zcode.selectFiles?.() ?? Promise.resolve([]),
     createTempTextAttachment: (payload) => window.zcode.createTempTextAttachment(payload),
+    saveImAttachment: (payload) => window.zcode.saveImAttachment(payload),
+    setImBadgeCount: async (payload) => (await window.zcode.setImBadgeCount?.(payload)) ?? 0,
     materializeWorkflowArtifactFile: (payload) =>
       window.zcode.materializeWorkflowArtifactFile(payload),
     onRemoteConnectionLog: (handler) => window.zcode.onRemoteConnectionLog(handler),

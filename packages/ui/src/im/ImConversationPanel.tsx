@@ -6,6 +6,7 @@ import type {
   ImDirectoryUser,
   ImMember,
   ImMessage,
+  ImCardDocument,
 } from "@zcode/shared";
 import { MessagesSquareIcon } from "lucide-react";
 import {
@@ -57,6 +58,7 @@ export const ImConversationPanel = memo(function ImConversationPanel({
   onPinnedChange,
   onOpenConversation,
   onForwardMessage,
+  onCardAction,
 }: {
   service: IImService | null;
   conversationId: string;
@@ -87,6 +89,11 @@ export const ImConversationPanel = memo(function ImConversationPanel({
   onOpenConversation?: (conversationId: string, messageId: string, seq: number) => void;
   /** 转发确认后发给别的会话。由外层做（它持有服务与刷新）。 */
   onForwardMessage: (conversationId: string, body: string) => void;
+  /** 卡片的 client 动作（如打开汇报详情）；由外层处理。 */
+  onCardAction?: (
+    action: { id: string; kind: "client" | "server"; target?: string },
+    document: ImCardDocument,
+  ) => void | Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const conversation = useImConversation(service, conversationId);
@@ -294,6 +301,7 @@ export const ImConversationPanel = memo(function ImConversationPanel({
                   bookmarkedIds={bookmarkedIds}
                   query=""
                   activeMessageId={jumpTarget}
+                  {...(onCardAction ? { onCardAction } : {})}
                   confirmingId={confirmingId}
                   onWithdraw={onWithdraw}
                   onWithdrawNow={onWithdrawNow}

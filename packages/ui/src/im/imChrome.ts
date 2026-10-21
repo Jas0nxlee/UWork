@@ -106,3 +106,6 @@ export const IM_HINT = "text-ui-2xs text-foreground-subtle";
 export const IM_EMPTY = "flex h-full flex-col items-center justify-center gap-2 px-6 text-center";
 export const IM_EMPTY_ICON = "size-6 text-foreground-subtle/60";
 export const IM_EMPTY_TEXT = "text-ui-xs text-foreground-subtle";
+
+/** 窄档列表浮层的背板：点它收起列表（半透明，仍能看到下面的会话）。 */
+export const IM_LIST_OVERLAY_BACKDROP = "absolute inset-0 z-20 bg-background/60";

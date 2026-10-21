@@ -7,6 +7,7 @@ import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { avatarTone, formatClockTime, initialsOf } from "./imPresentation.js";
 import { splitHighlight } from "./imSearch.js";
+import { messageBodyText } from "./imPresentation.js";
 import { IM_EMPTY, IM_EMPTY_ICON, IM_EMPTY_TEXT, IM_SEARCH_INPUT } from "./imChrome.js";
 
 /**
@@ -161,14 +162,18 @@ export const ImSearchResults = memo(function ImSearchResults({
                         </span>
                       </span>
                       <span className="mt-0.5 block truncate text-ui-xs text-foreground-subtle">
-                        {splitHighlight(message.body, query).map((segment, index) =>
-                          segment.match ? (
-                            <mark key={index} className="rounded-sm bg-primary/30 text-foreground">
-                              {segment.text}
-                            </mark>
-                          ) : (
-                            <span key={index}>{segment.text}</span>
-                          ),
+                        {splitHighlight(messageBodyText(message, t, senderNameOf), query).map(
+                          (segment, index) =>
+                            segment.match ? (
+                              <mark
+                                key={index}
+                                className="rounded-sm bg-primary/30 text-foreground"
+                              >
+                                {segment.text}
+                              </mark>
+                            ) : (
+                              <span key={index}>{segment.text}</span>
+                            ),
                         )}
                       </span>
                     </span>

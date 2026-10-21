@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { messageBodyText } from "./imPresentation.js";
 import {
   IM_COMPOSER_BOX,
   IM_COMPOSER_INPUT,
@@ -80,6 +81,8 @@ export const ImComposer = memo(function ImComposer({
    * 正文里那串字只是给人看的（改名后老消息仍然对）。
    */
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  /** 有文件悬在这块区域上方：给一条「松开就发」的提示，免得用户以为拖进来没反应。 */
+  const [dragActive, setDragActive] = useState(false);
   const candidates = useMemo(() => {
     if (mentionQuery === null) return [];
     const needle = mentionQuery.trim().toLowerCase();
@@ -126,7 +129,38 @@ export const ImComposer = memo(function ImComposer({
   }, [editing?.id]);
 
   return (
-    <div className={IM_COMPOSER_WRAP}>
+    <div
+      className={cn(IM_COMPOSER_WRAP, dragActive && "bg-surface/60")}
+      onDragOver={(event) => {
+        // 只接文件：没有这层判断的话，拖一段选中的文字经过输入框也会亮起来。
+        if (!event.dataTransfer?.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        // 拖过子元素会连着触发 dragleave：指针真的离开这块区域才收起来。
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setDragActive(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer) return;
+        event.preventDefault();
+        setDragActive(false);
+        const files = event.dataTransfer.files;
+        // 从文件树拖入只有路径、没有 File（渲染层读不到字节，缺宿主能力），这里不做假的成功。
+        if (files.length === 0) return;
+        onFiles(files);
+      }}
+    >
+      {dragActive ? (
+        <p
+          data-testid="im-drop-hint"
+          className="mb-2 rounded-lg border border-dashed border-primary/50 px-3 py-1.5 text-center text-ui-2xs text-foreground-subtle"
+        >
+          {t("im.dropToSend")}
+        </p>
+      ) : null}
       <div className={IM_CONTENT_WIDTH}>
         {editing ? (
           <div
@@ -160,7 +194,7 @@ export const ImComposer = memo(function ImComposer({
                 })}
               </p>
               <p className="truncate text-ui-2xs text-foreground-subtle">
-                {replyTo.deletedAt !== null ? t("im.withdrawn") : replyTo.body}
+                {messageBodyText(replyTo, t, nameOf)}
               </p>
             </div>
             <Button

@@ -16,7 +16,7 @@ import {
   IM_LIST_ROW,
   IM_LIST_ROW_IDLE,
 } from "./imChrome.js";
-import { avatarTone, formatClockTime, initialsOf } from "./imPresentation.js";
+import { avatarTone, formatClockTime, initialsOf, messageBodyText } from "./imPresentation.js";
 
 /**
  * 收藏列表（rail 的第三个入口）。
@@ -85,8 +85,7 @@ export const ImBookmarksList = memo(function ImBookmarksList({
                         </span>
                       </span>
                       <span className={cn(IM_LIST_NAME, "text-ui-xs font-normal")}>
-                        {name}：
-                        {item.message.deletedAt !== null ? t("im.withdrawn") : item.message.body}
+                        {name}：{messageBodyText(item.message, t, senderNameOf)}
                       </span>
                     </span>
                   </button>

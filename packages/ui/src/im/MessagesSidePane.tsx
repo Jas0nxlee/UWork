@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { ImConversationSummary, ImDirectoryUser, ImMember, ImMessage } from "@zcode/shared";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { ImConversationSummary, ImDirectoryUser, ImMessage } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
@@ -13,16 +13,26 @@ import {
   subscribeImNotificationState,
 } from "./imNotificationRouter.js";
 import { ImBookmarksList } from "./ImBookmarksList.js";
+import { ImReportDialogs } from "./ImReportDialogs.js";
+import { ImReportsList } from "./ImReportsList.js";
+import { ImRightPanel } from "./ImRightPanel.js";
 import { ImConversationList } from "./ImConversationList.js";
 import { ImConversationPanel } from "./ImConversationPanel.js";
-import { ImDirectoryList } from "./ImDirectoryList.js";
+import { ImDirectoryPane } from "./ImDirectoryPane.js";
+import { ImListColumn } from "./ImListColumn.js";
+import { ImCardReturnDialog } from "./ImCardReturnDialog.js";
+import { useImCardActionDispatch } from "./useImCardActionDispatch.js";
+import { useImMembers } from "./useImMembers.js";
+import { ImNotice, useElementWidth } from "./imPaneChrome.js";
 import { ImDirectoryPicker, type ImPickerMode } from "./ImDirectoryPicker.js";
-import { ImGroupSettings } from "./ImGroupSettings.js";
-import { ImMemberPanel } from "./ImMemberPanel.js";
 import { MessagesSquareIcon } from "lucide-react";
 import { ImRail } from "./ImRail.js";
-import { ImPinnedPanel } from "./ImPinnedPanel.js";
-import { conversationSubtitle, conversationTitle } from "./imPresentation.js";
+import {
+  conversationSubtitle,
+  conversationTitle,
+  imListColumnState,
+  imPaneBand,
+} from "./imPresentation.js";
 import { sumUnread, useImPreferences } from "./imPreferences.js";
 import { useIm } from "./useIm.js";
 
@@ -51,7 +61,9 @@ export const MessagesSidePane = memo(function MessagesSidePane({
   /** 右栏的两种内容：成员面板（默认）与群设置（管理操作）。 */
   const [rightPanelMode, setRightPanelMode] = useState<"members" | "settings">("members");
   /** 左侧 rail 的当前入口（消息 / 通讯录）。 */
-  const [railView, setRailView] = useState<"messages" | "directory" | "bookmarks">("messages");
+  const [railView, setRailView] = useState<"messages" | "directory" | "bookmarks" | "reports">(
+    "messages",
+  );
   /**
    * 通知与角标的路由：告诉它"我现在在看哪个会话"（在看的会话不弹通知），
    * 并消费"点通知要打开某会话"的请求。开关放在真正的挂载点（面板）上，语义最准。
@@ -94,9 +106,26 @@ export const MessagesSidePane = memo(function MessagesSidePane({
     seq: number;
     at: number;
   } | null>(null);
-  const paneRef = useRef<HTMLDivElement | null>(null);
-  const paneWidth = useElementWidth(paneRef);
-  const singleColumn = paneWidth > 0 && paneWidth < 460;
+  /** 汇报：详情弹窗的 id / 写汇报弹窗是否打开 / 提交后刷新列表的令牌。 */
+  const [openReportId, setOpenReportId] = useState<string | null>(null);
+  const [composingReport, setComposingReport] = useState(false);
+  const [reportsRefreshToken, setReportsRefreshToken] = useState(0);
+  // 宽度用回调 ref 量：面板在加载态/无权限时不渲染那一层，晚挂载也要能量到（否则档位永远停在兜底值）。
+  const { measureRef: paneMeasureRef, width: paneWidth } = useElementWidth();
+  const band = imPaneBand(paneWidth);
+  /** 窄档：列表折叠成浮层（点 rail 或会话头部返回键打开，选完自动收）。 */
+  const [listOverlayOpen, setListOverlayOpen] = useState(false);
+  const listColumn = imListColumnState({ band, listOverlayOpen, railView });
+  // 切档自动收浮层：宽了就停靠显示，不用用户再点一下
+  useEffect(() => {
+    if (band !== "narrow") setListOverlayOpen(false);
+  }, [band]);
+  // 卡片动作的分派（server 动作的执行者）：解决"按钮画出来但没人执行"（§12.18）。
+  const cardActions = useImCardActionDispatch({
+    service: im.service,
+    onOpenItem: (itemId) => setOpenReportId(itemId),
+  });
+
   const compactPanel = paneWidth > 0 && paneWidth < 700;
 
   // DM 的标题要从 dmKey 里认出对方（服务端存的是排序后的两个成员 id），名字取自通讯录。
@@ -131,53 +160,8 @@ export const MessagesSidePane = memo(function MessagesSidePane({
     [conversations, preferences],
   );
 
-  // 成员面板与表头人数都来自这一份详情（一次请求，两个用途），切走时取消。
-  const [members, setMembers] = useState<ImMember[]>([]);
-  useEffect(() => {
-    setMembers([]);
-    if (!im.service || !selected) return;
-    let active = true;
-    const load = (): void => {
-      void im.service
-        ?.listMemberDetails(selected)
-        .then((details) => {
-          if (active) setMembers(details);
-        })
-        .catch((error: unknown) => {
-          logger.warn("[im] 读取成员失败", error);
-        });
-    };
-    load();
-    // 在线状态只来自服务端：连接恢复后重新拉一次，避免面板停在"全部离线"。
-    const subscription = im.service.onRealtime((event) => {
-      const realtime = event as { kind?: string; conversationId?: string };
-      if (realtime.kind === "presence" && realtime.conversationId === selected) load();
-    });
-    return () => {
-      active = false;
-      subscription.dispose();
-    };
-  }, [im.service, selected]);
-
-  // 在线状态变化也要反映到成员详情里（不重拉全量：presence 帧只带"谁变了"）。
-  useEffect(() => {
-    if (!im.service) return;
-    const subscription = im.service.onRealtime((event) => {
-      const realtime = event as {
-        kind?: string;
-        conversationId?: string;
-        userId?: string;
-        online?: boolean;
-      };
-      if (realtime.kind !== "presence" || realtime.conversationId !== selected) return;
-      setMembers((current) =>
-        current.map((member) =>
-          member.id === realtime.userId ? { ...member, online: realtime.online === true } : member,
-        ),
-      );
-    });
-    return () => subscription.dispose();
-  }, [im.service, selected]);
+  // 成员详情（含在线状态）由 hook 管：两个订阅必须一起改，见 useImMembers。
+  const members = useImMembers(im.service, selected);
 
   // 通知标题要显示"谁发来的"：单聊用对面姓名，群用群名——只有这里知道怎么解析
   useEffect(() => {
@@ -221,24 +205,28 @@ export const MessagesSidePane = memo(function MessagesSidePane({
         </p>
       ) : null}
 
-      <div ref={paneRef} className="relative flex min-h-0 flex-1">
+      <div
+        ref={paneMeasureRef}
+        data-pane-width={Math.round(paneWidth)}
+        data-pane-state={`${band}/${railView}`}
+        className="relative flex min-h-0 flex-1"
+      >
         <ImRail
           view={railView}
           unreadTotal={unreadTotal}
           selfName={(selfUserId ? nameOf(selfUserId) : undefined) ?? t("im.you")}
           onSelect={(next) => {
+            // 窄档下列表不是一栏：再点「消息」= 打开/收起列表浮层（不然点了像没反应）
+            if (next === "messages" && band === "narrow") setListOverlayOpen((open) => !open);
             setRailView(next);
             if (next === "messages") setPicking(false);
           }}
         />
 
-        <div
-          className={cn(
-            "flex w-60 shrink-0 flex-col border-r border-border",
-            // 面板能被拖到 240px 宽。窄到放不下两栏时退成单栏（列表/会话二选一），
-            // 否则会把消息列挤到几十像素，比"多一栏"更糟。
-            (singleColumn || railView === "directory") && "hidden",
-          )}
+        <ImListColumn
+          state={listColumn}
+          backdropLabel={t("common.close")}
+          onBackdrop={() => setListOverlayOpen(false)}
         >
           {picking ? (
             <ImDirectoryPicker
@@ -273,7 +261,11 @@ export const MessagesSidePane = memo(function MessagesSidePane({
             directory={directory}
             selfUserId={selfUserId}
             selectedId={selected}
-            onSelect={(conversationId) => setSelected(conversationId)}
+            onSelect={(conversationId) => {
+              setSelected(conversationId);
+              // 窄档：选完会话把浮层收起来，否则用户以为"点了没反应"（浮层还盖在上面）
+              setListOverlayOpen(false);
+            }}
             onNewConversation={() => setPicking(true)}
             onRefresh={() => void im.refresh()}
             onMarkRead={(conversation) => {
@@ -285,7 +277,7 @@ export const MessagesSidePane = memo(function MessagesSidePane({
                 .catch((error: unknown) => logger.warn("[im] 标记已读失败", error));
             }}
           />
-        </div>
+        </ImListColumn>
 
         <div className={cn("min-w-0 flex-1", railView !== "messages" && "hidden")}>
           {active ? (
@@ -297,7 +289,7 @@ export const MessagesSidePane = memo(function MessagesSidePane({
               subtitle={subtitleOf(active)}
               nameOf={nameOf}
               initialLastReadSeq={active.lastReadSeq}
-              onBack={singleColumn ? () => setSelected(null) : undefined}
+              onBack={band === "narrow" ? () => setListOverlayOpen(true) : undefined}
               rightPanelOpen={rightPanelOpen}
               jumpRequest={jumpRequest}
               onPinnedChange={setPinned}
@@ -313,6 +305,7 @@ export const MessagesSidePane = memo(function MessagesSidePane({
               onToggleBookmark={(messageId, bookmarked) =>
                 void bookmarks.toggle(messageId, bookmarked)
               }
+              onCardAction={cardActions.dispatch}
               onForwardMessage={(targetId, body) => {
                 if (!im.service) return;
                 // 转发就是"把同一条正文发到另一个会话"：服务端会再校验一次成员资格。
@@ -330,7 +323,18 @@ export const MessagesSidePane = memo(function MessagesSidePane({
           )}
         </div>
 
-        {railView === "bookmarks" && !singleColumn ? (
+        {railView === "reports" ? (
+          <ImReportsList
+            service={im.service}
+            selfUserId={selfUserId}
+            nameOf={nameOf}
+            refreshToken={reportsRefreshToken}
+            onOpen={(reportId) => setOpenReportId(reportId)}
+            onCompose={() => setComposingReport(true)}
+          />
+        ) : null}
+
+        {railView === "bookmarks" ? (
           <ImBookmarksList
             items={bookmarks.items}
             // 单聊的 title 在服务端是空的（标题是"对方是谁"，由客户端按成员算出来）。
@@ -360,99 +364,70 @@ export const MessagesSidePane = memo(function MessagesSidePane({
           />
         ) : null}
 
-        {/* 通讯录：占列表位置，复用同一套列表视觉；点一个人直接开单聊。
-            不在这里放"建群"——那是新建动作，属于区头的 + 号。 */}
-        {railView === "directory" && !singleColumn ? (
-          <ImDirectoryList
+        {railView === "directory" ? (
+          <ImDirectoryPane
+            service={im.service}
             users={directory}
-            onPick={(user) => {
-              if (!im.service) return;
-              void im.service
-                .createDm(user.id)
-                .then((conversation) => {
-                  setRailView("messages");
-                  setSelected(conversation.id);
-                })
-                .catch((error: unknown) => logger.warn("[im] 发起单聊失败", error));
+            onOpened={(conversationId) => {
+              setRailView("messages");
+              setSelected(conversationId);
             }}
           />
         ) : null}
 
-        {/* 右栏：成员面板（默认）/ 群设置。放不下时改成浮层盖在消息列上——
-            直接塞一列会把消息挤没，直接不显示又等于功能消失。 */}
-        {active && rightPanelOpen ? (
-          <div
-            className={cn(
-              "w-64 border-l border-border",
-              compactPanel ? "absolute inset-y-0 right-0 z-20 shadow-xl" : "relative shrink-0",
-            )}
-          >
-            {showPinned ? (
-              <ImPinnedPanel
-                pinned={pinned}
-                senderNameOf={nameOf}
-                selfUserId={selfUserId}
-                onOpen={(message) =>
-                  setJumpRequest({
-                    // 置顶列表属于当前选中的会话
-                    conversationId: selected ?? "",
-                    id: message.id,
-                    seq: message.seq,
-                    at: Date.now(),
-                  })
-                }
-              />
-            ) : rightPanelMode === "settings" && active.kind !== "dm" ? (
-              <ImGroupSettings
-                service={im.service}
-                conversation={active}
-                directory={directory}
-                selfUserId={selfUserId}
-                onClose={() => setRightPanelMode("members")}
-                onChanged={() => void im.refresh()}
-              />
-            ) : (
-              <ImMemberPanel
-                members={members}
-                directory={directory}
-                selfUserId={selfUserId}
-                onOpenSettings={
-                  active.kind === "dm" ? undefined : () => setRightPanelMode("settings")
-                }
-                onShowPinned={() => setShowPinned(true)}
-                pinnedCount={pinned.length}
-                onClose={() => setRightPanelOpen(false)}
-              />
-            )}
-          </div>
-        ) : null}
+        <ImRightPanel
+          active={active}
+          open={rightPanelOpen}
+          compact={compactPanel}
+          mode={rightPanelMode}
+          onModeChange={setRightPanelMode}
+          showPinned={showPinned}
+          pinned={pinned}
+          service={im.service}
+          directory={directory}
+          members={members}
+          selfUserId={selfUserId}
+          nameOf={nameOf}
+          onOpenPinned={(message) =>
+            // 置顶列表属于当前选中的会话
+            setJumpRequest({
+              conversationId: selected ?? "",
+              id: message.id,
+              seq: message.seq,
+              at: Date.now(),
+            })
+          }
+          onShowPinned={() => setShowPinned(true)}
+          onClose={() => setRightPanelOpen(false)}
+          onChanged={() => void im.refresh()}
+        />
       </div>
+
+      <ImReportDialogs
+        service={im.service}
+        selfUserId={selfUserId}
+        directory={directory}
+        composing={composingReport}
+        openReportId={openReportId}
+        nameOf={nameOf}
+        onCloseCompose={() => setComposingReport(false)}
+        onCloseDetail={() => setOpenReportId(null)}
+        onSubmitted={({ conversationId }) => {
+          // 提交后：收起弹窗、刷新记录、切到那条会话——用户立刻能看到自己发出去的那张卡
+          setComposingReport(false);
+          setReportsRefreshToken((token) => token + 1);
+          setSelected(conversationId);
+          setRailView("messages");
+        }}
+      />
+      {cardActions.returningReview ? (
+        <ImCardReturnDialog
+          service={im.service}
+          itemId={cardActions.returningReview.itemId}
+          title={cardActions.returningReview.title}
+          onClose={cardActions.closeReturn}
+        />
+      ) : null}
     </div>
   );
 });
-
-/** 观察某个元素的宽度；侧边面板可被拖动，布局要跟着实际宽度走而不是窗口宽度。 */
-function useElementWidth(ref: { current: HTMLElement | null }): number {
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    setWidth(Math.round(element.getBoundingClientRect().width));
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setWidth(Math.round(entry.contentRect.width));
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
-}
-
-function ImNotice({ text }: { text: string }) {
-  return (
-    <div className={cn(IM_EMPTY, IM_PANEL)}>
-      <MessagesSquareIcon className={IM_EMPTY_ICON} />
-      <p className={IM_EMPTY_TEXT}>{text}</p>
-    </div>
-  );
-}

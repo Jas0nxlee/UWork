@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { IImService } from "@zcode/services";
-import type { ImMessage } from "@zcode/shared";
+import type { ImMessage, ImCardDocument } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { ImTimelineRow } from "./imPresentation.js";
@@ -31,6 +31,7 @@ export const ImTimeline = memo(function ImTimeline({
   bookmarkedIds = EMPTY_BOOKMARKS,
   query,
   activeMessageId,
+  onCardAction,
   confirmingId,
   onWithdraw,
   onWithdrawNow,
@@ -54,6 +55,10 @@ export const ImTimeline = memo(function ImTimeline({
   bookmarkedIds?: ReadonlySet<string>;
   query: string;
   activeMessageId: string | null;
+  onCardAction?: (
+    action: { id: string; kind: "client" | "server"; target?: string },
+    document: ImCardDocument,
+  ) => void | Promise<void>;
   confirmingId: string | null;
   onWithdraw: (message: ImMessage) => void;
   /** 右键菜单里的撤回：菜单点完就关，没法再做"再点一次确认"，所以这里是直接撤回。 */
@@ -123,6 +128,7 @@ export const ImTimeline = memo(function ImTimeline({
             senderNameOf={senderNameOf}
             query={query}
             activeMessageId={activeMessageId}
+            {...(onCardAction ? { onCardAction } : {})}
             confirmingId={confirmingId}
             bookmarked={bookmarkedIds.has(row.message.id)}
             onEdit={onEdit}

@@ -4,7 +4,7 @@ import { PinIcon } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { IM_EMPTY, IM_EMPTY_ICON, IM_EMPTY_TEXT, IM_LIST_PADDING } from "./imChrome.js";
-import { avatarTone, formatClockTime, initialsOf } from "./imPresentation.js";
+import { avatarTone, formatClockTime, initialsOf, messageBodyText } from "./imPresentation.js";
 
 /**
  * 右栏的置顶消息列表。
@@ -67,7 +67,7 @@ export const ImPinnedPanel = memo(function ImPinnedPanel({
                         </span>
                       </span>
                       <span className="mt-0.5 block truncate text-ui-2xs text-foreground-subtle">
-                        {message.deletedAt !== null ? t("im.withdrawn") : message.body}
+                        {messageBodyText(message, t, senderNameOf)}
                       </span>
                     </span>
                   </button>

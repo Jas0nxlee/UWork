@@ -1,4 +1,11 @@
-import type { ImConversationSummary, ImMessage } from "@zcode/shared";
+import { describeSystemMessage } from "./imSystemMessage.js";
+import {
+  parseImAttachmentBody,
+  parseImCard,
+  type ImDirectoryUser,
+  type ImConversationSummary,
+  type ImMessage,
+} from "@zcode/shared";
 
 /**
  * IM 界面的展示逻辑（纯函数，可单测）。
@@ -213,4 +220,174 @@ export function buildTimeline(input: {
     previous = message;
   }
   return rows;
+}
+
+/**
+ * 通讯录按部门分栏。
+ *
+ * 三条口径（都来自真机上"看起来对不对"的判断）：
+ * 1. **归到主部门**（`departments[0]`，服务端已切好 token，客户端不再自己切）——一个人挂两个部门时
+ *    只出现在第一栏：同一张脸在列表里出现两次比"漏一个部门"更迷惑（搜索仍按任意部门匹配）；
+ * 2. 组内按姓名排（在同一部门里找人靠"扫一遍"），组间按部门名排，**未分组永远在最后**；
+ * 3. 空分组不渲染；一个人也照样显示栏头——否则会以为这人没有部门。
+ */
+export interface ImDirectoryGroup {
+  key: string;
+  title: string;
+  members: ImDirectoryUser[];
+}
+
+export function groupDirectoryByDepartment(
+  users: readonly ImDirectoryUser[],
+  unknownLabel: string,
+): ImDirectoryGroup[] {
+  const byDepartment = new Map<string, ImDirectoryUser[]>();
+  for (const user of users) {
+    const primary = user.departments[0] ?? "";
+    const bucket = byDepartment.get(primary) ?? [];
+    bucket.push(user);
+    byDepartment.set(primary, bucket);
+  }
+  const collator = new Intl.Collator("zh-Hans-CN");
+  return [...byDepartment.entries()]
+    .map(([department, members]) => ({
+      key: department || "__none__",
+      title: department || unknownLabel,
+      members: [...members].sort((a, b) => collator.compare(a.name ?? a.id, b.name ?? b.id)),
+    }))
+    .sort((a, b) => {
+      if (a.key === "__none__") return 1;
+      if (b.key === "__none__") return -1;
+      return collator.compare(a.title, b.title);
+    });
+}
+
+/**
+ * 面板宽度三档——决定"列表是停靠、还是折叠成浮层"。
+ *
+ * 阈值是**按内容需求算出来的，不是拍的**：三栏要舒适，需要
+ *   rail 56 + 列表 240 + 消息列 ≥ 560 ≈ 856
+ * 所以 <720 就把列表折叠成浮层（三栏到这个宽度已经开始互相挤），720–879 停靠但列表收窄，
+ * ≥880 才是舒适三栏。**判定跟随面板实际宽度**（用户拖的是面板，不是窗口），切档自动发生、不用再点一下。
+ */
+export type ImPaneBand = "narrow" | "medium" | "wide";
+
+export function imPaneBand(width: number): ImPaneBand {
+  if (width <= 0) return "medium"; // 还没量到宽度：按停靠渲染，避免首帧闪一下浮层
+  if (width < 720) return "narrow";
+  return width < 880 ? "medium" : "wide";
+}
+
+/**
+ * 列表列在某一档 + 某个视图下的形态。
+ *
+ * 抽出来的理由：这三种状态（停靠 / 浮层 / 不显示）散在 JSX 的 className 里就只能靠肉眼验，
+ * 而它恰恰是"面板能拖到 240px"这条约束下最容易出错的地方——拖窄了消息列被挤没、或浮层收不回去。
+ */
+export interface ImListColumnState {
+  /** docked：占一栏；overlay：盖在消息列上；hidden：不显示（浮层未打开，或当前是别的视图）。 */
+  mode: "docked" | "overlay" | "hidden";
+  /** 宽度类（按档取：宽档舒适、其余窄一点）。 */
+  widthClass: "w-60" | "w-52" | "w-64";
+  /** 窄档浮层打开时要渲一层背板（点击关闭）。 */
+  backdrop: boolean;
+}
+
+export function imListColumnState(input: {
+  band: ImPaneBand;
+  listOverlayOpen: boolean;
+  railView: "messages" | "directory" | "bookmarks" | "reports";
+}): ImListColumnState {
+  if (input.band === "narrow") {
+    // 窄档：列表不是一栏。只有"消息"视图 + 用户主动打开时才作为浮层出现
+    const open = input.listOverlayOpen && input.railView === "messages";
+    return { mode: open ? "overlay" : "hidden", widthClass: "w-64", backdrop: open };
+  }
+  // 中/宽档：只有"消息"视图停靠列表；通讯录/汇报/收藏各自占满列表位
+  const docked = input.railView === "messages";
+  return {
+    mode: docked ? "docked" : "hidden",
+    widthClass: input.band === "wide" ? "w-60" : "w-52",
+    backdrop: false,
+  };
+}
+
+/**
+ * **把卡片动作翻译成一个可执行的分派**（纯函数，见 specs/messaging-and-channels.md §12.18）。
+ *
+ * 为什么要单独一步而不是在 onAction 里 if 一片：分派规则是"卡片动作 → 业务动作"的**唯一映射**，
+ * 写散在 JSX 里就只能靠点着试；抽出来之后可以单测穷举"未知类型/未知动作/缺 target"这些**必须不动手**的情况。
+ * 不认识的组合一律返回 `unsupported`——渲染器会把按钮置灰而不是静默失败。
+ */
+export type ImCardActionDispatch =
+  | { kind: "work-item"; itemId: string; action: "open" | "review" | "return" }
+  | { kind: "unsupported" };
+
+/**
+ * **这张卡在"我"眼里是什么身份**（渲染按角色分视角，见 specs/messaging-and-channels.md §12.18）。
+ *
+ * 纯函数、可穷举单测；判定只用**卡片自己声明的** `audience`（谁发的、给谁的），
+ * 不去推理"这个人是什么角色"——推理那件事属于服务端，客户端只负责别把点不动的按钮摆给人看。
+ * 老卡片没有 `audience` → `unknown`，界面保持原样（按钮照常显示，由服务端拒绝）。
+ */
+export type ImCardViewerRole = "addressee" | "author" | "observer" | "unknown";
+
+export function imCardViewerRole(
+  document: { audience?: { from?: string; to?: string } },
+  selfUserId: string | null | undefined,
+): ImCardViewerRole {
+  const audience = document.audience;
+  if (!audience || (!audience.to && !audience.from)) return "unknown";
+  if (!selfUserId) return "observer";
+  if (audience.to === selfUserId) return "addressee";
+  if (audience.from === selfUserId) return "author";
+  return "observer";
+}
+
+export function resolveImCardAction(
+  action: { id: string; kind: "client" | "server"; target?: string },
+  document?: { actions?: { target?: string }[] },
+): ImCardActionDispatch {
+  // 动作自己的 target 优先；**缺失时用同一张卡片里其它动作的 target 兜底**。
+  // 为什么需要兜底（真机踩到，用户手点报"这个动作暂不支持"）：`server` 动作带 target 是后来才加的，
+  // 之前投出去的卡片里 `review/return` 没有 target，而卡片描述的就是同一条记录——
+  // 靠 `open` 的 target 就能认出对象。按"只认自己的 target"会把存量卡片全判成不可执行。
+  const target = action.target ?? document?.actions?.find((item) => item.target)?.target ?? "";
+  const [type, id] = target.split(":");
+  if (type !== "work-items.item" || !id) return { kind: "unsupported" };
+  if (action.id === "open" && action.kind === "client")
+    return { kind: "work-item", itemId: id, action: "open" };
+  if (action.kind === "server" && (action.id === "review" || action.id === "return"))
+    return { kind: "work-item", itemId: id, action: action.id };
+  return { kind: "unsupported" };
+}
+
+/**
+ * **把一条消息的"正文"变成人话**——所有"要把消息内容展示给人看"的地方都必须走这里。
+ *
+ * 为什么要收成一个口子：body 有四种形态（纯文本 / 系统消息 JSON / 卡片文档 JSON / 附件载荷 JSON），
+ * 而"展示"的地方有**六处**（会话列表预览、收藏列表、置顶面板、检索命中、引用块、转发预览、复制）。
+ * 之前只修了会话预览与系统通知，结果收藏、引用、转发预览里照样冒出 `{"card":…}`——
+ * 同一类 bug 修了两处、漏了五处。**新增加载荷只要在这里加一个分支，六处就全都跟着对。**
+ */
+export function messageBodyText(
+  message: Pick<ImMessage, "kind" | "body" | "deletedAt" | "senderId">,
+  t: (id: string, values?: Record<string, string | number>) => string,
+  nameOf: (id: string) => string | undefined = () => undefined,
+): string {
+  if (message.deletedAt !== null) return t("im.withdrawn");
+  if (message.kind === "system") return describeSystemMessage(message.body, nameOf, t).text;
+  if (message.kind === "card") {
+    const card = parseImCard(message.body);
+    return card?.fallback ?? t("im.previewCard");
+  }
+  if (message.kind === "attachment") {
+    const attachment = parseImAttachmentBody(message.body);
+    if (!attachment) return t("im.previewFile");
+    const kindLabel = /^image\//i.test(attachment.mime)
+      ? t("im.previewImage")
+      : t("im.previewFile");
+    return `${kindLabel} ${attachment.name}`;
+  }
+  return message.body;
 }

@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { IImService } from "@zcode/services";
-import type { ImMessage } from "@zcode/shared";
+import type { ImMessage, ImCardDocument } from "@zcode/shared";
 import { PinIcon, SmilePlusIcon } from "lucide-react";
 import {
   ContextMenu,
@@ -11,8 +11,15 @@ import {
 } from "@/components/ui/context-menu.js";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
 import { cn } from "@/components/lib/utils.js";
-import { formatClockTime, initialsOf, avatarTone, type ImTimelineRow } from "./imPresentation.js";
+import {
+  avatarTone,
+  formatClockTime,
+  initialsOf,
+  messageBodyText,
+  type ImTimelineRow,
+} from "./imPresentation.js";
 import { ImAttachmentView } from "./ImAttachmentView.js";
+import { ImCardRenderer } from "./ImCardRenderer.js";
 import {
   IM_MESSAGE_BODY,
   IM_MESSAGE_GROUP_GAP,
@@ -45,6 +52,7 @@ export const ImMessageRow = memo(function ImMessageRow({
   senderNameOf,
   query,
   activeMessageId,
+  onCardAction,
   confirmingId,
   bookmarked,
   onEdit,
@@ -65,6 +73,12 @@ export const ImMessageRow = memo(function ImMessageRow({
   senderNameOf: (id: string) => string | undefined;
   query: string;
   activeMessageId: string | null;
+  /** 卡片动作的执行者（`client` 打开界面 / `server` 调服务端）。
+   *  `selfUserId` 已在上方声明：渲染器用它决定这张卡按什么视角画（收件人/发起人/只读）。 */
+  onCardAction?: (
+    action: { id: string; kind: "client" | "server"; target?: string },
+    document: ImCardDocument,
+  ) => void | Promise<void>;
   confirmingId: string | null;
   bookmarked: boolean;
   onEdit: (message: ImMessage) => void;
@@ -141,6 +155,14 @@ export const ImMessageRow = memo(function ImMessageRow({
 
           {withdrawn ? (
             <p className="mt-0.5 text-ui-xs text-foreground-subtle italic">{t("im.withdrawn")}</p>
+          ) : row.message.kind === "card" ? (
+            // 通用卡片：文档决定内容，渲染器只认原语；`client` 动作交给外层（如打开详情）
+            <ImCardRenderer
+              body={row.message.body}
+              authorLabel={senderLabel}
+              selfUserId={selfUserId}
+              {...(onCardAction ? { onAction: onCardAction } : {})}
+            />
           ) : row.message.kind === "attachment" ? (
             // 附件消息的 body 是载荷 JSON：正文位渲染成附件（图片/文件卡片），
             // 解析不了也让 ImAttachmentView 自己给提示，不要把 JSON 当正文甩给用户。
@@ -226,7 +248,9 @@ export const ImMessageRow = memo(function ImMessageRow({
               <ToolbarButton label={t("im.forward")} onClick={() => onForward(row.message)} />
               <ToolbarButton
                 label={t("im.copy")}
-                onClick={() => void copyMessage(row.message.body)}
+                onClick={() =>
+                  void copyMessage(messageBodyText(row.message, t, () => selfName ?? undefined))
+                }
               />
               {row.mine ? (
                 <ToolbarButton
@@ -245,7 +269,9 @@ export const ImMessageRow = memo(function ImMessageRow({
         <ContextMenuItem onSelect={() => onReply(row.message)}>{t("im.reply")}</ContextMenuItem>
         <ContextMenuItem onSelect={() => onForward(row.message)}>{t("im.forward")}</ContextMenuItem>
         <ContextMenuItem
-          onSelect={() => void copyMessage(row.message.body)}
+          onSelect={() =>
+            void copyMessage(messageBodyText(row.message, t, () => selfName ?? undefined))
+          }
           disabled={withdrawn || !row.message.body}
         >
           {t("im.copy")}
