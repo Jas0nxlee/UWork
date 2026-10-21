@@ -3,6 +3,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ensureHostFallbackCwd } from "../src/host/database-startup/storagePreparationProcesses.js";
+import { resolveZCodeAgentSpawnCwd } from "@zcode/services/storage-startup";
 import {
   createOpenWorkspaceStartupBootstrap,
   resolveStartupWindowBootstrap,
@@ -218,7 +220,7 @@ describe("startup workspace", () => {
     });
   });
 
-  it("active 本地 workspace 不存在时保留原路径并创建 agent cwd 兜底目录", async () => {
+  it("active 本地 workspace 不存在时 Main 保留原路径，Host 创建执行 cwd 兜底目录", async () => {
     const rootDir = makeTempDir("zcode-startup-workspace-");
     const settingsFile = join(rootDir, "setting.json");
     const conversationWorkspaceDir = join(rootDir, ".zcode", "workspace", "default");
@@ -239,6 +241,14 @@ describe("startup workspace", () => {
       unavailableWorkspacePath: missingWorkspace,
       agentWarmupTargets: [{ workspacePath: missingWorkspace }],
     });
+    expect(existsSync(conversationWorkspaceDir)).toBe(false);
+    await ensureHostFallbackCwd(conversationWorkspaceDir);
+    const selection = await resolveZCodeAgentSpawnCwd({
+      requestedCwd: missingWorkspace,
+      workspacePath: missingWorkspace,
+      spawnFallbackCwd: conversationWorkspaceDir,
+    });
+    expect(selection).toMatchObject({ cwd: conversationWorkspaceDir, cwdExists: true });
     expect(existsSync(conversationWorkspaceDir)).toBe(true);
     expect(existsSync(missingWorkspace)).toBe(false);
   });
@@ -264,7 +274,7 @@ describe("startup workspace", () => {
       unavailableWorkspacePath: workspaceFile,
       agentWarmupTargets: [{ workspacePath: workspaceFile }],
     });
-    expect(existsSync(conversationWorkspaceDir)).toBe(true);
+    expect(existsSync(conversationWorkspaceDir)).toBe(false);
   });
 
   it.runIf(process.platform !== "win32" && process.getuid?.() !== 0)(
@@ -292,7 +302,7 @@ describe("startup workspace", () => {
           unavailableWorkspacePath: inaccessibleWorkspace,
           agentWarmupTargets: [{ workspacePath: inaccessibleWorkspace }],
         });
-        expect(existsSync(conversationWorkspaceDir)).toBe(true);
+        expect(existsSync(conversationWorkspaceDir)).toBe(false);
       } finally {
         chmodSync(inaccessibleWorkspace, 0o700);
       }
@@ -300,7 +310,7 @@ describe("startup workspace", () => {
   );
 
   it.each(["active", "legacy"])(
-    "远程活动项（%s）先准备本机存储 cwd，保持远程导航且不创建远程项目路径",
+    "远程活动项（%s）仅声明目标，由 Host 准备本机 cwd 且不创建远程项目路径",
     async (format) => {
       const rootDir = makeTempDir("zcode-startup-remote-");
       const settingsFile = join(rootDir, "setting.json");
@@ -325,6 +335,8 @@ describe("startup workspace", () => {
       await expect(
         resolveStartupWindowBootstrap({ settingsFile, conversationWorkspaceDir }),
       ).resolves.toEqual({});
+      expect(existsSync(conversationWorkspaceDir)).toBe(false);
+      await ensureHostFallbackCwd(conversationWorkspaceDir);
       expect((await stat(conversationWorkspaceDir)).isDirectory()).toBe(true);
       await expect(stat(remotePath)).rejects.toMatchObject({ code: "ENOENT" });
       // 目录准备是幂等的，不覆盖既有文件，也不把备用 cwd 变成活动项目。
@@ -337,7 +349,7 @@ describe("startup workspace", () => {
     },
   );
 
-  it("远程活动项的存储 cwd 无法创建时明确失败，不返回虚假的启动就绪", async () => {
+  it("远程活动项仅返回导航声明，Host 存储 cwd 无法创建时明确失败", async () => {
     const rootDir = makeTempDir("zcode-startup-remote-blocked-");
     const settingsFile = join(rootDir, "setting.json");
     const conversationWorkspaceDir = join(rootDir, "default");
@@ -357,7 +369,8 @@ describe("startup workspace", () => {
     );
     await expect(
       resolveStartupWindowBootstrap({ settingsFile, conversationWorkspaceDir }),
-    ).rejects.toThrow();
+    ).resolves.toEqual({});
+    await expect(ensureHostFallbackCwd(conversationWorkspaceDir)).rejects.toThrow();
     expect(await readFile(conversationWorkspaceDir, "utf8")).toBe("existing file");
   });
 
@@ -408,7 +421,7 @@ describe("startup workspace", () => {
         conversationWorkspaceDir,
       }).then((bootstrap) => bootstrap.initialWorkspacePath),
     ).resolves.toBe(conversationWorkspaceDir);
-    expect(existsSync(conversationWorkspaceDir)).toBe(true);
+    expect(existsSync(conversationWorkspaceDir)).toBe(false);
   });
 
   it("没有可恢复会话时 conversation workspace 也是 agent 预热目标", async () => {
@@ -437,6 +450,6 @@ describe("startup workspace", () => {
       initialWorkspacePurpose: "conversation",
       agentWarmupTargets: [{ workspacePath: conversationWorkspaceDir }],
     });
-    expect(existsSync(conversationWorkspaceDir)).toBe(true);
+    expect(existsSync(conversationWorkspaceDir)).toBe(false);
   });
 });

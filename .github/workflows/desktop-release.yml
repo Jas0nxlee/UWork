@@ -68,29 +68,16 @@ jobs:
           pnpm exec tsx --test
           apps/zcode-cli/packages/adapters/test/officeEditorPlugin.test.ts
           apps/zcode-cli/packages/adapters/test/pluginUworkAliases.test.ts
-      - name: Validate provider, enterprise login, and AIHub skill source behavior
+      - name: Validate package-level Node native unit tests
+        run: pnpm test:unit:node
+      - name: Validate additional native CLI, identity security, and release regressions
         run: >-
           pnpm exec tsx --test
-          packages/services/test/providerModelDiscovery.test.ts
-          packages/services/test/customProvidersOnly.test.ts
-          packages/services/test/enterpriseIdentity.test.ts
-          packages/services/test/enterpriseIdentityNative.test.ts
-          packages/services/test/enterpriseIdentitySharedStore.test.ts
           packages/services/test/identitySessionGuard.test.mts
-          packages/services/test/ucasGatewayService.test.ts
           packages/services/test/ucasGatewayIdentityRace.test.mts
-          packages/services/test/enterpriseIdentityOrganizations.test.ts
-          packages/services/test/wecomIdentityAdapter.test.ts
-          packages/services/test/wecomIdentityConfig.test.ts
-          packages/desktop/test/enterpriseLoginSurface.test.ts
-          packages/desktop/test/enterpriseLoginNavigation.test.ts
-          packages/desktop/test/desktopEnterpriseIdentityConfig.test.ts
-          packages/ui/test/enterpriseLoginSurfaceGate.test.ts
           apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts
           apps/zcode-cli/packages/adapters/test/userStorageRoot.test.ts
           apps/zcode-cli/packages/adapters/test/marketplaceTrust.test.ts
-          packages/services/test/uworkDataMigration.test.ts
-          packages/desktop/test/uworkRuntimePaths.test.ts
           scripts/test/uworkBranding.test.ts
           scripts/test/desktopEnterpriseIdentity.test.ts
           packages/services/test/appCaCertSecurity.test.mts

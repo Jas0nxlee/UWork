@@ -1,0 +1,22 @@
+// 包级 node:test 单测的唯一登记表；Vitest 排除与 Node 运行必须共用，不能只排除不执行。
+export const nodeUnitTestFiles = [
+  "packages/desktop/test/desktopEnterpriseIdentityConfig.test.ts",
+  "packages/desktop/test/enterpriseLoginNavigation.test.ts",
+  "packages/desktop/test/enterpriseLoginSurface.test.ts",
+  "packages/desktop/test/startupFallbackCwd.test.ts",
+  "packages/desktop/test/uworkRuntimePaths.test.ts",
+  "packages/services/test/customProvidersOnly.test.ts",
+  "packages/services/test/enterpriseIdentity.test.ts",
+  "packages/services/test/enterpriseIdentityNative.test.ts",
+  "packages/services/test/enterpriseIdentityOrganizations.test.ts",
+  "packages/services/test/enterpriseIdentitySharedStore.test.ts",
+  "packages/services/test/identityIssuerDiagnostics.test.ts",
+  "packages/services/test/providerModelDiscovery.test.ts",
+  "packages/services/test/ucasGatewayProviderConfig.test.ts",
+  "packages/services/test/ucasGatewayService.test.ts",
+  "packages/services/test/uworkDataMigration.test.ts",
+  "packages/services/test/wecomIdentityAdapter.test.ts",
+  "packages/services/test/wecomIdentityConfig.test.ts",
+  "packages/shared/test/processNames.test.ts",
+  "packages/ui/test/enterpriseLoginSurfaceGate.test.ts",
+];

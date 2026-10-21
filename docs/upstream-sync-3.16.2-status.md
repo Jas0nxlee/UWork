@@ -57,3 +57,10 @@ node scripts/upstream-track.mjs status --ours chore/upstream-3.16.2-sync   # 应
 - 供应商/企业身份/品牌 CI 对应 Node 测试 163 项通过；菜单、个人供应商、OAuth RPC 与归档聚焦套件通过。
 - HMAC 真实 loopback、窗口 owner 交接、持久化/轮换/取消、原 V2 独立门禁及项目目录导航有定向回归；手机/宽屏 × 明暗四组合浏览器夹具通过。
 - 不包含真实生产 relay、企微扫码或新安装包的端到端验收；不发新版本、不发布安装包。
+
+### 推送门禁追加修复
+
+- 19 个 `node:test` 文件原先误入 Vitest；现在唯一清单同时驱动 Vitest 排除与真实 Node runner，推送和 CI 始终执行该套件（109 项通过），不会仅排除不执行。
+- 隐藏祖先目录（例如 managed worktree）使官方 glob 的默认 dot:false 无法匹配配置路径。按实际根构造转义后的 force trigger，隐藏/特殊字符/Windows 路径与普通业务部分选择都有真实 API 回归；affected 的官方选择和全量跳过定义不变。
+- 纯净原 PR 的 Desktop 聚焦基线 17 红、Services 26 红已分别修到 55/55 与 144/144。另复跑原 PR 的历史 OAuth completion race 得到 13 红，相关实现/测试与当前 SHA-256 完全一致；未恢复已退役账号，也未将该既有失败说成通过。
+- 配置变更触发官方全量选择时，按既有合同跳过 Vitest UT，报告明确未执行。定向回归和 Node 原生套件的执行结果另行记录；未宣称全仓单测全绿。

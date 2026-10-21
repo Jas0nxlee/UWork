@@ -95,3 +95,9 @@ sequenceDiagram
     Migration-->>Settings: 成功；失败抛错且旧根保留
     Settings->>Disk: 成功后保存 bootstrap dataBaseDir
 ```
+
+## 技能面板的插件缓存读取（2026-10-21）
+
+技能面板读取的 CLI 配置、插件缓存与安装记录必须使用同一 UWork 用户级存储根。`storage.dir` 未显式配置时，`SkillsService` 使用既有 `getUworkUserStorageRoot()` 解析器，不再独立回退 `~/.zcode`；显式 `storage.dir` 与 `~/` 展开仍按现有规则生效。用户级 `.uwork/skills` 与共享 `.agents/skills` 保留原来源语义，项目级 `.zcode/skills` 不改名。
+
+验收同时布置 `.uwork` 与 `.zcode` 插件缓存：只展示已配置产品根内的插件，不能读取上游插件；显式存储根只展示该根的安装。技能启停仍由同一 CLI 配置拥有，不新增持久化状态。
