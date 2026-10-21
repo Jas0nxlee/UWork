@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
 import { configDefaults, defineConfig } from "vitest/config";
+import { nodeUnitTestFiles } from "./scripts/node-unit-test-files.mjs";
+import { createForceRerunTriggers } from "./scripts/vitest-force-rerun.mjs";
 
 const processLifecycleTests = [
   "packages/services/test/processTreeTerminator.test.ts",
@@ -82,12 +84,7 @@ export default defineConfig({
   test: {
     setupFiles: ["./vitest.setup.ts"],
     // 官方 affected 图不额外追踪 setupFiles；公共 setup 必须触发全量选择，再由入口跳过 UT 并成功退出。
-    forceRerunTriggers: [
-      ...configDefaults.forceRerunTriggers,
-      // 默认配置 glob 的尾部 /** 在当前版本不能匹配部分配置文件，补充文件模式。
-      "**/{vitest,vite}.config.*",
-      "**/vitest.setup.ts",
-    ],
+    forceRerunTriggers: createForceRerunTriggers(__dirname, configDefaults.forceRerunTriggers),
     // 修复原因：全量 run 的 stdout 会把**通过**测试里的 console 输出一并转发——services 层
     // 用 createServiceLogger 的用例在绿态下也要刷几千行多行日志，全量输出因此膨胀到
     // ~3.3MB，超过 CI/工作流门禁对单条命令 256KB 的 stdout 上限，导致门禁整条命令被判
@@ -120,7 +117,13 @@ export default defineConfig({
             "scripts/assert-safe-cua-helper-zip.test.mjs",
             "scripts/ci/ci-telemetry-keyword-guard.test.mjs",
           ],
-          exclude: ["packages/desktop/test/e2e/**", "packages/zcode-cua/**", ...forkIsolatedTests],
+          // 修复依据：node:test 使用独立真实 runner；排除与执行共用唯一清单，避免零测试或漏执行。
+          exclude: [
+            "packages/desktop/test/e2e/**",
+            "packages/zcode-cua/**",
+            ...forkIsolatedTests,
+            ...nodeUnitTestFiles,
+          ],
           // Node 24/macOS 的 threads 全量运行可触发 V8 SIGSEGV；诊断时切换进程隔离，测试范围不变。
           pool: process.env.ZCODE_TEST_POOL === "forks" ? "forks" : "threads",
           maxWorkers: process.env.ZCODE_TEST_POOL === "forks" ? 2 : 4,
