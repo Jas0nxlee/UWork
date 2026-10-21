@@ -5,15 +5,20 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@modelcontextprotocol/client': 2.2.0
+  '@modelcontextprotocol/client': 2.3.0
+  '@modelcontextprotocol/core': 2.3.0
+  '@modelcontextprotocol/server': 2.3.0
   axios: ^1.16.0
   basic-ftp: 6.2.1
+  brace-expansion@^1: 1.1.20
+  brace-expansion@^2: 2.1.6
   brace-expansion@^5: ^5.0.9
   browserslist: ^4.28.7
   builder-util-runtime: ^9.7.0
   exceljs@4.4.0>unzipper: 0.12.5
   extract-zip: workspace:@uwork/safe-extract-zip@*
   fast-uri: ^3.1.7
+  follow-redirects@1.16.0: 1.16.1
   form-data@^4: ^4.0.6
   hono: ^4.12.25
   ip-address: ^10.3.1
@@ -29,6 +34,7 @@ overrides:
   shell-quote: ^1.9.0
   smol-toml: ^1.7.1
   source-map-js: 1.2.2
+  tmp@^0.2: 0.2.7
   undici@^6: ^6.28.1
   undici@^7: ^7.29.0
   ws@8.18.0: ^8.21.0
@@ -250,8 +256,8 @@ importers:
         specifier: ^2.0.58
         version: 2.0.60(patch_hash=9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b)(zod@4.6.5)
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@zcode/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -320,8 +326,8 @@ importers:
   apps/zcode-cli/packages/android-emulator-plugin:
     dependencies:
       '@modelcontextprotocol/server':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -394,8 +400,8 @@ importers:
   apps/zcode-cli/packages/browser-use-plugin:
     dependencies:
       '@modelcontextprotocol/server':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@zcode/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -413,8 +419,8 @@ importers:
         version: 4.6.5
     devDependencies:
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.2
@@ -640,8 +646,8 @@ importers:
   apps/zcode-cli/packages/ios-simulator-plugin:
     dependencies:
       '@modelcontextprotocol/server':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -662,8 +668,8 @@ importers:
   apps/zcode-cli/packages/node-repl-host:
     dependencies:
       '@modelcontextprotocol/server':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@zcode/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -681,8 +687,8 @@ importers:
         version: 4.6.5
     devDependencies:
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.2
@@ -708,11 +714,11 @@ importers:
         specifier: 5.3.1
         version: 5.3.1
       '@modelcontextprotocol/core':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@modelcontextprotocol/ext-apps':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.0.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
+        version: 2.0.0(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(@modelcontextprotocol/server@2.3.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.6.5)
@@ -945,14 +951,14 @@ importers:
         specifier: 1.2.0-beta.10
         version: 1.2.0-beta.10
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@modelcontextprotocol/core':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@modelcontextprotocol/ext-apps':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.0.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
+        version: 2.0.0(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(@modelcontextprotocol/server@2.3.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -1310,8 +1316,8 @@ importers:
         specifier: ^1.0.8
         version: 1.0.8
       follow-redirects:
-        specifier: ^1.16.0
-        version: 1.16.0
+        specifier: 1.16.1
+        version: 1.16.1
       form-data:
         specifier: ^4.0.6
         version: 4.0.6
@@ -1642,7 +1648,7 @@ importers:
     devDependencies:
       '@modelcontextprotocol/ext-apps':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
+        version: 2.0.0(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(@modelcontextprotocol/server@2.3.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
@@ -1726,14 +1732,14 @@ importers:
         specifier: ^0.42.0
         version: 0.42.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.30)
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@modelcontextprotocol/core':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.3.0
+        version: 2.3.0
       '@modelcontextprotocol/ext-apps':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.0.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
+        version: 2.0.0(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(@modelcontextprotocol/server@2.3.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)
       '@pierre/diffs':
         specifier: ^1.1.22
         version: 1.1.22(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -3395,25 +3401,21 @@ packages:
   '@mermaid-js/parser@1.1.0':
     resolution: {integrity: sha512-gxK9ZX2+Fex5zu8LhRQoMeMPEHbc73UKZ0FQ54YrQtUxE1VVhMwzeNtKRPAu5aXks4FasbMe4xB4bWrmq6Jlxw==}
 
-  '@modelcontextprotocol/client@2.2.0':
-    resolution: {integrity: sha512-LxCou/CSYQ6dwEnjhLZY0KnEuc8V4UJ3IEQCl/uR2yHobSQIEdJKUlKLRYRF5i5FqRGHy1eK7une3aAWDHLtig==}
+  '@modelcontextprotocol/client@2.3.0':
+    resolution: {integrity: sha512-pbHtGj6EeFCHngFE8gtNPaKrsj8Mb1IMw45BLcaPML/m2WTxI7pyYmeNQvaux88Lw8BSO5r7nyRbUyIkICmGrg==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/core@2.0.0':
-    resolution: {integrity: sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==}
-    engines: {node: '>=20'}
-
-  '@modelcontextprotocol/core@2.2.0':
-    resolution: {integrity: sha512-iLhmprRmWI8EcosOA3wVvww22z02NkgqhV4fBH6f/odQBsi7xnJc0HGmi21yWO+/iKw2yzqVE127Zhna5/+JXw==}
+  '@modelcontextprotocol/core@2.3.0':
+    resolution: {integrity: sha512-09BHFaNVBe5pB2AhzCfLj0cqmsKLERvZQ4FblzP90UMGLaXVqdZPByFjURwsUYCmxonUW2yAwgTTvle+8O2/8w==}
     engines: {node: '>=20'}
 
   '@modelcontextprotocol/ext-apps@2.0.0':
     resolution: {integrity: sha512-a6tXzFcIbIIdnqumQ7W8Oxd8W/KAPkAKYpoxpD9nDgxZ24ywgxG5pK/8G9W5pOFUygS7gWHQhPv8cwRB44/8yg==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@modelcontextprotocol/client': 2.2.0
-      '@modelcontextprotocol/core': ^2.0.0
-      '@modelcontextprotocol/server': ^2.0.0
+      '@modelcontextprotocol/client': 2.3.0
+      '@modelcontextprotocol/core': 2.3.0
+      '@modelcontextprotocol/server': 2.3.0
       react: 19.2.7
       react-dom: 19.2.7
       zod: ^4.2.0
@@ -3435,8 +3437,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@modelcontextprotocol/server@2.0.0':
-    resolution: {integrity: sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==}
+  '@modelcontextprotocol/server@2.3.0':
+    resolution: {integrity: sha512-+6b0LdsQLmHsvS7J6sQJ4weTpzUn61fU1JKS+321/+IyDYoHW5CR2Tgqcs6GgAAQvlesCo6yX3xttgmx+XGtJw==}
     engines: {node: '>=20'}
 
   '@mswjs/interceptors@0.41.3':
@@ -6656,11 +6658,11 @@ packages:
       react: 19.2.7
       react-dom: 19.2.7
 
-  brace-expansion@1.1.14:
-    resolution: {integrity: sha512-MWPGfDxnyzKU7rNOW9SP/c50vi3xrmrua/+6hfPbCS2ABNWfx24vPidzvC7krjU/RTo235sV776ymlsMtGKj8g==}
+  brace-expansion@1.1.20:
+    resolution: {integrity: sha512-5/qk29RyvatwgzNMrvGjkIhKYzpJ0OUnPK+9TU+zS/CMJqzmb+UD0irWu42JfpUvO636fxd8IstgiydZRM/76A==}
 
-  brace-expansion@2.1.0:
-    resolution: {integrity: sha512-TN1kCZAgdgweJhWWpgKYrQaMNHcDULHkWwQIspdtjV4Y5aurRdZpjAqn6yX3FPqTA9ngHCc4hJxMAMgGfve85w==}
+  brace-expansion@2.1.6:
+    resolution: {integrity: sha512-pi/WFpBvCBmB/NsURt7hW5sDvuOqvJaDMDai7CrlT9xoehzWRzo/dhQRKqOhpPvlnicVaTzHCbzGnnTgpvMTFw==}
 
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
@@ -7973,8 +7975,8 @@ packages:
     resolution: {integrity: sha512-dz4HxH6pOvbUzZpZ/yXhafjbR2I8cenK5xL0KtBFb7U2ADsR+OwXifnxZjij/pZWF775uSCMzWVd+jDik2H2IA==}
     engines: {node: '>= 12'}
 
-  follow-redirects@1.16.0:
-    resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
+  follow-redirects@1.16.1:
+    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -11061,8 +11063,8 @@ packages:
   tmp-promise@3.0.3:
     resolution: {integrity: sha512-RwM7MoPojPxsOBYnyd2hy0bxtIlVrihNs9pj5SUvY8Zz1sQcQG2tG1hSr8PDxfgEB8RNKDhqbIlroIarSNDNsQ==}
 
-  tmp@0.2.5:
-    resolution: {integrity: sha512-voyz6MApa1rQGUxT3E+BK7/ROe8itEx7vD8/HEvt4xwXucvQ5G5oeEiHkmHZJuBO21RpOf+YYm9MOivj709jow==}
+  tmp@0.2.7:
+    resolution: {integrity: sha512-e0votIpp4Uo2AJYSzVHV6xCcawuiez3DzqDAbrTc3YxBkplN6e+dM13ZeIcZnDg/QpSuU2zfZ3rzwY8ukEnaXw==}
     engines: {node: '>=14.14'}
 
   to-regex-range@5.0.1:
@@ -13529,9 +13531,9 @@ snapshots:
     dependencies:
       langium: 4.2.2
 
-  '@modelcontextprotocol/client@2.2.0':
+  '@modelcontextprotocol/client@2.3.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.2.0
+      '@modelcontextprotocol/core': 2.3.0
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.0
@@ -13539,33 +13541,18 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.5
 
-  '@modelcontextprotocol/core@2.0.0':
+  '@modelcontextprotocol/core@2.3.0':
     dependencies:
       zod: 4.6.5
 
-  '@modelcontextprotocol/core@2.2.0':
+  '@modelcontextprotocol/ext-apps@2.0.0(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(@modelcontextprotocol/server@2.3.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)':
     dependencies:
-      zod: 4.6.5
-
-  '@modelcontextprotocol/ext-apps@2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.0.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)':
-    dependencies:
-      '@modelcontextprotocol/client': 2.2.0
-      '@modelcontextprotocol/core': 2.0.0
+      '@modelcontextprotocol/client': 2.3.0
+      '@modelcontextprotocol/core': 2.3.0
       '@standard-schema/spec': 1.1.0
       zod: 4.6.5
     optionalDependencies:
-      '@modelcontextprotocol/server': 2.0.0
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-
-  '@modelcontextprotocol/ext-apps@2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(@modelcontextprotocol/server@2.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.6.5)':
-    dependencies:
-      '@modelcontextprotocol/client': 2.2.0
-      '@modelcontextprotocol/core': 2.2.0
-      '@standard-schema/spec': 1.1.0
-      zod: 4.6.5
-    optionalDependencies:
-      '@modelcontextprotocol/server': 2.0.0
+      '@modelcontextprotocol/server': 2.3.0
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
@@ -13591,9 +13578,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@modelcontextprotocol/server@2.0.0':
+  '@modelcontextprotocol/server@2.3.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.0.0
+      '@modelcontextprotocol/core': 2.3.0
       zod: 4.6.5
 
   '@mswjs/interceptors@0.41.3':
@@ -16605,7 +16592,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.0
+      follow-redirects: 1.16.1
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -16709,12 +16696,12 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  brace-expansion@1.1.14:
+  brace-expansion@1.1.20:
     dependencies:
       balanced-match: 1.0.2
       concat-map: 0.0.1
 
-  brace-expansion@2.1.0:
+  brace-expansion@2.1.6:
     dependencies:
       balanced-match: 1.0.2
 
@@ -18010,7 +17997,7 @@ snapshots:
       jszip: 3.10.1
       readable-stream: 3.6.2
       saxes: 5.0.1
-      tmp: 0.2.5
+      tmp: 0.2.7
       unzipper: 0.12.5(patch_hash=cf48a31a76251b667aa270f62edbb475c143273d975d44e392a485110a475583)
       uuid: 8.3.2
 
@@ -18254,7 +18241,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  follow-redirects@1.16.0: {}
+  follow-redirects@1.16.1: {}
 
   foreground-child@3.3.1:
     dependencies:
@@ -19977,15 +19964,15 @@ snapshots:
 
   minimatch@3.1.5:
     dependencies:
-      brace-expansion: 1.1.14
+      brace-expansion: 1.1.20
 
   minimatch@5.1.9:
     dependencies:
-      brace-expansion: 2.1.0
+      brace-expansion: 2.1.6
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.0
+      brace-expansion: 2.1.6
 
   minimist@1.2.8: {}
 
@@ -22153,9 +22140,9 @@ snapshots:
 
   tmp-promise@3.0.3:
     dependencies:
-      tmp: 0.2.5
+      tmp: 0.2.7
 
-  tmp@0.2.5: {}
+  tmp@0.2.7: {}
 
   to-regex-range@5.0.1:
     dependencies:

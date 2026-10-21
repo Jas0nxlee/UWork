@@ -64,3 +64,9 @@ node scripts/upstream-track.mjs status --ours chore/upstream-3.16.2-sync   # 应
 - 隐藏祖先目录（例如 managed worktree）使官方 glob 的默认 dot:false 无法匹配配置路径。按实际根构造转义后的 force trigger，隐藏/特殊字符/Windows 路径与普通业务部分选择都有真实 API 回归；affected 的官方选择和全量跳过定义不变。
 - 纯净原 PR 的 Desktop 聚焦基线 17 红、Services 26 红已分别修到 55/55 与 144/144。另复跑原 PR 的历史 OAuth completion race 得到 13 红，相关实现/测试与当前 SHA-256 完全一致；未恢复已退役账号，也未将该既有失败说成通过。
 - 配置变更触发官方全量选择时，按既有合同跳过 Vitest UT，报告明确未执行。定向回归和 Node 原生套件的执行结果另行记录；未宣称全仓单测全绿。
+
+### 生产依赖门禁
+
+生产审计的 15 项 high 已按固定版本修至 0 high / 0 critical（low 9、moderate 29 保留）。MCP v2 core/client/server 对齐 2.3.0；tmp、两个旧主版本 brace-expansion 与 follow-redirects 分别采用同主版本最小修复。已用真实临时目录、重定向双 origin、MCP stdio 与插件桥接回归验证；归档补丁及原门禁保持。来源、版本和验收边界见 [production-dependency-security.md](../specs/production-dependency-security.md)。
+
+GitHub 首轮的 HTTP 组两项用例在监听完成前读取 `server.address()`，已复用既有 listening 屏障；该组 35 项本地复跑通过。
