@@ -211,13 +211,12 @@ describe("server info HTTP endpoint", () => {
   });
 
   it("announces virtual projects only for an initialized owner host", async () => {
-    const server = createHttpServer(new ServiceCollection(), 0, {
+    // CI 证据：createHttpServer 返回时 socket 可能尚未绑定，复用同一真实 listening 屏障。
+    const { address } = await listen({
       serverId: "owner",
       virtualProjects: true,
       migrationFailedPathCount: 2,
     });
-    servers.push(server);
-    const address = server.address() as AddressInfo;
     const response = await fetch(`http://127.0.0.1:${address.port}/api/server-info`);
     expect(await response.json()).toMatchObject({
       serverId: "owner",
@@ -262,9 +261,8 @@ describe("server info HTTP endpoint", () => {
   });
 
   it("does not expose either retired remote-connect route", async () => {
-    const server = createHttpServer(new ServiceCollection(), 0);
-    servers.push(server);
-    const address = server.address() as AddressInfo;
+    // 路由退役断言需在真实监听后执行，不能用尚未就绪的 address 代替服务状态。
+    const { address } = await listen();
 
     const response = await fetch(`http://127.0.0.1:${address.port}/api/connect-remote`, {
       method: "POST",
