@@ -19,7 +19,7 @@ import {
   type UserCommand,
   type ZCodeCommand,
 } from "@zcode/shared";
-import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
+import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS, UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import type { ICommandsService } from "./commands.js";
 import { CommandFileParser, type CommandFileFormat } from "./commandFileParser.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
@@ -46,6 +46,7 @@ const ENABLE_OVERRIDE_KEY = "enable";
 const HOME_PREFIX = "~/";
 const ZCODE_OFFICIAL_PLUGIN_MARKETPLACE = "zcode-plugins-official";
 const ZCODE_INLINE_PLUGIN_MARKETPLACE = "inline";
+const UWORK_PLUGIN_MANIFEST_PATH = join(UWORK_PLUGIN_MANIFEST_DIR, "plugin.json");
 const ZCODE_PLUGIN_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
 const CLAUDE_PLUGIN_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
 const CODEX_PLUGIN_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
@@ -319,7 +320,9 @@ async function readPluginManifest(rootPath: string): Promise<PluginManifestSumma
 }
 
 async function findPluginManifestPath(rootPath: string): Promise<string | null> {
+  // 新旧清单并存时只消费 UWork 声明，不能把旧命令重新混入当前插件。
   for (const manifestPath of [
+    join(rootPath, UWORK_PLUGIN_MANIFEST_PATH),
     join(rootPath, ZCODE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CLAUDE_PLUGIN_MANIFEST_PATH),
     join(rootPath, CODEX_PLUGIN_MANIFEST_PATH),

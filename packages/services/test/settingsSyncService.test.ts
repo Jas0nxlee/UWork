@@ -508,6 +508,73 @@ describe("settingsSyncService commands import", () => {
 });
 
 describe("settingsSyncService plugins import", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)(
+    "清单别名 %s / 旧清单并存=%s 可发现并实际复制导入",
+    async (manifestDirectory, mixed) => {
+      const home = makeTempHome();
+      const workspacePath = join(home, "workspace");
+      process.env.HOME = home;
+      const pluginPath = writePlugin(
+        join(home, ".claude", "plugins"),
+        "alias-plugin",
+        { name: "alias-plugin", version: "2.0.0" },
+        manifestDirectory,
+      );
+      if (mixed)
+        writePlugin(join(home, ".claude", "plugins"), "alias-plugin", {
+          name: "legacy-plugin",
+          version: "1.0.0",
+        });
+      const { createSettingsSyncService } =
+        await import("../src/settings-sync/settingsSyncService.js");
+      const service = createSettingsSyncService({ settingService: createSettingService() });
+      const discovery = await service.detect({
+        workspacePath,
+        categories: ["plugins"],
+        intent: "manualImport",
+      });
+      const discovered = discovery.agents.find((agent) => agent.agent === "claudeCode")
+        ?.categories[0]?.sourceRoots?.[0]?.plugins;
+      expect(discovered).toEqual([
+        expect.objectContaining({
+          name: "alias-plugin",
+          version: "2.0.0",
+          path: pluginPath,
+          importable: true,
+        }),
+      ]);
+      const result = await service.importSelected({
+        workspacePath,
+        selections: [
+          {
+            agent: "claudeCode",
+            category: "plugins",
+            sourceScope: "global",
+            targetScope: "project",
+            importMode: "copy",
+            pluginPaths: [pluginPath],
+          },
+        ],
+      });
+      expect(result).toMatchObject({ successCount: 1, failedCount: 0, skippedCount: 0 });
+      expect(result.taskResults[0]?.pluginResults).toEqual([
+        expect.objectContaining({ name: "alias-plugin", version: "2.0.0", status: "imported" }),
+      ]);
+      const imported = join(workspacePath, ".zcode", "plugins", "alias-plugin");
+      expect(
+        JSON.parse(readFileSync(join(imported, manifestDirectory, "plugin.json"), "utf8")).name,
+      ).toBe("alias-plugin");
+      const config = JSON.parse(readFileSync(join(workspacePath, ".zcode", "config.json"), "utf8"));
+      expect(config.plugins.dirs).toEqual([imported]);
+      expect(lstatSync(imported).isSymbolicLink()).toBe(false);
+    },
+  );
   it("does not scan external plugins during first-run detection", async () => {
     const home = makeTempHome();
     const workspacePath = join(home, "workspace");

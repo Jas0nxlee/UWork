@@ -1,5 +1,5 @@
 // SkillHub（公司 AIHub 技能平台）作为**安装来源**的适配：解析条目 → 取该版本指纹 →
-// 下载技能包 → 复算内容指纹校验 → 包装成插件目录（`.zcode-plugin/plugin.json` + `skills/<slug>/`）。
+// 下载技能包 → 复算内容指纹校验 → 包装成插件目录（`.uwork-plugin/plugin.json` + `skills/<slug>/`）。
 //
 // 目录侧（发现/翻页/manifest）见 skillhub-source.ts。
 //
@@ -11,6 +11,7 @@
 // 在这里落地。
 
 import { createHash } from "node:crypto";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
@@ -31,8 +32,8 @@ import { appendPluginSourceCleanupError, cleanupPluginSourceBestEffort } from ".
 import { resolveHttpZipSource, type ResolvedZipPluginSourceRoot } from "./zip-source.js";
 
 // 新建的插件一律落在 UWork 命名的清单目录（读取侧同时接受 `.zcode-plugin` 等既有约定，
-// 所以历史安装不受影响）。`UWORK_PLUGIN_MANIFEST_DIR` 与这里的字面量保持同源。
-const PLUGIN_MANIFEST_DIR = ".uwork-plugin";
+// 所以历史安装不受影响）。复用共享常量，避免创建端和读取端的目录名漂移。
+const PLUGIN_MANIFEST_DIR = UWORK_PLUGIN_MANIFEST_DIR;
 const PLUGIN_SKILLS_DIR = "skills";
 const TEMP_PREFIX = "zcode-skillhub-";
 

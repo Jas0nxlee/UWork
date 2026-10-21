@@ -21,6 +21,7 @@ import type {
   SettingsSyncSourceRootSummary,
   SettingsSyncTaskImportResult,
 } from "@zcode/shared";
+import { UWORK_PLUGIN_MANIFEST_DIR } from "@zcode/shared";
 import { copyFile, cp, link, lstat, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -401,6 +402,7 @@ const SUPPORTED_MCP_AGENT_SOURCES: ExternalAgentMcpPathSource[] = [
   },
 ];
 
+const UWORK_PLUGIN_MANIFEST_PATH = [UWORK_PLUGIN_MANIFEST_DIR, "plugin.json"] as const;
 const ZCODE_PLUGIN_MANIFEST_PATH = [".zcode-plugin", "plugin.json"] as const;
 const CLAUDE_PLUGIN_MANIFEST_PATH = [".claude-plugin", "plugin.json"] as const;
 const CODEX_PLUGIN_MANIFEST_PATH = [".codex-plugin", "plugin.json"] as const;
@@ -768,6 +770,9 @@ async function collectCommandMarkdownPaths(rootPath: string): Promise<string[]> 
 }
 
 async function findPluginManifestPath(pluginPath: string): Promise<string | null> {
+  // 手动导入与正式加载使用同一优先级，不能让只含 UWork 清单的插件在发现阶段消失。
+  const uworkManifestPath = join(pluginPath, ...UWORK_PLUGIN_MANIFEST_PATH);
+  if (await pathExists(uworkManifestPath)) return uworkManifestPath;
   const zcodeManifestPath = join(pluginPath, ...ZCODE_PLUGIN_MANIFEST_PATH);
   if (await pathExists(zcodeManifestPath)) {
     return zcodeManifestPath;

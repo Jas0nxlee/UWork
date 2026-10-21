@@ -128,6 +128,16 @@ iframe/webview/沙箱目标，日志里也没有 `plugin-ui-bridge` 行（是"�
 
 ## 插件命名契约（UWork 命名 + 既有生态兼容）
 
+### 服务侧插件清单接线（2026-10-21）
+
+`SkillsService` 的插件技能列表与 Agent 加载器遵循同一清单发现顺序：共享常量 `UWORK_PLUGIN_MANIFEST_DIR` 指定的 `.uwork-plugin/plugin.json` 优先，然后回退 `.zcode-plugin`、`.claude-plugin`、`.codex-plugin`。列表仍从既有 CLI 配置与插件安装记录读取启停与根目录，不增加清单或启停状态所有者。
+
+同一顺序适用于 CommandsService 的插件命令、SubagentsService 的插件代理、自有插件同步的候选/归档导入，以及 SettingsSyncService 的外部插件发现/显式导入。每个消费者只读取所选清单中的对应声明；新旧清单并存时不合并组件。显式导入仍遵循原目标作用域：项目 `.zcode/plugins` 与项目配置路径保持原约定，用户级 UWork 根不改为上游目录；不触碰 OAuth 或账号恢复。
+
+验收走真实 `SkillsService.list`：只含 `.uwork-plugin` 的插件可以列出声明技能；新旧清单同时存在时只使用 UWork 清单；三个历史清单目录各自仍能独立贡献技能。用户级插件缓存使用当前 UWork storage root，显式 `storage.dir` 继续保留。
+
+其余四面分别运行实际命令列表、插件代理列表、候选→导出→远端归档导入、外部发现→项目复制导入；每面均覆盖 UWork 单清单、三种旧清单和新旧并存优先级，不能仅测试候选路径常量。
+
 结论先说：插件交互面里 **`.zcode-plugin`、`ZCODE_PLUGIN_ROOT`、`@zcode/*` 都不是"忘了改品牌"**，而是宿主契约与上游内部命名——
 `.zcode-plugin` 是加载器唯一认识的清单目录（`marketplace.ts` 的候选表），`ZCODE_*` 由宿主注入，`@zcode/*` 是包作用域
 （全仓 2179 个文件）。**用户可见的部分早已是 UWork**（数据根 `~/.uwork`、插件缓存 `~/.uwork/cli/plugins/cache/…`、

@@ -1,9 +1,10 @@
 import { existsSync, mkdtempSync, symlinkSync } from "node:fs";
-import { chmod, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginSyncService } from "../src/plugin-sync/pluginSyncService.js";
+import { setDataBaseDir } from "../src/paths.js";
 
 function makeHome() {
   return mkdtempSync(join(tmpdir(), "zcode-plugin-sync-home-"));
@@ -51,6 +52,89 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown>> 
 }
 
 describe("plugin sync service", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)(
+    "清单别名 %s / 旧清单并存=%s 可导出并导入远端插件",
+    async (manifestDirectory, mixed) => {
+      const localHome = makeHome();
+      const remoteHome = makeHome();
+      try {
+        process.env.HOME = localHome;
+        setDataBaseDir(localHome);
+        const pluginRoot = join(localHome, "external", "alias-plugin");
+        await mkdir(join(pluginRoot, manifestDirectory), { recursive: true });
+        await writeFile(
+          join(pluginRoot, manifestDirectory, "plugin.json"),
+          JSON.stringify({ name: "alias-plugin", skills: "skills", version: "2.0.0" }),
+        );
+        await mkdir(join(pluginRoot, "skills", "selected"), { recursive: true });
+        await writeFile(
+          join(pluginRoot, "skills", "selected", "SKILL.md"),
+          "---\nname: selected\n---\nselected payload",
+        );
+        if (mixed) {
+          await mkdir(join(pluginRoot, ".zcode-plugin"), { recursive: true });
+          await writeFile(
+            join(pluginRoot, ".zcode-plugin", "plugin.json"),
+            JSON.stringify({ name: "legacy-plugin", version: "1.0.0" }),
+          );
+        }
+        await mkdir(join(localHome, ".uwork", "cli"), { recursive: true });
+        await writeFile(
+          join(localHome, ".uwork", "cli", "config.json"),
+          JSON.stringify({ plugins: { dirs: [pluginRoot] } }),
+        );
+        const source = createPluginSyncService();
+        const listed = await source.listLocalUserPluginCandidates();
+        expect(listed.candidates).toEqual([
+          expect.objectContaining({
+            name: "alias-plugin",
+            pluginId: "alias-plugin@inline",
+            version: "2.0.0",
+          }),
+        ]);
+        const exported = await source.exportPluginsArchive({
+          pluginIds: listed.candidates.map((candidate) => candidate.id),
+        });
+        process.env.HOME = remoteHome;
+        setDataBaseDir(remoteHome);
+        const target = createPluginSyncService();
+        const imported = await target.importPluginsArchive({
+          archive: exported.archive,
+          overwrite: false,
+        });
+        expect(imported.results).toEqual([
+          expect.objectContaining({
+            name: "alias-plugin",
+            pluginId: "alias-plugin@inline",
+            status: "synced",
+          }),
+        ]);
+        const importedRoot = join(remoteHome, ".uwork", "plugins", "alias-plugin");
+        expect(
+          JSON.parse(await readFile(join(importedRoot, manifestDirectory, "plugin.json"), "utf8"))
+            .name,
+        ).toBe("alias-plugin");
+        expect(
+          await readFile(join(importedRoot, "skills", "selected", "SKILL.md"), "utf8"),
+        ).toContain("selected payload");
+        const config = JSON.parse(
+          await readFile(join(remoteHome, ".uwork", "cli", "config.json"), "utf8"),
+        );
+        expect(config.plugins.dirs).toEqual([resolve(importedRoot)]);
+      } finally {
+        setDataBaseDir(null);
+        await Promise.all(
+          [localHome, remoteHome].map((home) => rm(home, { recursive: true, force: true })),
+        );
+      }
+    },
+  );
   let originalHome: string | undefined;
 
   beforeEach(() => {

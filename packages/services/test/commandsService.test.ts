@@ -143,6 +143,47 @@ afterEach(() => {
 });
 
 describe("commandsService", () => {
+  it.each([
+    [".uwork-plugin", false],
+    [".zcode-plugin", false],
+    [".claude-plugin", false],
+    [".codex-plugin", false],
+    [".uwork-plugin", true],
+  ] as const)("清单别名 %s / 旧清单并存=%s 能列举所选命令", async (manifestDirectory, mixed) => {
+    const home = makeTempRoot();
+    const workspacePath = join(home, "workspace");
+    const pluginRoot = join(home, "local-plugin");
+    mkdirSync(join(pluginRoot, manifestDirectory), { recursive: true });
+    writeFileSync(
+      join(pluginRoot, manifestDirectory, "plugin.json"),
+      JSON.stringify({ name: "alias-plugin", commands: "selected-commands" }),
+    );
+    mkdirSync(join(pluginRoot, "selected-commands"), { recursive: true });
+    writeFileSync(
+      join(pluginRoot, "selected-commands", "selected.md"),
+      "---\ndescription: selected manifest\n---\nselected command",
+    );
+    if (mixed) {
+      writePluginManifest(pluginRoot, { name: "legacy-plugin", commands: "legacy-commands" });
+      mkdirSync(join(pluginRoot, "legacy-commands"), { recursive: true });
+      writeFileSync(join(pluginRoot, "legacy-commands", "legacy.md"), "legacy command");
+    }
+    mkdirSync(join(home, ".uwork", "cli"), { recursive: true });
+    writeFileSync(
+      join(home, ".uwork", "cli", "config.json"),
+      JSON.stringify({ storage: { dir: join(home, ".uwork") }, plugins: { dirs: [pluginRoot] } }),
+    );
+    const service = await createCommandsServiceInEnv(home);
+    const result = await service.list({ workspacePath });
+    expect(result.pluginCommands).toEqual([
+      expect.objectContaining({
+        name: "/selected",
+        pluginName: "alias-plugin",
+        source: "plugin",
+        enabled: true,
+      }),
+    ]);
+  });
   it("lists user commands and workspace project commands", async () => {
     const home = makeTempRoot();
     const workspacePath = join(makeTempRoot(), "workspace");
