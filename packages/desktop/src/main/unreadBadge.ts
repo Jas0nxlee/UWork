@@ -233,9 +233,7 @@ export interface AntialiasedDotOptions {
 }
 
 /** 4× 超采样的纯红预乘 BGRA 圆点；任务栏与托盘复用，几何参数各自独立。 */
-export function renderAntialiasedStatusDotPixels(
-  options: AntialiasedDotOptions,
-): Uint8Array {
+export function renderAntialiasedStatusDotPixels(options: AntialiasedDotOptions): Uint8Array {
   const supersample = options.supersample ?? 4;
   const pixels = new Uint8Array(options.size * options.size * 4);
   const samplesPerPixel = supersample * supersample;
@@ -338,4 +336,12 @@ export function createWindowsTaskbarOverlayApplier(deps: {
       },
     });
   };
+}
+
+/**
+ * 应用级 badge 只有一个数字，却有两个独立来源（工作区任务未读、IM 未读）。
+ * 两边各写一次必然互相抹掉——所以求和后再写回宿主，是这两个来源的唯一交汇点。
+ */
+export function combineAppBadgeCount(taskUnreadCount: number, imUnreadCount: number): number {
+  return Math.max(0, Math.trunc(taskUnreadCount)) + Math.max(0, Math.trunc(imUnreadCount));
 }
