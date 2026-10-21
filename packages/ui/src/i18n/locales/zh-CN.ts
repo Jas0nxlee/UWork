@@ -4805,6 +4805,7 @@ const zhCN: Record<string, string> = {
   "settings.plugins.marketplacePlugins.install": "安装",
   "settings.plugins.marketplacePlugins.installed": "已安装",
   "settings.plugins.marketplace.searchPlaceholder": "搜索插件、技能、MCP…",
+  "settings.plugins.marketplace.recommendTitle": "推荐",
   "settings.plugins.marketplace.claudeCodePlugins": "Claude Code 插件",
   "settings.plugins.marketplace.catalogLoading": "正在加载插件…",
   "settings.plugins.marketplace.sourceInfo.label": "发现页来源说明",
@@ -7779,8 +7780,9 @@ const zhCN: Record<string, string> = {
   "remote.kind.wsl.wizardDescription": "Windows Linux 子系统",
   "remote.kind.docker.wizardDescription": "本地容器",
   "remote.success": "连接成功，继续选择要打开的目录。",
-  "wsl.description": "连接默认 distro，或选择这台设备上已安装的指定 distro。",
-  "docker.description": "通过 docker exec 和 docker cp 连接本机容器。",
+  // 修复依据：连接说明使用用户词表，不泄漏底层命令和工程缩写。
+  "wsl.description": "连接默认 Linux 发行版，或选择这台设备上已安装的其他发行版。",
+  "docker.description": "连接这台设备上的 Docker 容器。",
   "taskList.newTask": "新建任务",
   "taskList.noArchivedTasks": "暂无归档任务",
   "taskList.syncingRemoteWorkspaces": "正在加载远端任务...",
@@ -7880,11 +7882,9 @@ const zhCN: Record<string, string> = {
   "settings.plugins.store.segment.company": "公司",
   "settings.plugins.store.companyEmpty": "公司技能市场暂无内容，请检查网络后点右上角刷新。",
   "chat.plan.attachmentsBlocked": "首版 /plan 仅支持纯文本，请移除附件或上下文后重试。",
+  // 兼容消息 ID 继续遵守双语同集同序合同，并保留原有参数占位符。
   "chat.workflowLaunch.settings.machineLimit": "本机上限",
   "chat.workflowLaunch.settings.machineLimitValue": "{n}（本机上限）",
-  // ── 可复用工作流：SaveWorkflow / ListSavedWorkflows
-  // 的聊天卡。「覆盖」这个词由保存确认窗共用——同一次保存在两个面上必须同名，
-  // 照 run 卡复用 chat.toolCall.workflow.run.status.* 词汇表的同一条先例。
   "chat.toolCall.workflow.run.settings.limit.ceiling": "本机上限 {n}",
   "chat.toolCall.workflow.run.settings.limit.atCeiling": "= 本机上限",
   "chat.toolCall.workflow.settingsChange.limitCeiling": "上限恢复为本机默认",

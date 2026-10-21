@@ -243,6 +243,8 @@ vi.mock("#src/web-remote-control/adapters/webRemoteControlTransport.js", async (
 });
 
 function setupExternalRelayGlobals(pathname = "/remote") {
+  // 此组验证官方 V2 的帧恢复；UWork 默认 HMAC，夹具必须显式选择既有 V2 transport。
+  vi.stubEnv("VITE_WEB_REMOTE_CONTROL_PROTOCOL", "oauth-v2");
   const documentListeners = new Map<string, Array<() => void>>();
   const windowListeners = new Map<string, Array<() => void>>();
   const addListener = (

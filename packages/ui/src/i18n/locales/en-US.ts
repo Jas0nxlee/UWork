@@ -8219,9 +8219,10 @@ const enUS: Record<string, string> = {
   "remote.kind.wsl.wizardDescription": "Windows Subsystem for Linux",
   "remote.kind.docker.wizardDescription": "Local container",
   "remote.success": "Connected. Choose a directory to continue.",
+  // 修复依据：连接说明使用用户词表，不泄漏底层命令和工程缩写。
   "wsl.description":
-    "Connect to the default distro, or choose a specific distro installed on this device.",
-  "docker.description": "Connect to a local container using docker exec and docker cp.",
+    "Connect to the default Linux distribution, or choose another installed on this device.",
+  "docker.description": "Connect to a Docker container on this device.",
   "taskList.newTask": "New task",
   "taskList.newTask.claude": "Claude CLI",
   "taskList.newTask.opencode": "OpenCode CLI",
@@ -8332,6 +8333,12 @@ const enUS: Record<string, string> = {
     "No company skills available. Check the network, then refresh from the top right.",
   "chat.plan.attachmentsBlocked":
     "The /plan shortcut supports text only for now. Remove attachments or context and try again.",
+  // 兼容消息 ID 补齐英文以匹配中文词表，保持键序与参数占位符。
+  "chat.workflowLaunch.settings.machineLimit": "Machine limit",
+  "chat.workflowLaunch.settings.machineLimitValue": "{n} (machine limit)",
+  "chat.toolCall.workflow.run.settings.limit.ceiling": "Machine limit {n}",
+  "chat.toolCall.workflow.run.settings.limit.atCeiling": "= machine limit",
+  "chat.toolCall.workflow.settingsChange.limitCeiling": "limit back to the machine default",
 };
 
 export default enUS;

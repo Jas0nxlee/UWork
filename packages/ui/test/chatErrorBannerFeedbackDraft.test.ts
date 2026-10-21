@@ -120,7 +120,9 @@ describe("ChatErrorBanner feedback draft", () => {
     expect(buttonMock.props.some((props) => props["aria-label"] === "配置")).toBe(true);
   });
 
-  it("远程 workspace 缺模型时只切换措辞，动作仍是本机配置与升级", () => {
+  it("远程 workspace 缺模型时保留配置入口，不恢复已退役的套餐升级", () => {
+    const openModelSettings = vi.fn();
+    const openUpgrade = vi.fn();
     const html = renderToStaticMarkup(
       createElement(
         ZCodeIntlProvider,
@@ -134,8 +136,8 @@ describe("ChatErrorBanner feedback draft", () => {
               message: "Model config is missing.",
             },
             modelConfigTarget: "remote",
-            onOpenModelSettings: vi.fn(),
-            onOpenUpgrade: vi.fn(),
+            onOpenModelSettings: openModelSettings,
+            onOpenUpgrade: openUpgrade,
           }),
         ),
       ),
@@ -144,8 +146,13 @@ describe("ChatErrorBanner feedback draft", () => {
     expect(html).toContain(zhCN["chat.error.remoteNoAvailableModel"]);
     expect(html).not.toContain(zhCN["chat.error.noAvailableModel"]);
     expect(buttonMock.props.some((props) => props["aria-label"] === "配置")).toBe(true);
-    expect(buttonMock.props.some((props) => props["aria-label"] === "升级")).toBe(true);
+    // UWork 已移除套餐升级；保留配置与远程措辞，不能用上游断言恢复旧产品入口。
+    expect(buttonMock.props.some((props) => props["aria-label"] === "升级")).toBe(false);
     expect(buttonMock.props.some((props) => props["aria-label"] === "去同步")).toBe(false);
+    const configure = buttonMock.props.find((props) => props["aria-label"] === "配置");
+    (configure!.onClick as () => void)();
+    expect(openModelSettings).toHaveBeenCalledOnce();
+    expect(openUpgrade).not.toHaveBeenCalled();
   });
 });
 

@@ -1,451 +1,290 @@
 // @vitest-environment jsdom
-import { createElement } from "react";
-import { render, cleanup, waitFor } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { BIGMODEL_PROVIDER_ID, BUILTIN_MODEL_PROVIDER_IDS, ZAI_PROVIDER_ID } from "@zcode/shared";
-import type {
-  ProviderFamilyConnectionSelectionSettings,
-  ProviderFamilyDomain,
-} from "@zcode/shared";
+import { createElement, type ComponentProps, type ReactNode } from "react";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+import type { ModelProviderSectionLayout } from "@/settings/model-provider-section/SectionLayout.js";
+import type { InlineEditableProviderCard } from "@/settings/model-provider-section/InlineEditableProviderCard.js";
+import type { ProviderTemplatePicker } from "@/settings/model-provider-section/ProviderTemplatePicker.js";
 
-const TEST_BIGMODEL_PROVIDER_ID = "test-bigmodel-api-provider";
+type LayoutProps = ComponentProps<typeof ModelProviderSectionLayout>;
+type CardProps = ComponentProps<typeof InlineEditableProviderCard>;
+type PickerProps = ComponentProps<typeof ProviderTemplatePicker>;
+
+function personal(providerId: string): ProviderSettingsFormProvider {
+  return {
+    providerId,
+    providerName: providerId,
+    enabled: true,
+    executable: true,
+    hasPersonalConfig: true,
+    personalConfig: {},
+    config: {
+      group: "standard-personal",
+      api: { type: "openai-chat-completions", baseUrl: "https://models.example.test/v1" },
+      access: { type: "api-key", apiKey: "test-key" },
+    },
+    models: [],
+  };
+}
 
 const refreshMock = vi.fn(async () => {});
-const getActiveProviderMock = vi.fn(async () => null as string | null);
+const saveProviderMock = vi.fn(async (_provider: ProviderSettingsFormProvider) => []);
+const deleteProviderMock = vi.fn(async (_providerId: string) => {});
+const addPersonalModelMock = vi.fn(
+  async (
+    _providerId: string,
+    _modelId: string,
+    _config: ProviderSettingsFormProvider["models"][number]["personalConfig"],
+  ) => ({}),
+);
+const createPersonalProviderMock = vi.fn(async () => personal("created-provider"));
 const requestLoginEntryMock = vi.fn();
-const startOAuthMock = vi.fn(async () => ({
-  authorizeUrl: "https://example.com/oauth/authorize?state=demo",
-  provider: "bigmodel" as const,
-  state: "demo-state",
-}));
+const startOAuthMock = vi.fn();
+const logoutMock = vi.fn();
+const credentialLoadMock = vi.fn();
+const updateSharedSettingsMock = vi.fn();
 const openExternalMock = vi.fn();
-const registerOAuthStateMock = vi.fn();
-const logoutMock = vi.fn(async () => {});
-const refreshCodingPlanEntitlementsMock = vi.fn(async () => {});
-const credentialLoadMock = vi.fn(async () => null as string | null);
-const updateSharedSettingsMock = vi.fn(async () => {});
-const setUserMock = vi.fn();
-const setOAuthErrorMock = vi.fn();
-const saveProviderMock = vi.fn(async (_config: ProviderSettingsFormProvider) => []);
-const emptyProducts: never[] = [];
-const refreshProductsMock = vi.fn(async () => {});
-const emptyProductSnapshot = { productList: emptyProducts, authenticated: true };
-vi.mock("@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js", () => ({
-  useEnterpriseCodingPlanProducts: () => ({
-    snapshot: emptyProductSnapshot,
-    products: emptyProducts,
-    subscribedProducts: emptyProducts,
-    refresh: refreshProductsMock,
-    loading: false,
-  }),
-}));
-let settingsMock: {
-  providerFamilyDomain?: ProviderFamilyDomain;
-  providerFamilyConnectionSelections?: ProviderFamilyConnectionSelectionSettings;
-} = {};
-
-vi.mock("@/hooks/useSettingService.js", () => ({
-  useSettings: () => ({
-    settings: settingsMock,
-    loading: false,
-    error: null,
-    update: updateSharedSettingsMock,
-  }),
-}));
-
-let capturedDetailProps: Record<string, unknown> | null = null;
-let selectedNavItemMock: unknown = null;
+const confirmMock = vi.fn(async () => true);
+let providers: ProviderSettingsFormProvider[] = [];
+let layoutProps: LayoutProps | null = null;
+let cardProps: CardProps | null = null;
+let pickerProps: PickerProps | null = null;
 
 vi.mock("@/i18n/IntlProvider.js", () => ({
   useZCodeIntl: () => ({
-    intl: {
-      formatMessage: ({ id }: { id: string }) => id,
-    },
+    intl: { formatMessage: ({ id }: { id: string }) => id },
+    locale: "zh-CN",
   }),
 }));
-
-vi.mock("@/hooks/useConfirmDialog.js", () => ({
-  useConfirmDialog: () => vi.fn(async () => true),
+vi.mock("@/hooks/useConfirmDialog.js", () => ({ useConfirmDialog: () => confirmMock }));
+vi.mock("@/hooks/usePlatform.js", () => ({
+  usePlatform: () => ({ openExternal: openExternalMock }),
 }));
-
+vi.mock("@/hooks/useSettingService.js", () => ({
+  useSettings: () => ({ settings: {}, loading: false, update: updateSharedSettingsMock }),
+}));
+vi.mock("@/hooks/useServices.js", () => ({
+  useServices: () => ({
+    oauthService: { startOAuth: startOAuthMock, logout: logoutMock },
+    credentialService: { load: credentialLoadMock },
+    settingService: { update: updateSharedSettingsMock },
+  }),
+  useOptionalServices: () => null,
+}));
+vi.mock("@/store/StoreProvider.js", () => ({
+  useZCodeStore: (
+    selector: (state: { requestLoginEntry: typeof requestLoginEntryMock }) => unknown,
+  ) => selector({ requestLoginEntry: requestLoginEntryMock }),
+}));
 vi.mock("@/hooks/useModelProviders.js", () => ({
   useModelProviders: () => ({
-    modelProviders: [
-      {
-        id: TEST_BIGMODEL_PROVIDER_ID,
-        name: "BigModel",
-        endpoints: {
-          anthropic: "https://open.bigmodel.cn/api/anthropic",
-          openai: "https://open.bigmodel.cn/api/openai/chat",
-          gemini: "",
-        },
-        apiKey: "",
-        models: ["glm-4.7"],
-        providerMappings: {
-          claude: {
-            haiku: "glm-4.7",
-            sonnet: "glm-4.7",
-            opus: "glm-4.7",
-            reasoning: "glm-4.7",
-          },
-        },
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ],
+    modelProviders: providers,
+    providerTemplates: [],
+    providerSettingsView: { revision: 73 },
+    displayOrder: null,
     loading: false,
     refreshing: false,
     refresh: refreshMock,
     saveProvider: saveProviderMock,
-    deleteProvider: vi.fn(async () => {}),
-    testModelConnectivity: vi.fn(async () => ({ success: true as const })),
+    createPersonalProvider: createPersonalProviderMock,
+    deleteProvider: deleteProviderMock,
+    addPersonalModel: addPersonalModelMock,
   }),
 }));
-
-vi.mock("@/hooks/usePlatform.js", () => ({
-  usePlatform: () => ({
-    openExternal: openExternalMock,
-    registerOAuthState: registerOAuthStateMock,
-  }),
+vi.mock("@/settings/model-provider-section/SectionLayout.js", () => ({
+  ModelProviderSectionLayout: (props: LayoutProps) => {
+    layoutProps = props;
+    return createElement("div", null, props.children as ReactNode);
+  },
 }));
-
-vi.mock("@/hooks/useServices.js", () => ({
-  useServices: () => ({
-    modelSelectionService: {
-      getView: vi.fn(async () => ({ revision: 1, providers: [] })),
-    },
-    oauthService: {
-      getActiveProvider: getActiveProviderMock,
-      startOAuth: startOAuthMock,
-      logout: logoutMock,
-    },
-    credentialService: {
-      load: credentialLoadMock,
-    },
-    settingService: {
-      get: vi.fn(async () => ({})),
-      update: updateSharedSettingsMock,
-    },
-  }),
-  useOptionalServices: () => {
-    // Bugfix: ModelProviderSection 会间接读取用量权益；这个用例只验证订阅 OAuth，
-    // 因此返回 null 让用量 hook 保持无服务状态，避免 mock 缺口导致渲染阶段崩溃。
-    return null;
+vi.mock("@/settings/model-provider-section/InlineEditableProviderCard.js", () => ({
+  InlineEditableProviderCard: (props: CardProps) => {
+    cardProps = props;
+    return createElement("div", { "data-testid": "personal-provider" });
+  },
+}));
+vi.mock("@/settings/model-provider-section/ProviderTemplatePicker.js", () => ({
+  ProviderTemplatePicker: (props: PickerProps) => {
+    pickerProps = props;
+    return createElement("div", { "data-testid": "provider-picker" });
   },
 }));
 
-vi.mock("@/store/TabStoreProvider.js", () => ({
-  useTabStore: (selector: (state: { activeWorkspacePath: null; tabs: [] }) => unknown) =>
-    selector({
-      activeWorkspacePath: null,
-      tabs: [],
-    }),
-}));
+function layout(): LayoutProps {
+  expect(layoutProps).not.toBeNull();
+  return layoutProps!;
+}
+function card(): CardProps {
+  expect(cardProps).not.toBeNull();
+  return cardProps!;
+}
+function expectNoAccountActions() {
+  for (const mock of [
+    requestLoginEntryMock,
+    startOAuthMock,
+    logoutMock,
+    credentialLoadMock,
+    updateSharedSettingsMock,
+    openExternalMock,
+  ])
+    expect(mock).not.toHaveBeenCalled();
+}
 
-vi.mock("@/store/StoreProvider.js", () => ({
-  useZCodeStore: (
-    selector: (state: {
-      user: null;
-      requestLoginEntry: typeof requestLoginEntryMock;
-      setUser: typeof setUserMock;
-      setOAuthError: typeof setOAuthErrorMock;
-    }) => unknown,
-  ) =>
-    selector({
-      user: null,
-      requestLoginEntry: requestLoginEntryMock,
-      setUser: setUserMock,
-      setOAuthError: setOAuthErrorMock,
-    }),
-}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  providers = [personal("custom-provider")];
+  layoutProps = null;
+  cardProps = null;
+  pickerProps = null;
+});
+afterEach(cleanup);
 
-vi.mock("../src/settings/model-provider-section/useModelProviderNavigation.js", () => ({
-  useModelProviderNavigation: () => ({
-    navigationGroups: [],
-    navigationItems: [],
-    selectedNavItem: selectedNavItemMock,
-  }),
-}));
-
-vi.mock("../src/settings/model-provider-section/useCodingPlanEntitlements.js", () => ({
-  useCodingPlanAccessRefresh: () => undefined,
-  useCodingPlanEntitlements: () => ({
-    entitlements: {},
-    refresh: refreshCodingPlanEntitlementsMock,
-  }),
-}));
-
-vi.mock("../src/settings/model-provider-section/SectionLayout.js", () => ({
-  ModelProviderSectionLayout: ({ children }: { children: unknown }) =>
-    createElement("div", null, children),
-}));
-
-vi.mock("../src/settings/model-provider-section/Detail.js", () => ({
-  ModelProviderSectionDetail: (props: Record<string, unknown>) => {
-    capturedDetailProps = props;
-    return createElement("div");
-  },
-}));
-
-describe("ModelProviderSection preset subscription action", () => {
-  afterEach(cleanup);
-  it("打开页面和订阅刷新不自动把团队改为个人", async () => {
-    settingsMock = {
-      providerFamilyDomain: "bigmodel",
-      providerFamilyConnectionSelections: {
-        bigmodel: { kind: "team-coding-plan", productId: "p", organizationId: "o", projectId: "j" },
-      },
-    };
+describe("ModelProviderSection local provider actions after subscription retirement", () => {
+  it("打开页面和刷新只读取个人配置，不恢复旧账号", async () => {
     const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
     const mounted = render(createElement(ModelProviderSection));
-    await waitFor(() => expect(credentialLoadMock).toHaveBeenCalled());
     mounted.rerender(createElement(ModelProviderSection));
-    expect(updateSharedSettingsMock).not.toHaveBeenCalled();
+    await act(async () => {
+      layout().onRefresh();
+    });
+    expect(refreshMock).toHaveBeenCalledExactlyOnceWith();
+    expect(layout().navigationGroups.map((group) => group.id)).toEqual(["custom"]);
+    expect(card().settingsRevision).toBe(73);
+    expectNoAccountActions();
   });
-  it.each(["bigmodel", "zai"] as const)("保存 %s 不可执行 Provider 不改账号域", async (family) => {
-    settingsMock = { providerFamilyDomain: family };
-    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-    renderToStaticMarkup(createElement(ModelProviderSection));
-    const config = {
-      providerId:
-        family === "bigmodel"
-          ? BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan
-          : BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+
+  it.each(["bigmodel", "zai"] as const)("保存手动配置的 %s 地址不改变账号域", async (family) => {
+    const base = personal(`manual-${family}`);
+    const provider = {
+      ...base,
       enabled: false,
       executable: false,
-      config: {},
-      personalConfig: {},
-      models: [],
-    } as unknown as ProviderSettingsFormProvider;
-    await (
-      capturedDetailProps!.onSave as (provider: ProviderSettingsFormProvider) => Promise<void>
-    )(config);
-    expect(saveProviderMock).toHaveBeenCalledWith(config);
-    expect(updateSharedSettingsMock).not.toHaveBeenCalled();
-  });
-
-  it.each(["bigmodel", "zai"] as const)(
-    "主动选择 %s 同一团队补回域，同时保留另一域身份",
-    async (family) => {
-      const selection = {
-        kind: "team-coding-plan" as const,
-        productId: "p",
-        organizationId: "o",
-        projectId: "j",
-      };
-      const selections = { bigmodel: selection, zai: selection };
-      const item = {
-        key: "team",
-        type: "teamPlan",
-        presetId:
-          family === "bigmodel"
-            ? BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan
-            : BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan,
-        oauthProviderId: family,
-        currentProductId: "p",
-        organizationId: "o",
-        projectId: "j",
-      };
-      settingsMock = { providerFamilyConnectionSelections: selections };
-      const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-      renderToStaticMarkup(createElement(ModelProviderSection));
-      expect(updateSharedSettingsMock).not.toHaveBeenCalled();
-      (capturedDetailProps!.onSelectNavItem as (item: unknown) => void)(item);
-      await vi.waitFor(() => expect(updateSharedSettingsMock).toHaveBeenCalledTimes(1));
-      expect(updateSharedSettingsMock).toHaveBeenCalledWith(
-        {
-          providerFamilyDomain: family,
-          providerFamilyDomainUpdatedAt: expect.any(Number),
-          providerFamilyDomainMigrated: true,
-          providerFamilyConnectionSelections: selections,
+      config: {
+        ...base.config,
+        api: {
+          type: "openai-chat-completions" as const,
+          baseUrl:
+            family === "zai" ? "https://api.z.ai/v1" : "https://open.bigmodel.cn/api/paas/v4",
         },
-        {
-          providerFamilyDomain: undefined,
-          providerFamilyConnectionSelections: selections,
-          providerFamilyDomainUpdatedAt: 0,
-        },
-      );
-      updateSharedSettingsMock.mockClear();
-      settingsMock = { ...settingsMock, providerFamilyDomain: family };
-      renderToStaticMarkup(createElement(ModelProviderSection));
-      (capturedDetailProps!.onSelectNavItem as (item: unknown) => void)(item);
-      expect(updateSharedSettingsMock).not.toHaveBeenCalled();
-      (capturedDetailProps!.onSelectNavItem as (item: unknown) => void)({
-        ...item,
-        projectId: "other-project",
-      });
-      await vi.waitFor(() => expect(updateSharedSettingsMock).toHaveBeenCalledTimes(1));
-      expect(updateSharedSettingsMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          providerFamilyDomain: family,
-          providerFamilyConnectionSelections: {
-            ...selections,
-            [family]: { ...selection, projectId: "other-project" },
-          },
-        }),
-        {
-          providerFamilyDomain: family,
-          providerFamilyConnectionSelections: selections,
-          providerFamilyDomainUpdatedAt: 0,
-        },
-      );
-    },
-  );
-  beforeEach(() => {
-    capturedDetailProps = null;
-    settingsMock = {};
-    saveProviderMock.mockClear();
-    selectedNavItemMock = null;
-    refreshMock.mockClear();
-    getActiveProviderMock.mockClear();
-    getActiveProviderMock.mockResolvedValue(null);
-    requestLoginEntryMock.mockClear();
-    startOAuthMock.mockClear();
-    openExternalMock.mockClear();
-    registerOAuthStateMock.mockClear();
-    logoutMock.mockClear();
-    refreshCodingPlanEntitlementsMock.mockClear();
-    credentialLoadMock.mockClear();
-    credentialLoadMock.mockResolvedValue(null);
-    updateSharedSettingsMock.mockClear();
-    setUserMock.mockClear();
-    setOAuthErrorMock.mockClear();
-  });
-
-  it("Z.ai Coding Plan Connect 会打开 App 登录入口", async () => {
-    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-
-    renderToStaticMarkup(createElement(ModelProviderSection));
-
-    expect(capturedDetailProps).not.toBeNull();
-
-    await (
-      capturedDetailProps?.onCodingPlanLogin as
-        | ((presetId: string, providerId: string, providerName: string) => Promise<void>)
-        | undefined
-    )?.(BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan, ZAI_PROVIDER_ID, "Z.ai");
-
-    expect(refreshMock).not.toHaveBeenCalled();
-    expect(requestLoginEntryMock).toHaveBeenCalledWith(ZAI_PROVIDER_ID);
-    expect(startOAuthMock).not.toHaveBeenCalled();
-  });
-
-  it("Z.ai Coding Plan 同步失败时点击登录会重新打开登录入口", async () => {
-    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-
-    renderToStaticMarkup(createElement(ModelProviderSection));
-
-    expect(capturedDetailProps).not.toBeNull();
-
-    await (
-      capturedDetailProps?.onCodingPlanLogin as
-        | ((
-            presetId: string,
-            providerId: string,
-            providerName: string,
-            status: string,
-          ) => Promise<void>)
-        | undefined
-    )?.(BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan, ZAI_PROVIDER_ID, "Z.ai", "unavailable");
-
-    expect(requestLoginEntryMock).toHaveBeenCalledWith(ZAI_PROVIDER_ID);
-    expect(refreshMock).not.toHaveBeenCalled();
-  });
-
-  it("Z.ai Coding Plan token 恢复强制走应用内登录入口", async () => {
-    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-
-    renderToStaticMarkup(createElement(ModelProviderSection));
-
-    expect(capturedDetailProps).not.toBeNull();
-
-    await (
-      capturedDetailProps?.onCodingPlanLogin as
-        | ((
-            presetId: string,
-            providerId: string,
-            providerName: string,
-            status: string,
-            options?: { forceOAuth?: boolean },
-          ) => Promise<void>)
-        | undefined
-    )?.(
-      BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-      ZAI_PROVIDER_ID,
-      "Z.ai",
-      "notPurchased",
-      { forceOAuth: true },
-    );
-
-    expect(requestLoginEntryMock).toHaveBeenCalledWith(ZAI_PROVIDER_ID);
-    expect(openExternalMock).not.toHaveBeenCalled();
-    expect(refreshMock).not.toHaveBeenCalled();
-  });
-
-  it("Coding Plan 购买成功后刷新 Account Source 与设置页", async () => {
-    selectedNavItemMock = {
-      key: "coding-plan:account:zai-individual-coding-plan",
-      type: "codingPlan",
-      presetId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-      oauthProviderId: ZAI_PROVIDER_ID,
-      label: "Z.ai - Coding Plan",
-      providerName: "Z.ai",
-      provider: null,
-      status: "notPurchased",
-      purchaseUrl: "https://z.ai/",
-      statusActive: false,
+      },
     };
+    providers = [provider];
     const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-
-    renderToStaticMarkup(createElement(ModelProviderSection));
-
-    expect(capturedDetailProps).not.toBeNull();
-
-    (capturedDetailProps?.onCodingPlanPurchaseComplete as (() => void) | undefined)?.();
-
-    await vi.waitFor(() => {
-      expect(refreshMock).toHaveBeenCalled();
+    render(createElement(ModelProviderSection));
+    await act(async () => {
+      await card().onSave(provider);
     });
-    expect(credentialLoadMock).toHaveBeenCalledWith("oauth:active_provider");
+    expect(saveProviderMock).toHaveBeenCalledExactlyOnceWith(provider);
+    expectNoAccountActions();
   });
 
-  it("BigModel Coding Plan 解绑交给 OAuth logout 清理派生状态", async () => {
+  it.each(["bigmodel", "zai"] as const)("选择 %s 个人供应商只更新本页选中项", async (family) => {
+    const selected = personal(`manual-${family}`);
+    providers = [personal("first-provider"), selected];
     const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
-
-    renderToStaticMarkup(createElement(ModelProviderSection));
-
-    expect(capturedDetailProps).not.toBeNull();
-
-    await (
-      capturedDetailProps?.onCodingPlanDisconnect as
-        | ((presetId: string, providerId: string, providerName: string) => Promise<void>)
-        | undefined
-    )?.(BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan, BIGMODEL_PROVIDER_ID, "BigModel");
-
-    expect(logoutMock).toHaveBeenCalledWith(BIGMODEL_PROVIDER_ID);
-    expect(setUserMock).toHaveBeenCalledWith(null);
-    expect(refreshMock).toHaveBeenCalled();
-    expect(refreshCodingPlanEntitlementsMock).not.toHaveBeenCalled();
+    render(createElement(ModelProviderSection));
+    const item = layout().navigationGroups[0]!.items.find(
+      (entry) => entry.type === "custom" && entry.provider.providerId === selected.providerId,
+    );
+    expect(item).toBeDefined();
+    act(() => layout().onSelectNavItem(item!));
+    expect(card().provider).toBe(selected);
+    expectNoAccountActions();
   });
 
-  it("Z.ai provider 解绑交给 OAuth logout 清理 Coding Plan 和 Start Plan", async () => {
+  it("个人编辑卡不再暴露登录、解绑和购买完成回调", async () => {
     const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(createElement(ModelProviderSection));
+    for (const key of [
+      "onCodingPlanLogin",
+      "onCodingPlanDisconnect",
+      "onCodingPlanPurchaseComplete",
+    ])
+      expect(card()).not.toHaveProperty(key);
+    expect(card().onSave).toBeTypeOf("function");
+    expectNoAccountActions();
+  });
 
-    renderToStaticMarkup(createElement(ModelProviderSection));
+  it("历史账号组不进入导航，用户个人供应商保持可编辑", async () => {
+    providers = [
+      personal("custom-provider"),
+      { ...personal("retired-zai"), config: { group: "zai-family" } },
+      { ...personal("retired-bigmodel"), config: { group: "bigmodel-family" } },
+    ];
+    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(createElement(ModelProviderSection));
+    expect(
+      layout().navigationGroups.flatMap((group) => group.items.map((item) => item.label)),
+    ).toEqual(["custom-provider"]);
+    expect(card().provider.providerId).toBe("custom-provider");
+    expectNoAccountActions();
+  });
 
-    expect(capturedDetailProps).not.toBeNull();
+  it("UCAS 仅允许密钥和模型编辑，不提供改名、改地址或删除入口", async () => {
+    providers = [personal("ucas")];
+    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(createElement(ModelProviderSection));
+    expect(card()).toMatchObject({
+      readOnlyEndpoints: true,
+      nameEditable: false,
+      settingsRevision: 73,
+    });
+    expect(card().onDelete).toBeUndefined();
+    expect(card().onSave).toBeTypeOf("function");
+    expect(card().onAddPersonalModel).toBeTypeOf("function");
+    await act(async () => {
+      await card().onAddPersonalModel?.("ucas", "manual-model", {});
+    });
+    expect(addPersonalModelMock).toHaveBeenCalledExactlyOnceWith("ucas", "manual-model", {});
+    expectNoAccountActions();
+  });
 
-    await (
-      capturedDetailProps?.onCodingPlanDisconnect as
-        | ((presetId: string, providerId: string, providerName: string) => Promise<void>)
-        | undefined
-    )?.(BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan, ZAI_PROVIDER_ID, "Z.ai");
+  it("删除个人供应商经确认后只调用个人配置服务", async () => {
+    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(createElement(ModelProviderSection));
+    await act(async () => {
+      await card().onDelete?.();
+    });
+    expect(confirmMock).toHaveBeenCalledOnce();
+    expect(deleteProviderMock).toHaveBeenCalledExactlyOnceWith("custom-provider");
+    expectNoAccountActions();
+  });
 
-    expect(logoutMock).toHaveBeenCalledWith(ZAI_PROVIDER_ID);
-    expect(setUserMock).toHaveBeenCalledWith(null);
-    expect(refreshMock).toHaveBeenCalled();
-    expect(refreshCodingPlanEntitlementsMock).not.toHaveBeenCalled();
+  it("新增供应商沿用二十次解锁并由个人配置工厂创建", async () => {
+    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(createElement(ModelProviderSection));
+    expect(layout().addProviderLocked).toBe(true);
+    for (let index = 0; index < 10; index += 1) act(() => layout().onAddProvider());
+    act(() => layout().onResetAddProviderClickSequence());
+    for (let index = 0; index < 19; index += 1) act(() => layout().onAddProvider());
+    expect(layout().addProviderLocked).toBe(true);
+    expect(createPersonalProviderMock).not.toHaveBeenCalled();
+    act(() => layout().onAddProvider());
+    expect(layout().addProviderLocked).toBe(false);
+    act(() => layout().onAddProvider());
+    expect(pickerProps).not.toBeNull();
+    await act(async () => {
+      await pickerProps!.onCreateCustom("Manual provider");
+    });
+    expect(createPersonalProviderMock).toHaveBeenCalledExactlyOnceWith({
+      providerName: "Manual provider",
+      locale: "zh-CN",
+    });
+    expectNoAccountActions();
+  });
+
+  it("旧套餐导航意图仅被消费，不重新打开账号入口", async () => {
+    const consume = vi.fn();
+    const { ModelProviderSection } = await import("@/settings/ModelProviderSection.js");
+    render(
+      createElement(ModelProviderSection, {
+        pendingModelProviderTarget: { providerId: "account:zai-individual-coding-plan" },
+        onConsumePendingModelProviderTarget: consume,
+      }),
+    );
+    expect(consume).toHaveBeenCalledOnce();
+    expect(card().provider.providerId).toBe("custom-provider");
+    expectNoAccountActions();
   });
 });

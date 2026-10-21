@@ -50,9 +50,11 @@ afterEach(async () => {
   });
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
-async function bootstrap(path: string, query: string) {
+async function bootstrap(path: string, query: string, protocol?: "hmac-v1" | "oauth-v2") {
+  vi.stubEnv("VITE_WEB_REMOTE_CONTROL_PROTOCOL", protocol);
   window.history.replaceState(null, "", `${path}?${query}`);
   const { WebAuthService } = await import("@web/auth/webAuthService.js");
   // 保留真实入口和回调组件 effect；服务内部的 nonce/token 契约由 webAuthService.test 覆盖。
@@ -70,9 +72,32 @@ describe("Web OAuth callback entry", () => {
     it.each(["authCode=bigmodel-code", "code=zai-code", "error=access_denied"])(
       `${path} 的 %s 渲染回调页并交给认证服务`,
       async (result) => {
-        const handleCallback = await bootstrap(path, `state=entry-state&${result}`);
+        // 分享认证独立保留；远控账号回调只属于显式 V2，默认 HMAC 不得自动降级。
+        const handleCallback = await bootstrap(
+          path,
+          `state=entry-state&${result}`,
+          path.startsWith("/remote/") ? "oauth-v2" : undefined,
+        );
         expect(document.body.textContent).toContain("Finishing Sign-In");
         expect(handleCallback).toHaveBeenCalledExactlyOnceWith(window.location.href);
+      },
+    );
+  }
+
+  for (const path of ["/remote/v4", "/remote/v4/"]) {
+    it.each(["authCode=bigmodel-code", "code=zai-code", "error=access_denied"])(
+      `默认 HMAC ${path} 不消费官方 OAuth 回调：%s`,
+      async (result) => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+        const { WebAuthService } = await import("@web/auth/webAuthService.js");
+        const startLogin = vi.spyOn(WebAuthService.prototype, "startLogin");
+        const handleCallback = await bootstrap(path, `state=entry-state&${result}`);
+        expect(document.body.textContent).toContain("Scan the desktop QR code");
+        expect(document.body.textContent).not.toContain("Finishing Sign-In");
+        expect(handleCallback).not.toHaveBeenCalled();
+        expect(startLogin).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
       },
     );
   }
