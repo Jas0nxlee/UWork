@@ -1032,6 +1032,8 @@ export async function describeMarketplacePlugin(input: {
   marketplace: string;
   name: string;
   storageRoot: string;
+  /** 只包住会写 known/manifest 的懒加载分支；其余只读路径不进锁。 */
+  withWriteLock?: <T>(write: () => Promise<T>) => Promise<T>;
 }): Promise<DescribeMarketplacePluginResult> {
   const diagnostics: PluginValidationDiagnostic[] = [];
   const pluginId = `${input.name}@${input.marketplace}`;
@@ -1059,11 +1061,19 @@ export async function describeMarketplacePlugin(input: {
 
   let manifest: PluginMarketplaceManifest | null = null;
   try {
-    await ensureMarketplaceManifestAvailable({
-      marketplace: input.marketplace,
-      storageRoot: input.storageRoot,
-    });
     manifest = loadMarketplaceManifestSync(input.storageRoot, input.marketplace);
+    if (!manifest) {
+      // Bugfix：describe 曾整体持 storage lock，安装下载期间所有详情都排在锁后。
+      // 只有 manifest 缺失时才写 known/manifest，此时必须与安装、市场刷新串行。
+      const withWriteLock = input.withWriteLock ?? ((write) => write());
+      await withWriteLock(() =>
+        ensureMarketplaceManifestAvailable({
+          marketplace: input.marketplace,
+          storageRoot: input.storageRoot,
+        }),
+      );
+      manifest = loadMarketplaceManifestSync(input.storageRoot, input.marketplace);
+    }
   } catch (error) {
     diagnostics.push(toValidationDiagnostic(error, pluginId));
     return { components: [], diagnostics };
@@ -2374,6 +2384,9 @@ export function parseEntryStoreListing(
   };
 
   const listing: PluginStoreListing = {};
+  if (entry.publisherType === "official" || entry.publisherType === "community") {
+    listing.publisherType = entry.publisherType;
+  }
   const displayName = readString("displayName");
   if (displayName) listing.displayName = displayName;
   const displayNameI18n = readStringMap("displayName_i18n");

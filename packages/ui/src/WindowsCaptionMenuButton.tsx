@@ -1,6 +1,6 @@
 import { DesktopCommandIds } from "@zcode/shared";
 import type { UpdateStatePayload } from "@zcode/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -66,6 +66,7 @@ export function WindowsCaptionMenuButton({
     openSubmit: openFeedbackSubmit,
   });
   const [updateState, setUpdateState] = useState<UpdateStatePayload | null>(null);
+  const updateReadRevision = useRef(0);
   const [stdioTapDevState, setStdioTapDevState] = useState({
     enabled: false,
     visible: false,
@@ -78,9 +79,11 @@ export function WindowsCaptionMenuButton({
       return;
     }
 
+    const revision = ++updateReadRevision.current;
     try {
       const payload = await platform.getUpdateState();
-      setUpdateState(payload);
+      // 修复依据：Main 实时事件或后发读取已推进状态时，迟到快照不能覆盖当前菜单投影。
+      if (revision === updateReadRevision.current) setUpdateState(payload);
     } catch (error) {
       logger.warn("[WindowsCaptionMenuButton] 同步自动更新状态失败", { error });
     }
@@ -106,11 +109,17 @@ export function WindowsCaptionMenuButton({
       void syncUpdateState();
     }
     void syncStdioTapDevState();
-    return showDesktopUpdateEntry
-      ? (platform.onUpdateStateChanged?.((payload) => {
+    const dispose = showDesktopUpdateEntry
+      ? platform.onUpdateStateChanged?.((payload) => {
+          updateReadRevision.current += 1;
           setUpdateState(payload);
-        }) ?? (() => {}))
+        })
       : undefined;
+    return () => {
+      // 卸载和平台换代同样使旧异步读取失效，不能写入下一代菜单。
+      updateReadRevision.current += 1;
+      dispose?.();
+    };
   }, [platform, showDesktopUpdateEntry, syncStdioTapDevState, syncUpdateState]);
 
   useEffect(() => {

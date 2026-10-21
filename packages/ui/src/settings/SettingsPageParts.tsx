@@ -66,8 +66,8 @@ export function ThemePreviewCard({
   const { intl } = useZCodeIntl();
   const previewSurfaceClassName = mode === "light" ? "ring-1 ring-black/5" : "ring-1 ring-white/8";
   const previewThemeStyle = {
-    "--color-background": mode === "light" ? "#f8f8f8" : "#161616",
-    "--color-card": mode === "light" ? "#f8f8f8" : "#161616",
+    "--color-background": mode === "light" ? "#f5f5f5" : "#0f0f0f",
+    "--color-card": mode === "light" ? "#f5f5f5" : "#0f0f0f",
     "--color-foreground": mode === "light" ? "#0d0d0d" : "#ffffff",
   } as CSSProperties;
 

@@ -62,19 +62,6 @@ afterEach(() => {
 });
 
 describe("desktopOAuthDeepLink workspace open routing", () => {
-  it("按应用 locale 解析外部 workspace 确认文案", async () => {
-    const { resolveExternalWorkspaceOpenDialogCopy } =
-      await import("../src/main/desktopOAuthDeepLink.js");
-
-    const zhCopy = resolveExternalWorkspaceOpenDialogCopy("zh-CN");
-    const enCopy = resolveExternalWorkspaceOpenDialogCopy("en-US");
-
-    expect(zhCopy.buttons).toEqual(["打开文件夹", "取消"]);
-    expect(zhCopy.title).toBe("打开外部 ZCode 链接？");
-    expect(zhCopy.detail("/tmp/project")).toContain("只打开你信任来源的文件夹");
-    expect(enCopy.buttons).toEqual(["Open folder", "Cancel"]);
-  });
-
   it("缓存冷启动时命中未就绪窗口的 workspace open 请求，等 renderer ready 后再投递", async () => {
     const workspacePath = createTempWorkspace();
     const targetWindow = createMockWindow(7);
@@ -172,7 +159,7 @@ describe("desktopOAuthDeepLink workspace open routing", () => {
       targetWindow,
       expect.objectContaining({
         buttons: ["打开文件夹", "取消"],
-        title: "打开外部 ZCode 链接？",
+        title: "打开外部 UWork 链接？",
       }),
     );
     expect(targetWindow.webContents.send).toHaveBeenCalledWith(
@@ -196,7 +183,7 @@ describe("desktopOAuthDeepLink workspace open routing", () => {
     expect(electronMocks.showMessageBoxSync).toHaveBeenCalledWith(
       expect.objectContaining({
         buttons: ["Open folder", "Cancel"],
-        title: "Open external ZCode link?",
+        title: "Open external UWork link?",
       }),
     );
     expect(logger.warn).toHaveBeenCalledWith(
@@ -302,29 +289,24 @@ describe("desktopOAuthDeepLink workspace open routing", () => {
     expect(targetWindow.webContents.send).not.toHaveBeenCalled();
   });
 
-  it("workspace open 被 gate 阻止时不缓存也不投递", async () => {
+  it("就绪窗口取消外部目录确认时不探测、不缓存也不投递", async () => {
     const workspacePath = createTempWorkspace();
     const targetWindow = createMockWindow(17);
     const logger = { info: vi.fn(), warn: vi.fn() };
-    const onWorkspaceOpenBlocked = vi.fn();
     electronMocks.getFocusedWindow.mockReturnValue(targetWindow);
     electronMocks.getAllWindows.mockReturnValue([targetWindow]);
-
+    electronMocks.showMessageBoxSync.mockReturnValue(1);
     const { deliverPendingDeepLink, handleDeepLink } =
       await import("../src/main/desktopOAuthDeepLink.js");
-
-    const handled = handleDeepLink(buildWorkspaceOpenUrl(workspacePath), logger, {
-      canOpenWorkspace: () => false,
-      onWorkspaceOpenBlocked,
-    });
-
+    deliverPendingDeepLink(targetWindow.webContents);
+    const handled = handleDeepLink(buildWorkspaceOpenUrl(workspacePath), logger);
     expect(handled).toBe(true);
-    expect(onWorkspaceOpenBlocked).toHaveBeenCalledWith(workspacePath);
+    expect(electronMocks.showMessageBoxSync).toHaveBeenCalled();
+    expect(fsMocks.statSync).not.toHaveBeenCalled();
     expect(targetWindow.webContents.send).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith("[deep-link] 工作区打开请求被当前启动 gate 阻止", {
+    expect(logger.warn).toHaveBeenCalledWith("[deep-link] 用户取消打开外部链接工作区", {
       path: workspacePath,
     });
-
     deliverPendingDeepLink(targetWindow.webContents);
     expect(targetWindow.webContents.send).not.toHaveBeenCalled();
   });

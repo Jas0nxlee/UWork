@@ -527,5 +527,61 @@
       "checkedOn": "2026-10-08",
       "result": "Historical archive/source revision has no LICENSE. Preserve the pinned upstream project MIT notice as supplementary reference, without asserting it is the original version-specific notice."
     }
+  },
+  {
+    "package": "@fortune-sheet/core@1.0.4",
+    "file": "third-party/upstream/5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9.txt",
+    "sha256": "5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9",
+    "source": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-21",
+      "registryUrl": "https://registry.npmjs.org/@fortune-sheet/core/1.0.4",
+      "npmTarball": "https://registry.npmjs.org/@fortune-sheet/core/-/core-1.0.4.tgz",
+      "npmIntegrity": "sha512-CDnUVebfvtT++CymNRw0qnY4sz6zYO3KZazlH+nG6otkRkZ05Bvt7NXqVhmKKSSxIvJR4R6h50abu/dVGBpjpw==",
+      "npmArchiveSha256": "de8cd5ecda2d047f0966baf413f59132549d3ab058a1667e19637448881bdde2",
+      "sourceRevision": "94346608877db4747406707a177c4b8f3bacdbf9",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/packages/core/package.json",
+      "sourcePackageJsonSha256": "f17b3ae56420fe548b923f30a81d5d5eb7d8390971a13c3612930802b3e3d6d3",
+      "registryGitHead": "94346608877db4747406707a177c4b8f3bacdbf9",
+      "result": "The exact npm version gitHead identifies this official source revision. Its package manifest declares this package at version 1.0.4 and MIT; preserve the monorepo root LICENSE byte-exact. The registry archive integrity was verified."
+    }
+  },
+  {
+    "package": "@fortune-sheet/react@1.0.4",
+    "file": "third-party/upstream/5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9.txt",
+    "sha256": "5fec1b755e7753254cb63ca9400ef0159ebf6bcf05357b72f3e42e0c462a29f9",
+    "source": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-21",
+      "registryUrl": "https://registry.npmjs.org/@fortune-sheet/react/1.0.4",
+      "npmTarball": "https://registry.npmjs.org/@fortune-sheet/react/-/react-1.0.4.tgz",
+      "npmIntegrity": "sha512-v+BU5mmp2hhUe4gRF+vOJ3j8zZkzHU0kzhTZzp+Nn00wA/RArMr+CO+SAluKlCPAsTZgPwmgOEK685WPqJ5XNw==",
+      "npmArchiveSha256": "902ce6d99d6aa61022434211df6af619b1d7a609631f727e21454a7500e97c9b",
+      "sourceRevision": "94346608877db4747406707a177c4b8f3bacdbf9",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/ruilisi/fortune-sheet/94346608877db4747406707a177c4b8f3bacdbf9/packages/react/package.json",
+      "sourcePackageJsonSha256": "9f0f1f946d761c7032baf18345605347ad99f780b6cb5b3457f1de6d6c75f90d",
+      "registryGitHead": "94346608877db4747406707a177c4b8f3bacdbf9",
+      "result": "The exact npm version gitHead identifies this official source revision. Its package manifest declares this package at version 1.0.4 and MIT; preserve the monorepo root LICENSE byte-exact. The registry archive integrity was verified."
+    }
+  },
+  {
+    "package": "saxes@5.0.1",
+    "file": "third-party/upstream/0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e.txt",
+    "sha256": "0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e",
+    "source": "https://raw.githubusercontent.com/lddubeau/saxes/6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e/LICENSE",
+    "reviewEvidence": {
+      "checkedOn": "2026-10-21",
+      "registryUrl": "https://registry.npmjs.org/saxes/5.0.1",
+      "npmTarball": "https://registry.npmjs.org/saxes/-/saxes-5.0.1.tgz",
+      "npmIntegrity": "sha512-5LBh1Tls8c9xgGjw3QrMwETmTMVk0oFgvrFSvWx62llR2hcEInrKNZ2GZCCuuy2lvWrdl5jhbpeqc5hRYKFOcw==",
+      "npmArchiveSha256": "d39d114627a8c29d1c26fb295dc4c1b81e8805a619f827d39177dfc39904a24b",
+      "sourceRevision": "6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e",
+      "sourcePackageJsonUrl": "https://raw.githubusercontent.com/lddubeau/saxes/6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e/package.json",
+      "sourcePackageJsonSha256": "d6614eb3d8f62608adea8fbfde612210e6deeb45c073078d1661c92f575e763f",
+      "sourceTag": "v5.0.1",
+      "sourceTagObject": "8c687ae8e2b9814da0928fff0faae1887a950200",
+      "sourceTagApiUrl": "https://api.github.com/repos/lddubeau/saxes/git/tags/8c687ae8e2b9814da0928fff0faae1887a950200",
+      "result": "The official v5.0.1 annotated tag resolves to this fixed revision; its manifest declares saxes 5.0.1 and ISC. Preserve the complete upstream LICENSE, including inherited sax and historical String.fromCodePoint notices. The registry archive integrity was verified."
+    }
   }
 ]

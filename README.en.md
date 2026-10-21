@@ -8,7 +8,7 @@
 
 UWork is an AI workspace customized from [zai-org/ZCode](https://github.com/zai-org/ZCode). This version includes a default UCAS model provider, custom model services, Assistant / Developer modes, and optional WeCom identity login. The original Zhipu / Z.ai model accounts and built-in subscription entries have been removed.
 
-This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization.
+This fork is maintained independently and is not an official upstream distribution. **The default branch is `uwork`**. The `main` branch retains upstream code for comparison and future synchronization. The current code base tracks the upstream ZCode v3.16.2 snapshot (2026-10-19).
 
 ## Features
 
@@ -156,6 +156,8 @@ pnpm build:zcode --base-url https://downloads.example.com/uwork/
 ```
 
 Output defaults to `dist/zcode/`. The distribution command is still `zcode`: no arguments start the TUI, and `zcode --web` starts Web mode. Building does not install or replace a system CLI. Run `pnpm build:zcode --help` for options.
+
+See the [CLI usage guide (Chinese)](apps/zcode-cli/docs/usage/README.md) for model configuration, non-interactive runs, tools and extensions, batch evaluation, and trajectory capture.
 
 ## Data and network boundaries
 

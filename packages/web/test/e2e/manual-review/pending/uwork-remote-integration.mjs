@@ -10,6 +10,9 @@ const repoRoot = resolve(import.meta.dirname, "../../../../../..");
 const artifactDir = resolve(repoRoot, ".tmp/uwork-remote-integration-e2e");
 await mkdir(artifactDir, { recursive: true });
 
+process.env.VITE_WEB_REMOTE_CONTROL_PROTOCOL = "hmac-v1";
+process.env.VITE_ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL = "ws://127.0.0.1:15493/ws";
+
 const fakeRelay = String.raw`
 (() => {
   const params = new URLSearchParams(location.search);
@@ -49,7 +52,7 @@ const fakeRelay = String.raw`
       const p = message.payload;
       if (p?.zcode_type === 'bootstrap-request') this.reply({type:'data', payload:{
         zcode_type:'bootstrap-response', requestId:p.requestId, success:true,
-        result:{windowControlSessionId:'uwork-fixture', desktopAppVersion:'3.16.0', workspaces:[workspace], tasks},
+        result:{windowControlSessionId:'uwork-fixture', desktopAppVersion:'3.16.6', workspaces:[workspace], tasks},
       }});
       if (p?.zcode_type === 'workspace-list-request') this.reply({type:'data', payload:{
         zcode_type:'workspace-list-response', requestId:p.requestId, success:true,
@@ -101,7 +104,7 @@ for width, theme in [(390,'zai-light'), (390,'zai-dark'), (1200,'zai-light'), (1
     # Chrome 已实测在 hidden 标签节流本夹具的 relay timers，必须前台运行才能验证点击后的应答。
     activate_tab(target)
     cdp('Emulation.setDeviceMetricsOverride', width=width, height=844, deviceScaleFactor=1, mobile=width<768)
-    goto_url('http://127.0.0.1:15493/remote/v4/?sid=uwork-fixture&hash=fixture-hash&t=1&mid=fixture-mid&app_version=3.16.0&fixture_theme='+theme)
+    goto_url('http://127.0.0.1:15493/remote/v4/?sid=uwork-fixture&hash=fixture-hash&t=1&mid=fixture-mid&app_version=3.16.6&fixture_theme='+theme)
     wait_for_load()
     until("document.body.innerText.includes('UWORK_REMOTE_FIXTURE')")
     assert not js("!!document.querySelector('[data-testid=onboarding-page]')")
@@ -114,14 +117,14 @@ for width, theme in [(390,'zai-light'), (390,'zai-dark'), (1200,'zai-light'), (1
     if width < 768:
         # 使用辅助功能树定位真实重连按钮，再通过坐标点击；失败由既有桌面连接 owner 返回。
         nodes=cdp('Accessibility.getFullAXTree')['nodes']
-        matches=[n for n in nodes if n.get('role',{}).get('value')=='button' and n.get('name',{}).get('value') in ['Reconnect','重新连接','重连']]
+        matches=[n for n in nodes if n.get('role',{}).get('value')=='button' and 'UWORK_REMOTE_FIXTURE' in n.get('name',{}).get('value','')]
         assert len(matches)==1, [(n.get('name',{}).get('value')) for n in nodes if n.get('role',{}).get('value')=='button']
         q=cdp('DOM.getBoxModel', backendNodeId=matches[0]['backendDOMNodeId'])['model']['content']
         click_at_xy(sum(q[0::2])/4, sum(q[1::2])/4)
         until('window.__uworkRemoteFixture.reconnects === 1')
         assert js('window.__uworkRemoteFixture.bridgeOpens') == 0
     else:
-        assert js("!!document.querySelector('[data-web-remote-navigation-scroll=true]')")
+        assert js("!!document.querySelector('[data-testid=sidebar-task-list-region]')")
     (artifacts / (str(width)+'-'+theme+'.png')).write_bytes(base64.b64decode(cdp('Page.captureScreenshot')['data']))
     print('PASS UWORK-REMOTE-01', width, theme)
 `;

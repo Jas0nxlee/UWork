@@ -4,11 +4,17 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { ServerLayout } from "./paths.js";
 
-const SERVER_INSTALL_OWNERSHIP_PRODUCT = "zcode-server";
+const SERVER_INSTALL_OWNERSHIP_PRODUCT = "uwork-server";
+/** 3.16.2 之前的 install.json 写的是 `zcode-server`；读取旧值必须视为同一个安装。 */
+const LEGACY_SERVER_INSTALL_OWNERSHIP_PRODUCT = "zcode-server";
 const SERVER_INSTALL_OWNERSHIP_SCHEMA_VERSION = 1;
 
 const serverInstallOwnershipSchema = z.object({
-  product: z.literal(SERVER_INSTALL_OWNERSHIP_PRODUCT),
+  // 只接受本产品（含旧身份），避免把别的产品写的 marker 判成自己的安装。
+  product: z.union([
+    z.literal(SERVER_INSTALL_OWNERSHIP_PRODUCT),
+    z.literal(LEGACY_SERVER_INSTALL_OWNERSHIP_PRODUCT),
+  ]),
   schemaVersion: z.literal(SERVER_INSTALL_OWNERSHIP_SCHEMA_VERSION),
   canonicalServerRoot: z.string().min(1),
   installationId: z.string().uuid(),
