@@ -418,7 +418,8 @@ function getWorkspaceZcodeSkillRoot(workspacePath: string): string {
 }
 
 function getUserZcodeSkillRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "skills");
+  // 显式导入的目标是 UWork 用户根，上游同名技能不能被误判为本产品已有目标或被覆盖。
+  return join(getUworkUserStorageRoot(), "skills");
 }
 
 function getWorkspaceZcodeCommandRoot(workspacePath: string): string {
@@ -456,7 +457,8 @@ function getClaudeUserAgentsFileSourcePath(): string {
 }
 
 function getUserZcodeAgentsFilePath(): string {
-  return join(resolveUserHomeDir(), ".zcode", "AGENTS.md");
+  // overwrite 只允许覆盖本产品文档，不能把 Claude 导入写进另一个产品的用户指令文件。
+  return join(getUworkUserStorageRoot(), "AGENTS.md");
 }
 
 function resolveTargetRootForScope(
