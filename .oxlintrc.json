@@ -3,9 +3,49 @@
   "plugins": null,
   "categories": {},
   "rules": {
-    "max-lines": ["error", { "max": 800, "skipBlankLines": true, "skipComments": true }]
+    "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }]
   },
   "overrides": [
+    {
+      // 上游整合及原有 HMAC 适配器的存量大文件按精确路径保留 800 行边界；其余代码继续执行 400 行上限。
+      "files": [
+        "**/packages/desktop/scripts/gen-ui-fixture/main.ts",
+        "**/packages/desktop/scripts/mcp-apps-host-fixture/background-main.ts",
+        "**/packages/desktop/scripts/mcp-apps-host-fixture/managed-renderer.tsx",
+        "**/packages/desktop/scripts/prepare-agent-node-bundle.mjs",
+        "**/packages/desktop/src/main/desktopWindowLifecycle.ts",
+        "**/packages/desktop/src/main/web-remote-relay/hmacTransport.ts",
+        "**/packages/desktop/test/e2e/helpers/project-sidebar.ts",
+        "**/packages/services/src/conversation-share/conversationShareWorkflowSnapshot.ts",
+        "**/packages/shared/src/test-ids.ts",
+        "**/packages/ui/scripts/lib/officePptxButtonCases.mjs",
+        "**/packages/ui/src/OpenSplitButton.tsx",
+        "**/packages/ui/src/hooks/useRemoteConnectionForm.ts",
+        "**/packages/ui/src/lib/remoteConnectionWizard.ts",
+        "**/packages/ui/src/plugin-ui/adapters/pluginUiManagedPage.ts",
+        "**/packages/ui/src/project-sidebar/ProjectComposerMenu.tsx",
+        "**/packages/ui/src/project-sidebar/ProjectEditor.tsx",
+        "**/packages/ui/src/project-sidebar/ProjectNodeContent.tsx",
+        "**/packages/ui/src/project-sidebar/TaskGroupedView.tsx",
+        "**/packages/ui/src/project-sidebar/grouped/drag.ts",
+        "**/packages/ui/src/project-sidebar/grouped/group-item.tsx",
+        "**/packages/ui/src/project-sidebar/grouped/task-row.tsx",
+        "**/packages/ui/src/project-sidebar/grouped/view.ts",
+        "**/packages/ui/src/side-pane-full-view/ConversationHost.tsx",
+        "**/packages/ui/src/store/index.ts",
+        "**/packages/ui/src/store/pluginManagementStore.ts",
+        "**/packages/ui/src/v4/pendingCommandRegistry.ts",
+        "**/packages/ui/src/web-remote-control/WebRemoteControlDialog.tsx",
+        "**/packages/ui/test/browser/manual-review/pending/plugin-store-mode-order.test.mjs",
+        "**/packages/ui/test/browser/manual-review/pending/side-pane-plugin-menu.test.mjs",
+        "**/packages/web/src/web-remote-control/adapters/hmacTransport.ts",
+        "**/packages/web/src/web-remote-control/adapters/webRemoteControlTransport.ts",
+        "**/packages/web/test/e2e/manual-review/pending/remote-login-v2.mjs"
+      ],
+      "rules": {
+        "max-lines": ["error", { "max": 800, "skipBlankLines": true, "skipComments": true }]
+      }
+    },
     {
       // 本次上游整合保留既有职责完整的实现；这些文件超 800 行只告警，不机械拆分。
       "files": [

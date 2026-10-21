@@ -9,7 +9,7 @@ import { test } from "node:test";
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "../..");
 
-test("800 行为默认阻断阈值，已接纳的大文件仅降级行数诊断", async () => {
+test("400 行为新文件阻断阈值，精确存量路径保留 800 行边界", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "zcode-size-policy-"));
   try {
     const { config } = ts.parseConfigFileTextToJson(
@@ -20,6 +20,8 @@ test("800 行为默认阻断阈值，已接纳的大文件仅降级行数诊断"
     config.ignorePatterns = [];
     await writeFile(join(cwd, ".oxlintrc.json"), JSON.stringify(config));
     const regular = "packages/example/src/new.ts";
+    const retained = "packages/desktop/src/main/web-remote-relay/hmacTransport.ts";
+    const neighbor = "packages/desktop/src/main/web-remote-relay/new-helper.ts";
     const accepted = "apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts";
     async function lint(file, lines) {
       await mkdir(dirname(join(cwd, file)), { recursive: true });
@@ -39,11 +41,24 @@ test("800 行为默认阻断阈值，已接纳的大文件仅降级行数诊断"
       return JSON.parse(result.stdout).diagnostics;
     }
     assert.equal(
-      (await lint(regular, 800)).filter((x) => x.code === "eslint(max-lines)").length,
+      (await lint(regular, 400)).filter((x) => x.code === "eslint(max-lines)").length,
       0,
     );
     assert.equal(
-      (await lint(regular, 801)).find((x) => x.code === "eslint(max-lines)")?.severity,
+      (await lint(regular, 401)).find((x) => x.code === "eslint(max-lines)")?.severity,
+      "error",
+    );
+    // 同目录的新文件不继承 HMAC 存量文件的精确 800 行例外。
+    assert.equal(
+      (await lint(neighbor, 401)).find((x) => x.code === "eslint(max-lines)")?.severity,
+      "error",
+    );
+    assert.equal(
+      (await lint(retained, 800)).filter((x) => x.code === "eslint(max-lines)").length,
+      0,
+    );
+    assert.equal(
+      (await lint(retained, 801)).find((x) => x.code === "eslint(max-lines)")?.severity,
       "error",
     );
     assert.equal(

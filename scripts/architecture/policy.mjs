@@ -44,14 +44,26 @@ function validatePolicy(raw, cwd) {
     if (!Array.isArray(module.roots) || module.roots.length === 0) {
       throw new Error(`模块 ${module.id} 必须声明 roots`);
     }
+    const layers = module.layers === undefined ? {} : module.layers;
+    if (
+      !layers ||
+      typeof layers !== "object" ||
+      Array.isArray(layers) ||
+      Object.values(layers).some((value) => {
+        const roots = Array.isArray(value) ? value : [value];
+        return roots.length === 0 || roots.some((root) => typeof root !== "string" || !root.trim());
+      })
+    ) {
+      throw new Error(`模块 ${module.id} 的 layers 必须映射到非空路径或非空路径数组`);
+    }
     return {
       id: module.id,
       roots: module.roots.map((root) => path.resolve(cwd, root)),
       managed: module.managed === true,
       requires: [...new Set(module.requires ?? [])],
       publicEntrypoints: (module.publicEntrypoints ?? []).map((entry) => posix(entry)),
-      layers: module.layers ?? {},
-      layerOrder: module.layerOrder ?? Object.keys(module.layers ?? {}),
+      layers,
+      layerOrder: module.layerOrder ?? Object.keys(layers),
       owner: module.owner ?? null,
     };
   });
@@ -112,10 +124,13 @@ function validatePolicy(raw, cwd) {
 export function layerForFile(file, module) {
   const matches = module.roots
     .flatMap((root) =>
-      Object.entries(module.layers).map(([name, directory]) => ({
-        name,
-        directory: path.resolve(root, directory),
-      })),
+      // 同层可以有多个精确根；仍由最长匹配决定选层，不能让 adapters 的 "." 吞掉契约目录。
+      Object.entries(module.layers).flatMap(([name, directories]) =>
+        (Array.isArray(directories) ? directories : [directories]).map((directory) => ({
+          name,
+          directory: path.resolve(root, directory),
+        })),
+      ),
     )
     .filter(({ directory }) => file === directory || file.startsWith(`${directory}${path.sep}`))
     .sort((a, b) => b.directory.length - a.directory.length);

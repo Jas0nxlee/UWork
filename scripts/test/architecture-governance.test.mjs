@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { layerForFile } from "../architecture/policy.mjs";
 
 import {
   changedFilesFromGit,
@@ -270,3 +271,60 @@ test("expired exceptions are global blocking violations", async () => {
     },
   );
 });
+
+test("one layer can cover an exact contract file and directory without weakening direction", async () => {
+  await fixture(
+    {
+      "architecture-policy.yaml": `version: 1
+modules:
+  - id: alpha
+    roots: [src/alpha]
+    managed: true
+    layers:
+      contract: [contract.ts, contracts]
+      adapters: .
+    layerOrder: [contract, adapters]
+`,
+      "src/alpha/contract.ts": 'export type * from "./contracts/auth.js";',
+      "src/alpha/contracts/auth.ts": 'import "../runtime.js";',
+      "src/alpha/runtime.ts": "export {};",
+    },
+    async (cwd) => {
+      const policy = await loadPolicy(cwd);
+      const module = policy.modules[0];
+      assert.equal(layerForFile(join(cwd, "src/alpha/contract.ts"), module), "contract");
+      assert.equal(layerForFile(join(cwd, "src/alpha/contracts/auth.ts"), module), "contract");
+      assert.equal(layerForFile(join(cwd, "src/alpha/runtime.ts"), module), "adapters");
+      const result = await checkArchitecture({ cwd, policy });
+      const directions = result.violations.filter((v) => v.rule === "layer-direction");
+      assert.equal(directions.length, 1);
+      assert.equal(directions[0].file, "src/alpha/contracts/auth.ts");
+    },
+  );
+});
+
+for (const layers of [
+  [],
+  { contract: [] },
+  { contract: ["contracts", null] },
+  { contract: 3 },
+  { contract: {} },
+  { contract: "" },
+]) {
+  test(`invalid layer roots fail policy loading: ${JSON.stringify(layers)}`, async () => {
+    await fixture(
+      {
+        "architecture-policy.yaml": `version: 1
+modules:
+  - id: alpha
+    roots: [src/alpha]
+    managed: true
+    layers: ${JSON.stringify(layers)}
+`,
+      },
+      async (cwd) => {
+        await assert.rejects(loadPolicy(cwd), /layers/);
+      },
+    );
+  });
+}

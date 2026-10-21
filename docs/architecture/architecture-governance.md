@@ -10,6 +10,13 @@
 
 规则只对 `managed: true` 的模块生效（`managedOnly`）；存量模块保持 unmanaged，不受结构规则约束。对"新代码必须走这套约束"的保证来自 `unmanaged-new-file`：相对比较基线新增、且首次入库晚于 `global.newFilesEnforcedSince` 的源码文件必须落在 managed 模块内，否则阻断；未跟踪文件永远视为新增。生效日期让长期分支不被追溯，也避免各分支往共享 baseline 写存量条目产生冲突。存量违规进入确定性的 baseline；新违规阻断，baseline 只能通过显式命令和 PR 审核更新。
 
+### 同层多个精确路径
+
+模块的 `layers` 可以把同一层映射到一个非空路径或非空路径数组，例如
+`contract: [contract.ts, contracts]`。根契约和按职责拆分的契约目录属于同一层，
+不新增层级，也不降低 contract 到 adapters 的依赖限制。选层始终采用解析后最长匹配路径，
+因此 `adapters: .` 不能吞掉更具体的 contract 文件或目录。非法类型、空数组、空路径必须在读取策略时拒绝。
+
 ### 指定上游的存量准入
 
 `build:desktop:app` 在 job 级设置 `GIT_DEPTH: "0"`，让 Runner 在架构检查前拉取完整历史。浅克隆会截断祖先链，使已合入的准入提交被误判为未合入。该设置仅作用于此 job，不改变其他 job 的拉取深度；检查器仍严格验证提交祖先关系。
