@@ -1,5 +1,5 @@
 import { Building2 } from "lucide-react";
-import type { EnterpriseLoginSurface } from "@zcode/shared";
+import { ZCODE_VERSION, type EnterpriseLoginSurface } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -54,12 +54,12 @@ export function EnterpriseLoginPage({
       <DialogContent
         showCloseButton={false}
         overlayClassName="z-[70] bg-background data-open:animate-none data-closed:animate-none"
-        className="inset-0 left-0 top-0 z-[70] flex h-dvh max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-y-auto rounded-none border-0 bg-background px-6 py-12 shadow-none data-open:animate-none data-closed:animate-none"
+        className="inset-0 left-0 top-0 z-[70] flex h-dvh max-w-none translate-x-0 translate-y-0 flex-col items-center justify-start gap-6 overflow-y-auto rounded-none border-0 bg-background px-6 pb-6 pt-12 shadow-none data-open:animate-none data-closed:animate-none"
         data-testid="enterprise-login-page"
       >
         <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" aria-hidden="true" />
         <section
-          className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-card p-6 [app-region:no-drag]"
+          className="my-auto w-full max-w-sm shrink-0 space-y-5 rounded-xl border border-border bg-card p-6 [app-region:no-drag]"
           data-testid="enterprise-login-card"
         >
           <div>
@@ -186,6 +186,15 @@ export function EnterpriseLoginPage({
             </Button>
           </div>
         </section>
+        <p
+          className="shrink-0 text-center text-ui-sm text-foreground-subtle [app-region:no-drag]"
+          data-testid="enterprise-login-version"
+        >
+          {intl.formatMessage(
+            { id: "enterpriseIdentity.clientVersion" },
+            { version: ZCODE_VERSION },
+          )}
+        </p>
       </DialogContent>
     </Dialog>
   );

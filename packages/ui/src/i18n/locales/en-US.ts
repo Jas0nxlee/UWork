@@ -8100,6 +8100,7 @@ const enUS: Record<string, string> = {
   "globalNotice.highspeed.close": "Close Highspeed share card",
   ...requestSecurityMessagesEnUS,
   "enterpriseIdentity.title": "Sign in",
+  "enterpriseIdentity.clientVersion": "Client version v{version}",
   "enterpriseIdentity.scanHint": "Scan with WeCom",
   "enterpriseIdentity.qrLabel": "WeCom sign-in QR code",
   "enterpriseIdentity.wecomLogin": "Sign in with WeCom",

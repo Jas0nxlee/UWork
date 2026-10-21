@@ -1,5 +1,13 @@
 # UWork 可选企业身份登录
 
+## 登录页客户端版本（2026-10-21）
+
+- 登录页最下方显示「客户端版本 v{version}」；英文为「Client version v{version}」。版本唯一来源是 `@zcode/shared` 的 `ZCODE_VERSION`，由现有 Desktop/Web bundler 从根包版本注入；不硬编码当前版本、不请求认证或更新服务。未构建的开发环境沿用现有 `0.0.0-dev` 标记。
+- 版本是只读构建信息，不参与身份状态或登录判断。未配置、检查中、选择公司、扫码、失败与过期状态均使用同一个页脚。
+- 页脚位于登录卡片之外、页面内容末尾。充足高度时贴近页面底部，矮窗口时随内容滚动，不覆盖二维码、跳过按钮或窗口控制。复用设计字体和语义颜色，支持中英文及 Zai Light / Dark。
+- 验收：构建注入非当前版本也能准确展示；320/390/1440 宽度、中英文、深浅主题无横向溢出，矮窗口和扫码时页脚可滚动到达，跳过和再次打开登录保持原行为。
+- 浏览器回放入口：`node packages/ui/test/enterpriseLoginVersion.e2e.mjs`，使用已有隔离企业身份夹具，不触发真实企业微信认证。
+
 ## Main 原生登录 IPC 接线回归（2026-10-18）
 
 `OpenEnterpriseLogin`、`CancelEnterpriseLogin`、`UpdateEnterpriseLogin` 显式绑定同一个

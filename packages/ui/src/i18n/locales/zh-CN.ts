@@ -7687,6 +7687,7 @@ const zhCN: Record<string, string> = {
   "globalNotice.highspeed.close": "关闭加速分享卡片",
   ...requestSecurityMessagesZhCN,
   "enterpriseIdentity.title": "登录",
+  "enterpriseIdentity.clientVersion": "客户端版本 v{version}",
   "enterpriseIdentity.scanHint": "使用企业微信扫一扫",
   "enterpriseIdentity.qrLabel": "企业微信登录二维码",
   "enterpriseIdentity.wecomLogin": "企业微信登录",
