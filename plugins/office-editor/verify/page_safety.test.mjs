@@ -11,7 +11,11 @@ const source = (
   )
 ).join("\n");
 
-async function pageHarness({ ready = true, exportBlob } = {}) {
+async function pageHarness({
+  ready = true,
+  exportBlob,
+  engineBaseUrl = "https://engine.example",
+} = {}) {
   const nodes = new Map();
   const instances = [];
   const calls = [];
@@ -66,7 +70,7 @@ async function pageHarness({ ready = true, exportBlob } = {}) {
   });
   await vm.runInContext(
     `(async () => { ${source}\n globalThis.page = {
-    state, applyTarget, mountEditor, saveEditor,
+    state, applyLayout, applyTarget, mountEditor, saveEditor,
     setApp(value) { app = value; },
   }; })()`,
     sandbox,
@@ -82,7 +86,7 @@ async function pageHarness({ ready = true, exportBlob } = {}) {
     async readServerResource({ uri }) {
       resources.push(uri);
       if (uri === "office://superdoc/config")
-        return { contents: [{ text: '{"baseUrl":"https://engine.example"}' }] };
+        return { contents: [{ text: JSON.stringify({ baseUrl: engineBaseUrl }) }] };
       const url = new URL(uri);
       if (url.searchParams.has("meta"))
         return {
@@ -169,4 +173,25 @@ test("oversized saves fail before sending a frame to the MCP bridge", async () =
   await harness.page.saveEditor();
   assert.equal(harness.calls.filter((call) => call.name === "docx_write_back").length, 0);
   assert.match(harness.nodes.get("editor-status").textContent, /上限/);
+});
+
+test("empty engine config keeps the read-only pane visible and the empty editor hidden", async () => {
+  const harness = await pageHarness({ engineBaseUrl: "" });
+  harness.page.state.path = "/A.docx";
+  await harness.page.mountEditor();
+  assert.equal(harness.page.state.editorUnavailable, true);
+  assert.equal(harness.nodes.get("doc-preview").hidden, false);
+  assert.equal(harness.nodes.get("superdoc-host").hidden, true);
+  assert.equal(harness.nodes.get("editor-save").disabled, true);
+  assert.equal(harness.instances.length, 0);
+});
+
+test("ready editor retains sole fullscreen ownership without exposing a second preview", async () => {
+  const harness = await pageHarness();
+  harness.page.state.path = "/A.docx";
+  await harness.page.mountEditor();
+  harness.page.applyLayout();
+  assert.equal(harness.page.state.editorReady, true);
+  assert.equal(harness.nodes.get("doc-preview").hidden, true);
+  assert.equal(harness.nodes.get("superdoc-host").hidden, false);
 });

@@ -198,3 +198,19 @@ v3.15.1 合并的 100 个冲突就是代价样本。
 **未执行（需人工）**
 
 - 在客户端里真正承载页面（侧栏/inline）、点接受/拒绝、公司市场安装链路与 AIHub 分发。桌面 E2E 需人工在 Chrome 里授权远程调试。
+
+## 2026-10-21 默认只读回退的可见性验收
+
+默认 engine.json 的 baseUrl 为空时，真实 MCP Apps fullscreen 宿主必须实际显示 docx-preview 的正文与修订标记，同时隐藏空 SuperDoc 容器、禁用保存且没有 contenteditable；不能仅凭隐藏 DOM 中存在 docx 节点宣称预览可用。可见性验收读取 computed display 与非零 bounding rect，并保留截图。引擎就绪时只展示 SuperDoc，额外 docx-preview 仍保持 hidden。
+
+applyLayout 继续是面板 hidden 值的唯一写者，状态来自现有 displayMode 与 editorUnavailable；CSS 只规定尺寸和排版，不得用 fullscreen display 声明覆盖 hidden（否则空引擎分支会显示空灰框）。不新增状态副本、超时或引擎配置。
+
+真实回归复用当前 PluginUiCard/SidePane、pluginSandbox、CLI 和插件 Python MCP 进程；临时 DOCX 覆盖资源 App 握手、默认只读回退、卡片接受插入/拒绝删除及磁盘结果。该回归不验证外部引擎或完整 SuperDoc 编辑。
+
+手动重放入口（仓库根目录，Node 版本按 mise.toml、依赖与当前 CLI bundle 已构建、需可启动本机 Electron 与 python3）：
+
+```sh
+node plugins/office-editor/verify/browser_host_e2e.mjs
+```
+
+脚本复用仓库 managed MCP Apps 宿主/真实 CLI 与 Python 插件，生成并最终清理临时 DOCX 及备份；截图、before/after 状态与 computed rect 保存在 .tmp/office-editor-browser-e2e/ 下。Python 可用 OFFICE_EDITOR_E2E_PYTHON 指定。只允许默认空引擎配置，Electron 外部 HTTP 请求被阻止，不读取用户文件、不发模型请求、不配置生产引擎；此入口为 manual E2E，不强行纳入 CI。

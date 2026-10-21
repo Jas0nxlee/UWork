@@ -222,11 +222,9 @@
       #editor-bar .sep {
         color: var(--border);
       }
-      body.wide #doc-preview {
-        display: none;
-      }
+      /* 修复原因：面板显示由 applyLayout 的 hidden 唯一决定；fullscreen 的 display
+         会覆盖 hidden，导致默认只读预览被隐藏、空 SuperDoc 容器反而可见。 */
       body.wide #superdoc-host {
-        display: block;
         min-height: 78vh;
       }
       #superdoc-host {
