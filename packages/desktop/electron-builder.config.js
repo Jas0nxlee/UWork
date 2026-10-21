@@ -79,6 +79,12 @@ const hasEnterpriseIdentityConfig = await access(enterpriseIdentityConfigPath).t
 if (process.env.UWORK_REQUIRE_ENTERPRISE_IDENTITY_CONFIG === "1" && !hasEnterpriseIdentityConfig) {
   throw new Error("Release requires staged public enterprise identity configuration");
 }
+// 远控入口配置：仓库内默认文件（非机密），存在就随包；缺失时桌面退回内置默认地址。
+const mobileRemoteControlConfigPath = resolve(workspaceRoot, "config/mobile-remote-control.json");
+const hasMobileRemoteControlConfig = await access(mobileRemoteControlConfigPath).then(
+  () => true,
+  () => false,
+);
 // Computer Use Helper（macOS .app、Windows runtime）只随真实 producer 打包；开源占位包下跳过随包资源与校验。
 const shouldPackageComputerUseHelper = isRealComputerUseProducerInstalled({ desktopPackageRoot });
 const HELPER_FILENAME = "zcode-browser-import-helper.exe";
@@ -671,6 +677,11 @@ export default {
   extraResources: [
     ...(hasEnterpriseIdentityConfig
       ? [{ from: enterpriseIdentityConfigPath, to: "config/enterprise-identity.json" }]
+      : []),
+    // 远控入口（自建 relay + 手机页地址）：仓库内 config/ 是默认值，随包下发；
+    // 部署方换入口改这个文件或注入 ZCODE_WEB_REMOTE_CONTROL_* 环境变量即可。
+    ...(hasMobileRemoteControlConfig
+      ? [{ from: mobileRemoteControlConfigPath, to: "config/mobile-remote-control.json" }]
       : []),
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
     ...(targetPlatform.os === "darwin"

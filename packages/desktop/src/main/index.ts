@@ -171,6 +171,10 @@ import {
 import { resolveZCodeBuiltinProviderConfigFilePath } from "./desktopProviderConfig.js";
 import { resolveBundledEnterpriseIdentityConfigFilePath } from "./desktopEnterpriseIdentityConfig.js";
 import {
+  readMobileRemoteControlConfigSync,
+  resolveMobileRemoteControlOverrides,
+} from "./desktopMobileRemoteControlConfig.js";
+import {
   getCredentialsDir,
   isDockerDaemonAvailable,
   listSSHConfigAliases,
@@ -896,9 +900,20 @@ const webRemoteControlAppVersion = ZCODE_VERSION || app.getVersion();
 const defaultZCodeEndpointUrls = buildZCodeEndpointUrls(DEFAULT_ZCODE_ENDPOINT_ORIGIN, {
   appVersion: webRemoteControlAppVersion,
 });
-const webRemoteControlRelayWsEnvOverride =
-  process.env["ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL"]?.trim();
-const webRemoteControlUrlEnvOverride = process.env["ZCODE_WEB_REMOTE_CONTROL_URL"]?.trim();
+// 远控入口（桌面自己的 relay + 二维码指向的手机页）：随包配置 > 内置默认；env 仅作调试覆盖。
+// 部署方换入口只改 config/mobile-remote-control.json，不必重新写死代码里的默认地址。
+const mobileRemoteControlOverrides = resolveMobileRemoteControlOverrides({
+  envRelayWsUrl: process.env["ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL"],
+  envRemotePageBaseUrl: process.env["ZCODE_WEB_REMOTE_CONTROL_URL"],
+  config: readMobileRemoteControlConfigSync({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    warn: (message, meta) => logger.warn(message, meta),
+  }),
+});
+const webRemoteControlRelayWsEnvOverride = mobileRemoteControlOverrides.relayWsUrl;
+const webRemoteControlUrlEnvOverride = mobileRemoteControlOverrides.remotePageBaseUrl;
 
 function extractOpenWorkspacePathFromDeepLinkUrl(url: string): string | null {
   try {

@@ -10,6 +10,13 @@ modules:
     layers: { adapters: adapters }
     layerOrder: [adapters]
     owner: archive-tooling
+  # 自建 Web 远控中继：独立部署的服务，不进桌面 Release（specs/web-remote-control-relay.md）。
+  - id: relay
+    roots: [packages/relay]
+    managed: true
+    requires: [shared]
+    publicEntrypoints: [packages/relay/src/index.ts]
+    owner: web-remote-control
   - id: rpc
     roots: [packages/rpc/src]
     managed: false

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": ["ES2024"],
+    "types": ["node"]
+  },
+  "include": ["src", "test", "contract.ts", "contract.example.ts", "module.ts"],
+  // 唯一一个不参与 typecheck 的测试：它 import 手机端 transport（packages/web 没有
+  // exports 字段，且需要 DOM lib），vitest 侧靠 @web 别名正常跑到真 relay。其余测试照常检查。
+  "exclude": ["test/relayClientContract.test.ts"],
+  "references": [{ "path": "../shared" }]
+}
