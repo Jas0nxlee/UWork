@@ -53,6 +53,20 @@ pnpm --filter @zcode/server-cli stage:remote-assets --linux  # 仅 Linux（开�
 2. SFTP 上传 → 解包 → `bin/uwork --version` = `3.16.6`；`--version --json` = `{"product":"uwork-server","version":"3.16.6"}`；`manifest.json` 的 `product` = `uwork-server`
 3. `bin/uwork serve --daemon` → `status --json` = `{"state":"ready","port":…}`，日志 `UWork Server ready at 127.0.0.1:…`；`stop` → `state:stopped`
 
-## 六、不覆盖
+## 六、升级模型：daemon 只随客户端升级，不自己升级
+
+**远端 Server 不允许自我升级**，运行时也不从 CDN 拉版本或组件。升级一律由桌面端驱动：
+
+1. 客户端按版本从我们的静态源取 descriptor + 完整归档（校验 sha256）；
+2. 上传到远端（`~/.uwork/server/.bootstrap-<op>/uwork-server.tar.gz`）；
+3. 在远端执行归档自带的 `bin/uwork update --from-archive <归档> [--force]` —— 这就是 `packages/server/src/source-server/transportAdapter.ts` 安装与更新用的同一条命令。
+
+因此：
+
+- 运维在远端直接跑 `uwork update`（不带 `--from-archive`）会被**明确拒绝**并提示"由桌面端驱动"；在线自升级链路（`updatePreparation.ts`、`releaseDownload.ts`、`ComponentCache` 等）已从本仓库删除，运行时不再有任何拉版本的网络代码。
+- **自部署只需要发布"完整归档 + descriptor"**，不必产出组件级 `manifest-<target>.json` 与组件包。
+- 护栏保留：`update --from-archive` 仍会通过 `prepare-update` 控制命令检查运行中的任务（需要时用 `--force`）；`apply-update` 只能应用**磁盘上已存在**的 pending release，且**启动时不会自动应用**。
+
+## 七、不覆盖
 
 旧直连链（`packages/server/src/remote/**`，组件目录 / `manifest-<target>.json` 形态，部署 `zcode-server.cjs` 到 `~/.zcode/server`）保持原样；设置页「远程设备管理」里的 SSH/WSL/Docker 走的是本文描述的完整归档链路。若将来要启用旧直连入口，需要另行产出组件级清单。
