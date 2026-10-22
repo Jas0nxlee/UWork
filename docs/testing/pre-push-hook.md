@@ -10,6 +10,47 @@
 
 这样可以在代码推到远端前，先用更快的静态检查拦住明显问题，再把单测问题拦在本地，同时保留 `pnpm test:e2e` 作为桌面端 E2E 的独立入口。
 
+## 与 CI 的关系（PR 上的 `checks` job）
+
+PR 只跑 `.github/workflows/desktop-release.yml` 的 **`checks`** job（`build` / `publish` 在 PR 上被跳过），它是 pre-push 的超集。**推 PR 前建议按同样顺序在本地跑一遍**，免得合并前才发现 CI 红。当前 `checks` job 的顺序：
+
+```bash
+pnpm install --frozen-lockfile   # 锁文件必须与 package.json 一致，否则第一步就红
+pnpm lint                        # 0 error 门禁（warning 不拦）；注意 max-lines=400
+pnpm typecheck
+pnpm architecture:check
+pnpm exec vitest run packages/desktop/test/genUiVendorCheckout.test.ts \
+  packages/desktop/test/packagedDesktopCdp.test.ts \
+  packages/desktop/test/enterpriseLoginIpcBindings.test.ts \
+  packages/ui/test/v4ConversationDraftEmptyStateLogo.test.ts   # 该文件已随上游 3.16.2 删除：参数匹配不到文件不会失败，保留以与 CI 逐字对齐
+node scripts/build-desktop-agent-cli.mjs
+node --test packages/safe-extract-zip/test/*.test.cjs packages/safe-extract-zip/contract.test.ts \
+  scripts/test/desktop-release.test.mjs scripts/test/desktop-asar-runtime.test.mjs \
+  scripts/test/desktop-packaging-config.test.mjs scripts/test/web-remote-uwork-integration.test.mjs \
+  scripts/test/arms-patch-install-contract.test.mjs scripts/test/generate-third-party-notices.test.mjs \
+  scripts/third-party-notices.test.mjs
+pnpm exec tsx --test apps/zcode-cli/packages/adapters/test/officeEditorPlugin.test.ts \
+  apps/zcode-cli/packages/adapters/test/pluginUworkAliases.test.ts
+pnpm test:unit:node
+pnpm exec tsx --test packages/services/test/identitySessionGuard.test.mts \
+  packages/services/test/ucasGatewayIdentityRace.test.mts \
+  apps/zcode-cli/packages/adapters/test/skillhubSource.test.ts \
+  apps/zcode-cli/packages/adapters/test/userStorageRoot.test.ts \
+  apps/zcode-cli/packages/adapters/test/marketplaceTrust.test.ts \
+  scripts/test/uworkBranding.test.ts scripts/test/desktopEnterpriseIdentity.test.ts \
+  packages/services/test/appCaCertSecurity.test.mts scripts/test/dependencySecurity.test.ts \
+  scripts/test/mcpOAuthIssuer.test.ts
+pnpm exec vitest run packages/server/test/serverInfoHttp.test.ts packages/server/test/hostCapability.test.ts \
+  packages/server/test/botsHttp.test.ts packages/desktop/test/serverRemoteConnection.test.ts
+pnpm audit --prod --audit-level=high --json > dependency-audit.json
+```
+
+三个已踩过的坑：
+
+- **`max-lines`（400）是 error**：新增或扩容的数据表 / 用例表很容易越线（`packages/ui/scripts/lib/officePptxEditCases.mjs` 就因此让 CI 红过）。仓库既有做法是在文件头加 `/* eslint-disable max-lines -- <为什么拆不开> */`（见 `scripts/licenses.mjs`、`scripts/upstream-track.mjs`）。
+- **CI 里点名的测试文件允许不存在**：Vitest 的位置参数是过滤器，只要还有一个匹配就不报错（例如 `packages/ui/test/v4ConversationDraftEmptyStateLogo.test.ts` 已随上游 3.16.2 删除，CI 仍然绿）。
+- `pnpm install --frozen-lockfile` 与 `pnpm audit` 需要网络；离线环境跑不了这两步，别把它们当成"已通过"。
+
 ## 开发环境与版本管理工具
 
 pre-push 直接使用当前 `PATH` 中的 pnpm / Node，不强制依赖 mise。此前 hook 外层的

@@ -22,7 +22,15 @@ import { getZCodeDataRootDir as projectDataRoot } from "#src/paths.js";
 import { createTaskGroupService, ITaskGroupService, groupTaskKey } from "#src/task-groups/index.js";
 import { IGenUiService } from "./gen-ui/contract.js";
 import { createGenUiService } from "./gen-ui/node.js";
-import { channelReplyHostRequestSchema, channelReplyResultSchema } from "@zcode/shared";
+import { IImService } from "./im/contract.js";
+import { createImHttpClient } from "./im/imHttpClient.js";
+import { createImService } from "./im/imService.js";
+import type { ImSocketLike } from "./im/imTransport.js";
+import {
+  buildImWsUrl,
+  channelReplyHostRequestSchema,
+  channelReplyResultSchema,
+} from "@zcode/shared";
 import { discoverProviderModels } from "./model-provider/providerModelDiscovery.js";
 /* eslint-disable max-lines -- host process 服务注册和启动装配需要集中维护，拆散后会更难追踪依赖注入顺序 */
 // Node.js service implementations — NOT safe to import in browser code
@@ -1229,6 +1237,8 @@ export function createLocalServices(options: {
   >["prepareLegacyAccountConnections"];
   /** 注入后由 ServiceCollection 接管释放，并供 Host 其它 app-managed 下载复用。 */
   hostApiNetworkTransport?: HostApiNetworkTransport;
+  /** IM 的 WS 连接实现；不注入时退回运行时全局 WebSocket（Node 22+ 自带）。 */
+  imCreateSocket?: (url: string) => ImSocketLike;
   /** Desktop Host 注入 Main 推送的实时界面语言，供 ZCode endpoint 的 X-Client-Language；远端 server 不注入。 */
   resolveClientLanguage?: () => string | undefined;
   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
@@ -1713,6 +1723,71 @@ export function createLocalServices(options: {
     provisioning: ucasGatewayProvisioning,
     fetchImpl: (input, init) => hostApiNetworkTransport.fetch(input, init),
   });
+  // 基础 IM：与网关同源（apiBaseUrl），令牌复用企业身份会话里的那个 JWT，不再单造登录。
+  // WS 连接实现由宿主注入；未注入时退回运行时的全局 WebSocket（Node 22+ 自带）。
+  const resolveImBaseUrl = async (): Promise<string | undefined> => {
+    if (options.serviceAuthorityMode !== "desktop-local") return undefined;
+    try {
+      const config = await loadWeComIdentityConfig(
+        join(resolveAppConfigDir(), "enterprise-identity.json"),
+        options.enterpriseIdentityBuiltinConfigFilePath,
+      );
+      return config?.apiBaseUrl;
+    } catch {
+      return undefined;
+    }
+  };
+  const resolveImToken = async (): Promise<string | undefined> =>
+    (await enterpriseIdentitySessionStore.read()).session?.token;
+  const imService = createImService({
+    client: createImHttpClient({
+      resolveBaseUrl: resolveImBaseUrl,
+      resolveToken: resolveImToken,
+      fetchImpl: (input, init) => hostApiNetworkTransport.fetch(input, init),
+    }),
+    resolveUrl: async () => {
+      const base = await resolveImBaseUrl();
+      return base ? buildImWsUrl(base) : undefined;
+    },
+    resolveToken: resolveImToken,
+    createSocket:
+      options.imCreateSocket ??
+      ((url) => {
+        const Ctor = (globalThis as { WebSocket?: new (url: string) => unknown }).WebSocket;
+        if (!Ctor) throw new Error("IM 需要宿主注入 imCreateSocket（当前运行时没有 WebSocket）");
+        return new Ctor(url) as ImSocketLike;
+      }),
+    log: (level, message, detail) =>
+      console[level === "warn" ? "warn" : "info"](`[im] ${message}`, detail ?? ""),
+  });
+  /**
+   * 把"工作项接口"的基址与当前用户令牌放进**运行时环境**，让 agent 的 bash 能以用户身份提交工作记录
+   * （部门汇报 skill 的提交脚本读这两个变量）。
+   *
+   * 为什么只能由宿主做：令牌在凭据服务里由宿主加密保管，agent 子进程拿不到；
+   * 为什么必须刷新：令牌会过期，写死一份等于过一会儿就静默失效（那种"昨天还能用"的问题最难查）。
+   *
+   * 取舍（见 UWork/specs/work-reports-and-rollup.md §8.2）：这确实把用户令牌交给了 agent 环境，
+   * 提示注入可以带走它；正解是宿主开 loopback 窄端点、只发一把对工作项接口有效的短时令牌。
+   * 先按"打通链路"落地，窄能力随后收口——那时只需把这里换成一个只读的环境值（端点地址）。
+   */
+  const WORK_ITEM_ENV_REFRESH_MS = 5 * 60 * 1000;
+  const publishWorkItemEnv = async (): Promise<void> => {
+    try {
+      const base = await resolveImBaseUrl();
+      const token = await resolveImToken();
+      if (base && token) {
+        process.env.UWORK_WORK_ITEM_BASE_URL = base;
+        process.env.UWORK_WORK_ITEM_TOKEN = token;
+      }
+    } catch {
+      // 拿不到就保持上一次的值：没登录/离线时不该把已有链路打断
+    }
+  };
+  void publishWorkItemEnv();
+  const workItemEnvTimer = setInterval(() => void publishWorkItemEnv(), WORK_ITEM_ENV_REFRESH_MS);
+  workItemEnvTimer.unref?.();
+
   handleOAuthProviderLogout = createOAuthProviderLogoutHandler({
     accountProviderCredentialStore,
     refreshAccountProviders: (reason: string) => accountProviderConfigSource.refresh(reason),
@@ -2808,6 +2883,7 @@ export function createLocalServices(options: {
       }),
     )
     .register(IUcasGatewayService, ucasGatewayService)
+    .register(IImService, imService)
     .register(
       IUsageStatsService,
       createUsageStatsService({

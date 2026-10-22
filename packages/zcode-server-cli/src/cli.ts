@@ -24,11 +24,7 @@ import {
 import { validateServerInstallOwnership } from "./runtime/installationOwnership.js";
 import { createReleaseAgentWiring, type BundledAgentWiring } from "./runtime/agentWiring.js";
 import { writeStableLauncher } from "./runtime/stableLauncher.js";
-import {
-  runLocalArchiveUpdateCommand,
-  runUpdateCommand,
-  type UpdateDaemonHandoff,
-} from "./runtime/updateCommand.js";
+import { runLocalArchiveUpdateCommand, type UpdateDaemonHandoff } from "./runtime/updateCommand.js";
 import { DataRootLock } from "./runtime/lock.js";
 import { ReleaseManager } from "./runtime/releaseManager.js";
 import { createUpdateDaemonHandoff } from "./runtime/updateHandoff.js";
@@ -96,6 +92,11 @@ export function isRegisteredServiceEntry(args: readonly string[]): boolean {
 }
 
 export const SERVER_SERVICE_ARGS = ["serve", "--supervisor"] as const;
+
+// 远端 Server 的升级只能由桌面客户端驱动：客户端下载归档后推送 `update --from-archive`。
+// daemon 不再自己访问 CDN 拉 catalog/组件包，缺省 update 直接给出可操作的排障提示。
+const DESKTOP_DRIVEN_UPDATE_ONLY =
+  "Remote UWork Server is updated by the desktop app only. Reconnect from UWork to push a new version (or pass --from-archive <path>).";
 
 export function shouldRegisterService(
   daemonRequested: boolean,
@@ -169,6 +170,9 @@ export async function runServerCli(
       case "restart":
         return await runControl(command, io, json, {}, layout);
       case "update": {
+        // 无 --from-archive 时不再进入任何准备/下载流程：先判分支再取锁，避免并发更新时
+        // 把「应该由桌面端驱动」这件事报成锁冲突，也保证这里不产生任何控制请求或网络 IO。
+        if (!parsed.argv.includes("--from-archive")) throw new Error(DESKTOP_DRIVEN_UPDATE_ONLY);
         const updateLock = await acquireLifecycleCommandLock(
           layout,
           "Another UWork Server update is already running",
@@ -176,17 +180,7 @@ export async function runServerCli(
         const updateDaemonHandoff =
           runtimeOptions.updateDaemonHandoff ?? createUpdateDaemonHandoff();
         try {
-          if (parsed.argv.includes("--from-archive")) {
-            return await runLocalArchiveUpdateCommand(
-              parsed.argv,
-              io,
-              json,
-              layout,
-              () => requestApplyUpdate(layout, parsed.argv.includes("--force")),
-              updateDaemonHandoff,
-            );
-          }
-          return await runUpdateCommand(
+          return await runLocalArchiveUpdateCommand(
             parsed.argv,
             io,
             json,

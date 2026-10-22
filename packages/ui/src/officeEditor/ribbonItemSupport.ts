@@ -5,8 +5,10 @@
  * 从 RibbonItemViews 拆出：那个文件曾到 460 行，仓库规矩是单文件 ≤400 行。
  */
 import {
+  AlignBottom24Regular,
   AlignLeft24Regular,
   AlignRight24Regular,
+  AlignTop24Regular,
   ArrowDown24Regular,
   ArrowRedo24Regular,
   ArrowUndo24Regular,
@@ -68,6 +70,8 @@ import type { RibbonStyle } from "./officeRibbonModel.js";
 
 /** 模型里 `icon` 字段写的是 Fluent 图标名，这里做名字到组件的查表。 */
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  AlignTop24Regular,
+  AlignBottom24Regular,
   ArrowUndo24Regular,
   SlideAdd24Regular,
   Copy24Regular,

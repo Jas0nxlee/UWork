@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   controlRequestSchema,
   controlResponseSchema,
-  releaseCatalogSchema,
   releaseManifestSchema,
   runtimeIdentitySchema,
   serverStatusSchema,
@@ -74,19 +73,6 @@ describe("R2 control contract", () => {
   it("rejects release versions that could escape the releases directory", () => {
     expect(
       releaseManifestSchema.safeParse({ version: "../escape", releaseDir: "/tmp/release" }).success,
-    ).toBe(false);
-    expect(
-      releaseCatalogSchema.safeParse({
-        schemaVersion: 1,
-        releases: [
-          {
-            version: "3.8.0/evil",
-            target: "linux-x64",
-            archiveUrl: "https://example.test/release.tar.gz",
-            archiveSha256: "a".repeat(64),
-          },
-        ],
-      }).success,
     ).toBe(false);
   });
 

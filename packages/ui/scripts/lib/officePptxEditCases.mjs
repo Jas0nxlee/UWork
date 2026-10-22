@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- PPTX 编辑点测的用例表：每个用例是一条 场景+操作+断言，拆文件会让用例与断言分家、更难对照。 */
 /**
  * PPT 的**数据层断言**：形状（几何/格式/层级/复制删除/新建文本框）与
  * 幻灯片（新建/复制/删除/调顺序），外加"只动了该动的部件"这条保真底线。
@@ -373,5 +374,276 @@ export async function runPptxEditCases({ page, check }) {
   check(
     cellOps.blockIndexOfLast === cellOps.total - 1,
     `"第 2 行第 2 列"定位到最后一个文本块（序号 ${cellOps.blockIndexOfLast} / 共 ${cellOps.total}）`,
+  );
+
+  // ⑫ 表格的"内容面"：合并/拆分、底纹、边框、样式开关（都按 PowerPoint 写出来的形态）
+  const tableContent = await page.evaluate(() => {
+    const ns = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const pns = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    const start = window.__pptx.insertTable(
+      '<?xml version="1.0"?><p:sld xmlns:p="' +
+        pns +
+        '" xmlns:a="' +
+        ns +
+        '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sld>',
+      { rows: 2, cols: 3, pageWidth: 9144000, pageHeight: 6858000 },
+    );
+    const name = start.name;
+    const doc = (xml) => new DOMParser().parseFromString(xml, "application/xml");
+    const cells = (xml) => {
+      const frame = [...doc(xml).getElementsByTagNameNS(pns, "graphicFrame")].find(
+        (node) => node.getElementsByTagNameNS(pns, "cNvPr")[0]?.getAttribute("name") === name,
+      );
+      return [...(frame?.getElementsByTagNameNS(ns, "tr") ?? [])].map((row) =>
+        [...row.children]
+          .filter((child) => child.localName === "tc")
+          .map((cell) => ({
+            gridSpan: cell.getAttribute("gridSpan"),
+            rowSpan: cell.getAttribute("rowSpan"),
+            hMerge: cell.getAttribute("hMerge"),
+            vMerge: cell.getAttribute("vMerge"),
+            fill: cell.getElementsByTagNameNS(ns, "srgbClr")[0]?.getAttribute("val") ?? null,
+            borders: ["lnL", "lnR", "lnT", "lnB"].every(
+              (line) => cell.getElementsByTagNameNS(ns, line).length > 0,
+            ),
+          })),
+      );
+    };
+    const mergedRight = window.__pptx.mergeCell(start.xml, name, 0, 0, "right");
+    const mergedDown = window.__pptx.mergeCell(start.xml, name, 0, 0, "down");
+    const split = window.__pptx.splitCell(mergedRight, name, 0, 0);
+    const filled = window.__pptx.setCellFill(start.xml, name, 1, 2, "D93025");
+    const bordered = window.__pptx.setCellBorder(start.xml, name, 0, 1, {
+      on: true,
+      color: "1A73E8",
+    });
+    const firstRowOff = window.__pptx.setTableOptions(start.xml, name, { firstRow: false });
+    return {
+      base: window.__pptx.tableSizeOf(start.xml, name),
+      mergedRightCell: cells(mergedRight)[0][0],
+      mergedRightSibling: cells(mergedRight)[0][1],
+      mergedDownCell: cells(mergedDown)[0][0],
+      mergedDownBelow: cells(mergedDown)[1][0],
+      afterSplit: cells(split)[0].slice(0, 3),
+      fill: cells(filled)[1][2].fill,
+      border: cells(bordered)[0][1].borders,
+      optionsBefore: window.__pptx.tableOptionsOf(start.xml, name),
+      optionsAfter: window.__pptx.tableOptionsOf(firstRowOff, name),
+    };
+  });
+  check(
+    tableContent.mergedRightCell?.gridSpan === "2" &&
+      tableContent.mergedRightSibling?.hMerge === "1",
+    `向右合并：本格 gridSpan=2、右邻 hMerge=1（${JSON.stringify(tableContent.mergedRightCell)}）`,
+  );
+  check(
+    tableContent.mergedDownCell?.rowSpan === "2" && tableContent.mergedDownBelow?.vMerge === "1",
+    `向下合并：本格 rowSpan=2、下邻 vMerge=1（${JSON.stringify(tableContent.mergedDownBelow)}）`,
+  );
+  check(
+    tableContent.afterSplit?.every(
+      (cell) => !cell.gridSpan && !cell.rowSpan && !cell.hMerge && !cell.vMerge,
+    ),
+    `拆分把合并标记全撤掉（${JSON.stringify(tableContent.afterSplit)}）`,
+  );
+  check(
+    tableContent.fill === "D93025" && tableContent.border === true,
+    `底纹与边框落到单元格（底纹 ${tableContent.fill}／四边边框 ${tableContent.border}）`,
+  );
+  check(
+    tableContent.optionsBefore?.firstRow === true && tableContent.optionsAfter?.firstRow === false,
+    `表格样式开关（首行突出 ${tableContent.optionsBefore?.firstRow} → ${tableContent.optionsAfter?.firstRow}）`,
+  );
+
+  // ⑭ 任意矩形合并（选一片并成一格）+ 格内垂直/水平对齐
+  const rectRun = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const xml0 = deck.sourceXml.get(part) ?? "";
+    // fixture 的表格是 1×1：先长成 2×2（下面加一行、右边加一列），再并这一片
+    const grownRow = window.__pptx.applyTableStructureEdit(xml0, "表格 1", 0, 0, {
+      kind: "insertRowBelow",
+    });
+    const grown = window.__pptx.applyTableStructureEdit(grownRow, "表格 1", 0, 0, {
+      kind: "insertColumnRight",
+    });
+    const merged = window.__pptx.mergeCellRange(
+      grown,
+      "表格 1",
+      { row: 0, col: 0 },
+      { row: 1, col: 1 },
+    );
+    // 锚点标签要按**带属性的开标签**取（合并后它是 `<a:tc gridSpan="2" rowSpan="2">`）
+    const anchorTag = /<a:tc[^>]*>/.exec(merged)?.[0] ?? "";
+    // 只数表格里的文字（整页还有标题那几处 a:t）
+    const tableText = merged.slice(merged.indexOf("<a:tbl>"));
+    const textCount = (tableText.match(/<a:t>/g) ?? []).length;
+    const anchored = window.__pptx.setCellAnchor(merged, "表格 1", 0, 0, "middle");
+    const aligned = window.__pptx.setCellAlign(anchored, "表格 1", 0, 0, "center");
+    const format = window.__pptx.cellFormatOf(aligned, "表格 1", 0, 0);
+    const split = window.__pptx.splitCell(aligned, "表格 1", 0, 0);
+    // 写回 + 校验 + 渲染：合并/对齐之后这份 deck 还得是合法的
+    const current = new Map(deck.sourceXml);
+    current.set(part, aligned);
+    const written = await window.__pptx.write({ source: bytes, baseline: deck.sourceXml, current });
+    const validation = await window.__pptx.validate(written.bytes, bytes, {
+      editedSlides: written.changedSlides,
+    });
+    const rendered = await window.__pptx.render(written.bytes);
+    const reread = await window.__pptx.readDeck(written.bytes);
+    return {
+      size: window.__pptx.tableSizeOf(grown, "表格 1"),
+      anchorSpan: [/gridSpan="2"/.test(anchorTag), /rowSpan="2"/.test(anchorTag)],
+      covered: [/hMerge="1"/.test(merged), /vMerge="1"/.test(merged)],
+      // 被并掉的三格文字要清掉：整张表里只剩锚点那一处文字
+      textCount,
+      format,
+      alignProp: /<a:pPr algn="ctr"\/>/.test(aligned),
+      splitBack: !/gridSpan|rowSpan|hMerge|vMerge/.test(split),
+      mergeSurvivedRender: rendered.slides === 2,
+      mergedText: reread.slides[0].blocks[1]?.lines?.join("|") ?? null,
+      validation: { ok: validation.ok, issues: validation.issues.map((issue) => issue.message) },
+    };
+  });
+  check(
+    rectRun.size?.rows === 2 && rectRun.size?.cols === 2,
+    `先把表格长成 2×2 再并（${rectRun.size?.rows}×${rectRun.size?.cols}）`,
+  );
+  check(
+    rectRun.anchorSpan[0] && rectRun.anchorSpan[1] && rectRun.covered[0] && rectRun.covered[1],
+    `任意矩形合并写成锚点 gridSpan/rowSpan + 其余格 hMerge/vMerge（2×2 一片）`,
+  );
+  check(
+    rectRun.textCount === 1,
+    `被并掉的格文字清掉、只留左上角（整张表里 <a:t> 数量 ${rectRun.textCount}）`,
+  );
+  check(
+    rectRun.format?.anchor === "middle" && rectRun.format?.align === "center" && rectRun.alignProp,
+    `垂直对齐写 a:tcPr@anchor、水平对齐写段落 a:pPr@algn（读回 ${JSON.stringify(rectRun.format)}）`,
+  );
+  check(rectRun.splitBack, "拆分把整片合并标记一次性撤掉（gridSpan/rowSpan/hMerge/vMerge 都没了）");
+  check(
+    rectRun.validation.ok &&
+      rectRun.mergeSurvivedRender &&
+      rectRun.mergedText?.includes("单元格文字"),
+    `合并后的这一页写得回、校验过、渲染器仍认得（${rectRun.mergedText}）`,
+  );
+
+  // ⑭b 网格线：插入的表自带四边线；整表"套用/去掉网格"是开关（用户："表格没有边框？"）
+  const gridRun = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const part = deck.slides[0].partName;
+    const xml0 = deck.sourceXml.get(part) ?? "";
+    const inserted = window.__pptx.insertTable(xml0, {
+      rows: 2,
+      cols: 2,
+      pageWidth: 9144000,
+      pageHeight: 6858000,
+    });
+    const name = inserted.name;
+    const cellSides = ["lnL", "lnR", "lnT", "lnB"];
+    // 只数表格里的线：序列化后开标签可能带命名空间（`<a:tbl xmlns:…>`），所以用正则找起点
+    const countLines = (xml) => {
+      // 用**最后一张**表：这一页原本就有一张 fixture 的表（它没有线），插进来的在它后面
+      const start = xml.lastIndexOf("<a:tbl");
+      const end = xml.indexOf("</a:tbl>", start);
+      const table = start < 0 || end < 0 ? "" : xml.slice(start, end);
+      return Object.fromEntries(
+        cellSides.map((side) => [
+          side,
+          (table.match(new RegExp(`<a:${side}[ >]`, "g")) ?? []).length,
+        ]),
+      );
+    };
+    const insertedLines = countLines(inserted.xml);
+    const on = window.__pptx.tableGridOn(inserted.xml, name);
+    const off = window.__pptx.setTableGrid(inserted.xml, name, false);
+    const offLines = countLines(off);
+    const backOn = window.__pptx.setTableGrid(off, name, true);
+    // 写回 + 渲染：带网格的表在**画布上真的看得见线**（下面界面断言用挂载后的计算样式再验一次）
+    const current = new Map(deck.sourceXml);
+    current.set(part, backOn);
+    const written = await window.__pptx.write({ source: bytes, baseline: deck.sourceXml, current });
+    const validation = await window.__pptx.validate(written.bytes, bytes, {
+      editedSlides: written.changedSlides,
+    });
+    return {
+      name,
+      insertedLines,
+      on,
+      offLines,
+      reOn: window.__pptx.tableGridOn(backOn, name),
+      cells: 4,
+      validation: validation.ok,
+      rendered: (await window.__pptx.render(written.bytes)).slides,
+    };
+  });
+  check(
+    gridRun.insertedLines.lnL === 4 &&
+      gridRun.insertedLines.lnT === 4 &&
+      gridRun.on &&
+      gridRun.cells === 4,
+    `插入的表格自带网格线（4 格 × 四边：lnL ${gridRun.insertedLines.lnL}／lnT ${gridRun.insertedLines.lnT}）`,
+  );
+  check(
+    !gridRun.offLines.lnL && gridRun.reOn && gridRun.validation && gridRun.rendered === 2,
+    `整表网格是开关（去掉后 0 条线，再套回 ${gridRun.reOn}；产物仍合法、渲染 ${gridRun.rendered} 页）`,
+  );
+
+  // ⑬ 讲稿备注：读已有的、改它、给没有备注的页新建一个（部件 + rel + Content_Types）
+  const notesRun = await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    const deck = await window.__pptx.readDeck(bytes);
+    const slide1 = deck.slides[0].partName;
+    const slide2 = deck.slides[1].partName;
+    const part1 = await window.__pptx.notesPartOf(bytes, slide1);
+    const part2 = await window.__pptx.notesPartOf(bytes, slide2);
+    const xml1 = part1
+      ? ((await (await window.__pptx.rawZip(bytes)).file(part1)?.async("string")) ?? "")
+      : "";
+    const bodyIndex = xml1 ? window.__pptx.notesBodyIndex(xml1) : null;
+    const patched =
+      bodyIndex === null ? null : window.__pptx.patch(xml1, bodyIndex, ["改过的讲稿"]);
+    const created = await window.__pptx.addNotesSlide(bytes.slice(0), slide2, part1);
+    const zipAfter = await window.__pptx.rawZip(created.bytes);
+    const relsName = `ppt/slides/_rels/${slide2.split("/").pop()}.rels`;
+    const rels = (await zipAfter.file(relsName)?.async("string")) ?? "";
+    const contentTypes = (await zipAfter.file("[Content_Types].xml")?.async("string")) ?? "";
+    const rendered = await window.__pptx.render(created.bytes);
+    return {
+      part1,
+      part2,
+      text1: xml1 ? window.__pptx.readNotesText(xml1) : null,
+      bodyIndex,
+      afterPatch: patched ? window.__pptx.readNotesText(patched) : null,
+      slidesStillReadable: (await window.__pptx.readDeck(created.bytes)).slides.length,
+      newPartName: created.partName,
+      partExists: Boolean(zipAfter.file(created.partName)),
+      relAdded: rels.includes("notesSlide"),
+      contentType: contentTypes.includes("/ppt/notesSlides/"),
+      renderedSlides: rendered.slides,
+    };
+  });
+  check(
+    notesRun.part1 === "ppt/notesSlides/notesSlide1.xml" && notesRun.part2 === null,
+    `按"这一页的 rels"找到备注部件（第 1 页 ${notesRun.part1}、第 2 页无）`,
+  );
+  check(
+    notesRun.text1?.join("|") === "讲稿备注" && notesRun.bodyIndex !== null,
+    `读得出备注正文并定位到它的 txBody（${JSON.stringify(notesRun.text1)}，序号 ${notesRun.bodyIndex}）`,
+  );
+  check(
+    notesRun.afterPatch?.join("|") === "改过的讲稿",
+    `改备注只动那一个 txBody（${JSON.stringify(notesRun.afterPatch)}）`,
+  );
+  check(
+    notesRun.partExists && notesRun.relAdded && notesRun.contentType,
+    `给没有备注的页新建备注部件（${notesRun.newPartName}）并补 rel 与 Content_Types`,
+  );
+  check(
+    notesRun.slidesStillReadable === 2 && notesRun.renderedSlides === 2,
+    `加了备注部件之后这份 deck 仍然读得开、渲染器也认（${notesRun.renderedSlides} 页）`,
   );
 }
