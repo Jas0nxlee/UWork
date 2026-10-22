@@ -94,7 +94,6 @@ export function useImJumpToMessage(options: {
       .loadAround(options.jumpRequest.seq)
       .then(() => window.setTimeout(() => jumpToMessage(options.jumpRequest?.id ?? ""), 60))
       .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.jumpRequest?.at]);
 
   /**

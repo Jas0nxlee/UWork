@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImMember } from "@zcode/shared";
 import { logger } from "@/logger.js";
 

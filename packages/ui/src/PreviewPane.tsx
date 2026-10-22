@@ -33,6 +33,7 @@ import { TID_PREVIEW_PANE } from "@zcode/shared/test-ids";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { usePptxFileWatch } from "@/hooks/usePptxFileWatch.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { useModelViewerLabels } from "@/hooks/useModelViewerLabels.js";
 import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
   FILE_VIEWER_MAX_TEXT_BYTES,
@@ -43,6 +44,7 @@ import {
   isPptxPreviewPath,
   type CodeViewerSource,
   type MediaCodeViewerSource,
+  type ModelCodeViewerSource,
 } from "@/lib/codeViewer.js";
 import type { PdfViewerSource } from "@/components/ui/pdf-viewer.js";
 import { normalizeCodeViewerSource } from "@/lib/codeViewerSource.js";
@@ -106,6 +108,7 @@ import {
   isPptxPreviewIncompleteFileError,
   readPptxPreviewData,
 } from "@/lib/pptxPreviewData.js";
+import { getModelPreviewFormat, isModelPreviewPath as isModelPath } from "@/lib/modelPreview.js";
 
 interface CodeViewerBreadcrumbData {
   rootLabel: string | null;
@@ -387,10 +390,34 @@ export function resolvePreviewPanePptxSource(
   };
 }
 
+/**
+ * 3D 模型与 PDF/PPTX 同一策略：`file` source 按扩展名**懒升级**成专用预览，
+ * 这样文件树/工具卡/正文链接都不需要各自认识模型扩展名。
+ */
+export function resolvePreviewPaneModelSource(
+  source: CodeViewerSource | null,
+): ModelCodeViewerSource | null {
+  if (!source) {
+    return null;
+  }
+
+  if (source.type === "model") {
+    return source;
+  }
+
+  if (source.type !== "file") {
+    return null;
+  }
+
+  const format = getModelPreviewFormat(source.path);
+  return format ? { ...source, type: "model", format } : null;
+}
+
 export function shouldShowPreviewPaneHeaderDivider(source: CodeViewerSource | null): boolean {
   return Boolean(
     resolvePreviewPanePdfSource(source) ||
     resolvePreviewPanePptxSource(source) ||
+    resolvePreviewPaneModelSource(source) ||
     resolvePreviewPaneMediaSource(source) ||
     (source?.type === "file" && getOfficeFilePreviewKind(source.path)),
   );
@@ -410,14 +437,15 @@ function isPlainCodeSource(source: CodeViewerSource | null): boolean {
       !isMarkdownFilePath(source.path) &&
       !isSvgFilePath(source.path) &&
       !getFileImageMediaType(source.path) &&
-      // PDF、Office 和 PPTX 走专用只读预览，没有源码视图，也不该出现自动换行开关。
+      // PDF、Office、PPTX 与 3D 模型走专用只读预览，没有源码视图，也不该出现自动换行开关。
       !isPdfPreviewPath(source.path) &&
       !getOfficeFilePreviewKind(source.path) &&
-      !isPptxPreviewPath(source.path)
+      !isPptxPreviewPath(source.path) &&
+      !isModelPath(source.path)
     );
   }
 
-  if (source.type === "media") return false;
+  if (source.type === "media" || source.type === "model") return false;
 
   if (source.type === "code-review") {
     return true;
@@ -629,6 +657,8 @@ export function PreviewPane({
     if (leave) officeEditorDirtyRef.current = false;
     return leave;
   }, []);
+  const [loadingModelPreview, setLoadingModelPreview] = useState(false);
+  const [modelPreviewData, setModelPreviewData] = useState<Uint8Array | null>(null);
   const [loadingPptxPreview, setLoadingPptxPreview] = useState(false);
   const [pptxPreviewData, setPptxPreviewData] = useState<ArrayBuffer | null>(null);
   const [validatedPptxReferenceNavigationRequestId, setValidatedPptxReferenceNavigationRequestId] =
@@ -682,6 +712,9 @@ export function PreviewPane({
   }, [officePreviewKind, source]);
   const canEditOfficeInPlace = officeEditorKind !== null;
   const pptxSource = useMemo(() => resolvePreviewPanePptxSource(source), [source]);
+  const modelSource = useMemo(() => resolvePreviewPaneModelSource(source), [source]);
+  const modelSourcePath = modelSource?.path ?? null;
+  const modelViewerLabels = useModelViewerLabels();
   const showDocumentHeaderDivider = shouldShowPreviewPaneHeaderDivider(source);
   const pptxSourcePath = pptxSource?.path ?? null;
   const pptxReferenceNavigation = pptxSource?.referenceNavigation ?? null;
@@ -702,6 +735,7 @@ export function PreviewPane({
     !pdfSource &&
     !officePreviewKind &&
     !pptxSource &&
+    !modelSource &&
     !mediaSource
       ? source
       : null;
@@ -1430,6 +1464,69 @@ export function PreviewPane({
     };
   }, [fileService, intl, pptxReferenceNavigation, pptxSource, pptxSourcePath]);
 
+  /**
+   * 模型字节走**与只读 Office 预览同一条通道**（`readBinaryPreview`，25 MB 上限 + base64 返回），
+   * 不再为 3D 单独造一条分段读取通道。同目录的 `.bin`/贴图/`.mtl` 也用同一条通道读。
+   */
+  const readModelAssetBytes = useCallback(
+    async (path: string) => {
+      const preview = await fileService.readBinaryPreview({ path });
+      return new Uint8Array(decodeBase64ToArrayBuffer(preview.dataBase64));
+    },
+    [fileService],
+  );
+
+  useEffect(() => {
+    let disposed = false;
+
+    if (!modelSourcePath) {
+      setModelPreviewData(null);
+      setLoadingModelPreview(false);
+      return () => {
+        disposed = true;
+      };
+    }
+
+    setLoadingModelPreview(true);
+    setModelPreviewData(null);
+    setError(null);
+
+    void fileService
+      .readBinaryPreview({ path: modelSourcePath })
+      .then((preview) => {
+        if (!disposed) {
+          setModelPreviewData(new Uint8Array(decodeBase64ToArrayBuffer(preview.dataBase64)));
+        }
+      })
+      .catch((previewError: unknown) => {
+        if (disposed) {
+          return;
+        }
+        logger.error("[PreviewPane] 读取 3D 模型预览失败", {
+          path: modelSourcePath,
+          error: previewError instanceof Error ? previewError.message : String(previewError),
+        });
+        setError(
+          isPreviewPaneMissingFileError(previewError)
+            ? intl.formatMessage({ id: "codeViewer.fileMissing" })
+            : isPreviewPaneFileTooLargeError(previewError)
+              ? intl.formatMessage({ id: "codeViewer.modelTooLarge" })
+              : previewError instanceof Error
+                ? previewError.message
+                : String(previewError),
+        );
+      })
+      .finally(() => {
+        if (!disposed) {
+          setLoadingModelPreview(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [fileService, intl, modelSourcePath]);
+
   useEffect(() => {
     let disposed = false;
 
@@ -1909,7 +2006,7 @@ export function PreviewPane({
           )
         ) : renderHeavyContent ? (
           <PreviewPaneContent
-            source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
+            source={pptxSource ?? modelSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
             filePreview={filePreview}
             fileTooLarge={fileTooLarge}
             loadingInitial={loadingInitial}
@@ -1928,6 +2025,10 @@ export function PreviewPane({
             loadingOfficePreview={loadingOfficePreview}
             officePreview={officePreview}
             officePreviewKind={officePreviewKind}
+            modelPreviewData={modelPreviewData}
+            loadingModelPreview={loadingModelPreview}
+            modelViewerLabels={modelViewerLabels}
+            readModelAssetBytes={readModelAssetBytes}
             loadingPptxPreview={loadingPptxPreview}
             pptxPreviewData={pptxPreviewData}
             pptxViewerLabels={pptxViewerLabels}

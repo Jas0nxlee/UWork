@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImMessage } from "@zcode/shared";
 import { logger } from "@/logger.js";
 

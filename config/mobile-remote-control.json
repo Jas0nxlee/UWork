@@ -1,0 +1,4 @@
+{
+  "remotePageBaseUrl": "https://aihub.ucas.com.cn/remote/v4",
+  "relayWsUrl": "wss://aihub.ucas.com.cn/remote/ws"
+}

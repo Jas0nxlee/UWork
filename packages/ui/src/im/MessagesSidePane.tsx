@@ -3,7 +3,7 @@ import type { ImConversationSummary, ImDirectoryUser, ImMessage } from "@zcode/s
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
-import type { MessagesSidePaneTab } from "@/lib/workspaceSidePane.js";
+import type { MessagesSidePaneProps } from "./contract.js";
 import { IM_EMPTY, IM_EMPTY_ICON, IM_EMPTY_TEXT, IM_PANEL } from "./imChrome.js";
 import { useImBookmarks } from "./useImBookmarks.js";
 import {
@@ -42,11 +42,7 @@ import { useIm } from "./useIm.js";
  * 这里只做展示与交互编排——准入由服务端的白名单决定（`entitlement.enabled === false`
  * 才隐藏内容），未连接、暂不可用等状态区分显示，不要把"查不到"当成"没权限"。
  */
-export const MessagesSidePane = memo(function MessagesSidePane({
-  tab,
-}: {
-  tab: MessagesSidePaneTab;
-}) {
+export const MessagesSidePane = memo(function MessagesSidePane({ tab }: MessagesSidePaneProps) {
   const { intl } = useZCodeIntl();
   const t = (id: string, values?: Record<string, string | number>): string =>
     intl.formatMessage({ id }, values);

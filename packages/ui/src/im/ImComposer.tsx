@@ -125,7 +125,6 @@ export const ImComposer = memo(function ImComposer({
   useEffect(() => {
     if (editing) onDraftChange(editing.body);
     // 只关心"进入/退出编辑"，不跟着正文变化走（否则打字会被自己覆盖）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing?.id]);
 
   return (

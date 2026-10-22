@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImDirectoryUser } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import { ImDirectoryList } from "./ImDirectoryList.js";

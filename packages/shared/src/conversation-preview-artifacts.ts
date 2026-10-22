@@ -11,10 +11,17 @@ export type ConversationPreviewFileKind =
   | "xlsx"
   | "pptx"
   | "pdf"
+  | "model"
   | "video"
   | "audio";
 
-export type ConversationPreviewArtifactType = ConversationArtifactType | "video" | "audio";
+// 3D 模型与视频/音频一样，只是**预览卡片候选**：服务端分享能力表里没有这些类型，
+// 因此它们能出现在对话里，但不会进入可上传 manifest（见 conversationShareArtifactDiscovery）。
+export type ConversationPreviewArtifactType =
+  | ConversationArtifactType
+  | "video"
+  | "audio"
+  | "model";
 
 export interface ConversationPreviewFileReference {
   end: number;
@@ -84,6 +91,12 @@ const PREVIEW_FILE_TYPES: readonly PreviewFileTypeDefinition[] = [
     mimeType: "application/pdf",
     artifactType: "pdf",
   },
+  {
+    extensions: [".glb", ".gltf", ".obj", ".stl", ".ply", ".3mf"],
+    kind: "model",
+    mimeType: "model/gltf-binary",
+    artifactType: "model",
+  },
   ...MEDIA_PREVIEW_FORMATS.map(
     ({ extension, kind, mediaType }): PreviewFileTypeDefinition => ({
       extensions: [extension],
@@ -101,9 +114,9 @@ const FILE_URL_RE = /\bfile:\/\/[^\s<>()\]`"'*，。！？；：、]+/giu;
 const FILE_CITATION_RE = /:{1,2}zcode-file-citation\{([^}]*)\}/giu;
 const MARKDOWN_LINK_RE = /\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const DELIMITED_FILE_PATH_RE =
-  /([`"'])([^`"'\r\n]+?\.(?:md|html?|docx|xlsx|pptx|pdf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)\1/giu;
+  /([`"'])([^`"'\r\n]+?\.(?:md|html?|docx|xlsx|pptx|pdf|glb|gltf|obj|stl|ply|3mf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)\1/giu;
 const FILE_PATH_RE =
-  /(?:^|[\s("'`,.;:!?，。！？；：、])((?:(?:\.{1,2}[\\/]|[a-zA-Z]:[\\/]|\/|[\p{L}\p{N}\p{M}\p{S}_.@()-]+[\\/])[\p{L}\p{N}\p{M}\p{S}_.@() -]+?(?:[\\/][\p{L}\p{N}\p{M}\p{S}_.@() -]+?)*|[\p{L}\p{N}\p{M}\p{S}_.@()-]+)\.(?:md|html?|docx|xlsx|pptx|pdf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)(?=$|[\s)"'`,.;:!?，。！？；：、])/giu;
+  /(?:^|[\s("'`,.;:!?，。！？；：、])((?:(?:\.{1,2}[\\/]|[a-zA-Z]:[\\/]|\/|[\p{L}\p{N}\p{M}\p{S}_.@()-]+[\\/])[\p{L}\p{N}\p{M}\p{S}_.@() -]+?(?:[\\/][\p{L}\p{N}\p{M}\p{S}_.@() -]+?)*|[\p{L}\p{N}\p{M}\p{S}_.@()-]+)\.(?:md|html?|docx|xlsx|pptx|pdf|glb|gltf|obj|stl|ply|3mf|mp4|mov|webm|m4v|mp3|wav|m4a|ogg|opus|flac|weba)(?::\d+(?::\d+)?)?)(?=$|[\s)"'`,.;:!?，。！？；：、])/giu;
 
 function normalizeSlashes(path: string): string {
   return path.replace(/\\/gu, "/");

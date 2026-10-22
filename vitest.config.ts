@@ -111,6 +111,9 @@ export default defineConfig({
             "packages/*/test/**/*.test.ts",
             // 架构治理要求 managed 模块自带 contract.test.ts（见 architecture-policy.yaml），放在模块目录内。
             "packages/*/src/**/contract.test.ts",
+            // 模块根就是包目录的 managed 模块（如 packages/relay、packages/safe-extract-zip），
+            // 契约测试同样放在模块根，必须被默认入口收进来。
+            "packages/*/contract.test.ts",
             // Gen UI 目录回归位于源码旁，默认入口也必须执行，避免只在手动定向运行时生效。
             "packages/shared/src/node/genUiPaths.test.ts",
             "packages/services/src/gen-ui/**/*.test.ts",

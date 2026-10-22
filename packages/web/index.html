@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#161616" />
+    <meta name="theme-color" content="#0f0f0f" />
     <meta name="color-scheme" content="dark" />
     <!-- Bugfix: Chrome dev 下可能不发 favicon 网络请求；内嵌小尺寸 App 图标，避免标签页回退到默认图标。 -->
     <link
@@ -20,8 +20,8 @@
         const STORAGE_KEY = "zcode-theme";
         const DEFAULT_THEME = "zai-dark";
         const BROWSER_THEME_COLORS = {
-          dark: "#161616",
-          light: "#f8f8f8",
+          dark: "#0f0f0f",
+          light: "#f5f5f5",
         };
         const BOOTSTRAP_SNAPSHOT_KEY = "zcode:web-remote-control:bootstrap-shell";
 
@@ -137,13 +137,13 @@
       html[data-zcode-browser-theme-surface] #root {
         /* 修复原因：共享 UI 样式为 Electron vibrancy 强制透明根背景；浏览器入口必须用语义背景
            覆盖该桌面专属行为，否则浏览器工具栏、overscroll 和页面画布会回退为系统白色。 */
-        background: var(--color-background, var(--zcode-bootstrap-bg, #161616)) !important;
+        background: var(--color-background, var(--zcode-bootstrap-bg, #0f0f0f)) !important;
       }
 
       html[data-zcode-browser-theme-surface="light"],
       html[data-zcode-browser-theme-surface="light"] body,
       html[data-zcode-browser-theme-surface="light"] #root {
-        background: var(--color-background, var(--zcode-bootstrap-bg, #f8f8f8)) !important;
+        background: var(--color-background, var(--zcode-bootstrap-bg, #f5f5f5)) !important;
       }
 
       .zcode-boot-loading {

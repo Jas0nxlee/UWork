@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImCardDocument } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { resolveImCardAction } from "./imPresentation.js";

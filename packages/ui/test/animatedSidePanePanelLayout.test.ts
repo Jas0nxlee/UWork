@@ -170,4 +170,17 @@ describe("AnimatedSidePanePanel layout", () => {
       }),
     ).toBe(false);
   });
+  it("resize settling 期间保持 3D 预览挂载（否则要重新解析整份模型）", () => {
+    const base = {
+      isActiveTab: true,
+      isSidePaneVisible: true,
+      visibleInlineSizePx: 900,
+      isResizeSettling: true,
+    };
+
+    expect(shouldRenderPreviewPaneHeavyContent({ ...base, isModelPreview: true })).toBe(true);
+    expect(shouldRenderPreviewPaneHeavyContent({ ...base, isModelPreview: false })).toBe(false);
+    // 普通代码预览仍然让出布局，避免千行 Shadow DOM 参与 resize 期间的布局。
+    expect(shouldRenderPreviewPaneHeavyContent(base)).toBe(false);
+  });
 });

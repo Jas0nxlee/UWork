@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImConversationSummary, ImDirectoryUser, ImMember, ImMessage } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { ImGroupSettings } from "./ImGroupSettings.js";

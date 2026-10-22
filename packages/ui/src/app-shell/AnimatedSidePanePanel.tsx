@@ -104,7 +104,7 @@ import {
   type OpenBackgroundBashSideTabRequest,
   type WorkspaceSidePaneState,
 } from "@/lib/workspaceSidePane.js";
-import { inferMediaPreview, type CodeViewerSource } from "@/lib/codeViewer.js";
+import { inferMediaPreview, isModelPreviewPath, type CodeViewerSource } from "@/lib/codeViewer.js";
 import type { MessageFileLinkTarget } from "@/components/ai-elements/message.js";
 import { getVisibleSidePaneTabs } from "@/lib/workspaceSidePane.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -1333,6 +1333,9 @@ export function AnimatedSidePanePanel({
                                 tab.source?.type === "media" ||
                                 (tab.source?.type === "file" &&
                                   inferMediaPreview(tab.source.path) !== null),
+                              isModelPreview:
+                                tab.source?.type === "model" ||
+                                (tab.source?.type === "file" && isModelPreviewPath(tab.source.path)),
                               isMobileOverlay: mobileOverlay,
                               isResizeSettling: isWindowResizeSettling,
                               isSidePaneVisible: isVisible,

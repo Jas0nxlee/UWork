@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImWorkReport } from "@zcode/shared";
 import { AlertTriangleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";

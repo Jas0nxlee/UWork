@@ -10,6 +10,7 @@ import {
   resolvePptxPreviewReadErrorMessage,
   resolvePreviewPaneImageSource,
   resolvePreviewPaneMediaSource,
+  resolvePreviewPaneModelSource,
   resolveMediaPlaybackErrorMessageId,
   resolvePreviewPanePdfSource,
   resolvePreviewPanePptxSource,
@@ -280,6 +281,67 @@ describe("PreviewPane helpers", () => {
       }),
     ).toBeNull();
     expect(resolvePreviewPanePptxSource(null)).toBeNull();
+  });
+
+  it.each(["model.glb", "scene.gltf", "part.obj", "chip.stl", "scan.ply", "print.3mf"])(
+    "shows the document header divider for %s",
+    (path) => {
+      expect(
+        shouldShowPreviewPaneHeaderDivider({
+          type: "file",
+          title: path,
+          path: `/workspace/${path}`,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it("upgrades 3D model file sources and preserves workspace scope", () => {
+    const source = {
+      type: "file" as const,
+      title: "SCENE.GLB",
+      path: "/workspace/models/SCENE.GLB",
+      workspacePath: "/workspace",
+      workspaceIdentity: "ssh:demo:/workspace",
+      workspaceRemoteSessionId: "remote-1",
+    };
+    expect(resolvePreviewPaneModelSource(source)).toEqual({
+      ...source,
+      type: "model",
+      format: "gltf",
+    });
+  });
+
+  it("passes through model sources and rejects everything else", () => {
+    const modelSource = {
+      type: "model" as const,
+      title: "scene.glb",
+      path: "/workspace/scene.glb",
+      format: "gltf" as const,
+    };
+    expect(resolvePreviewPaneModelSource(modelSource)).toBe(modelSource);
+    // 伪装后缀、Office、PDF 都不能进 3D 预览：那会让它们看不到自己的渲染器。
+    for (const path of ["model.glb.txt", "model.obj.bak", "report.docx", "slides.pptx", "a.pdf"]) {
+      expect(
+        resolvePreviewPaneModelSource({ type: "file", title: path, path: `/workspace/${path}` }),
+      ).toBeNull();
+    }
+    expect(resolvePreviewPaneModelSource(null)).toBeNull();
+  });
+
+  it("keeps 3D previews out of the code view (no wrap toggle, no source view)", () => {
+    for (const source of [
+      { type: "file" as const, title: "chip.stl", path: "/workspace/chip.stl" },
+      {
+        type: "model" as const,
+        title: "chip.stl",
+        path: "/workspace/chip.stl",
+        format: "stl" as const,
+      },
+    ]) {
+      expect(getPreviewPaneDisplayOptions(source).hasMoreMenu).toBe(false);
+      expect(getPreviewPaneDisplayOptions(source).canToggleCodeWrap).toBe(false);
+    }
   });
 
   it("only requests a missing-file toast for reference-driven PPTX navigation", () => {

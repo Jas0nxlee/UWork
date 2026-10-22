@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { IImService, ImRealtimeEvent } from "@zcode/services";
+import type { IImService, ImRealtimeEvent } from "./contract.js";
 import { parseImCard, type ImConversationSummary, type ImMessage } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import {

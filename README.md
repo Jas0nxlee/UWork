@@ -207,6 +207,7 @@ pnpm exec tsx --test packages/services/test/ucasGateway*.test.ts
 | `packages/shared`、`packages/rpc`、`packages/client` | 协议、RPC 与 Agent 客户端                |
 | `apps/zcode-cli`                                     | Agent、TUI、工具与执行运行时             |
 
+- [整体架构（以 UWork 客户端为入口）](docs/architecture/uwork-overall-architecture.md)
 - [自定义供应商与账号入口调整](specs/custom-providers-only.md)
 - [模型自动获取与参数编辑](specs/provider-model-discovery.md)
 - [UCAS 默认供应商与添加入口规则](specs/ucas-default-provider.md)

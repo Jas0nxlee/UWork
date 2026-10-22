@@ -3,6 +3,7 @@ import type { BundledLanguage } from "shiki";
 import { getMediaPreviewFormat, type MediaPreviewKind } from "@zcode/shared";
 import type { TaskChatToolCall as ChatToolCall } from "@/lib/taskChatMessageTypes.js";
 import type { CodeViewerWorkspaceScope } from "@/lib/codeViewerWorkspaceScope.js";
+import type { ModelPreviewFormat } from "@/lib/modelPreview.js";
 import {
   decodeFilePathUriEscapes,
   getPathLeaf,
@@ -14,6 +15,7 @@ import {
   extractBeforeAfter,
   extractStructuredDiff,
 } from "@/lib/toolDiffPreview.js";
+import { getModelPreviewFormat } from "@/lib/modelPreview.js";
 import {
   isFileContentWriteToolCall,
   isFileDiffToolCall,
@@ -96,6 +98,13 @@ export interface PptxCodeViewerSource extends CodeViewerWorkspaceScope {
   referenceNavigation?: PptxReferencePreviewNavigation;
 }
 
+export interface ModelCodeViewerSource extends CodeViewerWorkspaceScope {
+  type: "model";
+  title: string;
+  path: string;
+  format: ModelPreviewFormat;
+}
+
 export interface PptxReferencePreviewNavigation {
   requestId: string;
   pageIndex: number;
@@ -111,7 +120,8 @@ export type CodeViewerSource =
   | ImageCodeViewerSource
   | MediaCodeViewerSource
   | PdfCodeViewerSource
-  | PptxCodeViewerSource;
+  | PptxCodeViewerSource
+  | ModelCodeViewerSource;
 
 const EXTENSION_TO_LANGUAGE: Record<string, BundledLanguage> = {
   bash: "bash",
@@ -326,6 +336,11 @@ export function isPptxPreviewPath(path?: string): boolean {
     return false;
   }
   return getPathLeaf(path).toLowerCase().endsWith(".pptx");
+}
+
+/** 3D 模型扩展名表在 `lib/modelPreview.ts`（那边还持有分段读取的大小边界）。 */
+export function isModelPreviewPath(path?: string): boolean {
+  return getModelPreviewFormat(path) !== null;
 }
 
 function isUsableDiffFileTarget(target: string | null | undefined): target is string {

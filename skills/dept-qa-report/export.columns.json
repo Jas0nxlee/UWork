@@ -1,0 +1,29 @@
+{
+  "_comment": "导出 xlsx 的列顺序与表头——对齐部门现有《01-2026年测试情况统计表》。列名可以改，顺序可以调，这是部门自己的事。",
+  "sheetName": "测试情况统计",
+  "columns": [
+    { "field": "projectId", "header": "项目编号" },
+    { "field": "projectName", "header": "项目名称" },
+    { "field": "项目状态", "header": "项目状态" },
+    { "field": "department", "header": "所属部门" },
+    { "field": "managerId", "header": "项目经理" },
+    { "field": "engineerId", "header": "测试工程师" },
+    { "field": "产品总数", "header": "产品总数" },
+    { "field": "产品名称", "header": "产品名称" },
+    { "field": "测试数量", "header": "测试数量" },
+    { "field": "测试方式", "header": "测试方式" },
+    { "field": "occurredAt", "header": "开始日期" },
+    { "field": "endedAt", "header": "结束日期" },
+    { "field": "测试内容分类", "header": "测试内容分类" },
+    { "field": "工作输出物", "header": "工作输出物" },
+    { "field": "被测对象版本", "header": "简述被测对象的版本、编号等信息" },
+    { "field": "content", "header": "简述测试内容" },
+    { "field": "problems", "header": "发现问题及解决情况" },
+    { "field": "是否计入统计", "header": "是否统计" },
+    { "field": "备注", "header": "备注" },
+    { "field": "createdBy", "header": "创建人" },
+    { "field": "createdAt", "header": "创建时间" },
+    { "field": "updatedBy", "header": "最后编辑人" },
+    { "field": "updatedAt", "header": "最后编辑时间" }
+  ]
+}

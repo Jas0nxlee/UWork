@@ -92,9 +92,13 @@ function matchAllowedArtifact(
   capabilities: ConversationShareCapabilities,
   candidate: Pick<ConversationPreviewArtifactCandidate, "mimeType" | "previewKind" | "sourceRef">,
 ): { artifactType: ConversationArtifactType; mimeType: string } | null {
-  // 视频/音频只是预览卡片候选；ConversationArtifactType 没有媒体枚举，即使服务端
-  // 能力列表意外包含媒体类型，也不能把它们重新放进可上传 manifest。
-  if (candidate.previewKind === "video" || candidate.previewKind === "audio") {
+  // 视频/音频/3D 模型只是预览卡片候选；ConversationArtifactType 没有这些枚举，即使服务端
+  // 能力列表意外包含对应类型，也不能把它们重新放进可上传 manifest。
+  if (
+    candidate.previewKind === "video" ||
+    candidate.previewKind === "audio" ||
+    candidate.previewKind === "model"
+  ) {
     return null;
   }
   const extension = extensionOf(candidate.sourceRef);

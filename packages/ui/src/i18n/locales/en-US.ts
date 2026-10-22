@@ -1954,6 +1954,19 @@ const enUS: Record<string, string> = {
   "codeViewer.mediaUnsupported": "This environment cannot play this media format.",
   "codeViewer.mediaLoadFailed":
     "Media failed to load. Try again later or open it in an external application.",
+  "codeViewer.loadingModel": "Loading 3D model...",
+  "codeViewer.modelUnavailable": "This 3D model cannot be previewed right now.",
+  "codeViewer.modelTooLarge": "This 3D model exceeds the 25 MB preview limit.",
+  "codeViewer.model.invalidData": "This file is not a valid 3D model and could not be parsed.",
+  "codeViewer.model.empty": "This model has no renderable geometry.",
+  "codeViewer.model.unsupportedExtension":
+    "This model uses compression extensions ({extensions}) that are not supported yet. Convert it to uncompressed glTF (.glb) first.",
+  "codeViewer.model.missingResource":
+    "An external data file this model references could not be read ({uri}), so it cannot be rendered.",
+  "codeViewer.model.webglUnavailable":
+    "A 3D rendering context could not be created in this environment, so the model cannot be previewed.",
+  "codeViewer.model.resetView": "Reset view",
+  "codeViewer.model.summary": "{triangles} triangles · {size}",
   "codeViewer.loadingPdf": "Loading PDF preview...",
   "codeViewer.pdfUnavailable": "This PDF preview is currently unavailable.",
   "codeViewer.pdf.loading": "Loading PDF...",
@@ -2990,6 +3003,7 @@ const enUS: Record<string, string> = {
   "chat.previewCards.xlsx": "Spreadsheet · XLSX",
   "chat.previewCards.pptx": "Presentation · PPTX",
   "chat.previewCards.pdf": "Document · PDF",
+  "chat.previewCards.model": "3D model",
   "chat.previewCards.video": "Video",
   "chat.previewCards.audio": "Audio",
   "chat.previewCards.openExternal": "Open in browser",

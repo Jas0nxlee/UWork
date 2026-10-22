@@ -2885,6 +2885,50 @@ it("站点设置独立标签按 workspace/owner/origin 复用，不替换网页"
   ).toHaveLength(3);
 });
 
+describe("workspaceSidePane 3D 模型 tab 身份", () => {
+  it("文件树入口与模型入口打开同一个文件时复用同一个 tab", () => {
+    // 文件树给的是通用 `file` source，专用入口给的是带格式的 `model` source；
+    // source type 只是入口表示，不是文件身份，不能把同一路径拆成两个 tab。
+    const first = openCodeViewerSidePane(null, {
+      type: "file",
+      title: "scene.glb",
+      path: "/workspace/models/scene.glb",
+    });
+    const second = openCodeViewerSidePane(first, {
+      type: "model",
+      title: "scene.glb",
+      path: "/workspace/models/scene.glb",
+      format: "gltf",
+    });
+
+    expect(second.tabs).toHaveLength(1);
+    expect(second.tabs[0]?.sourceKey).toBe("model:/workspace/models/scene.glb");
+    expect(second.tabs[0]?.source).toEqual({
+      type: "model",
+      title: "scene.glb",
+      path: "/workspace/models/scene.glb",
+      format: "gltf",
+    });
+  });
+
+  it("不同 workspace 的同一路径仍然是两个 tab", () => {
+    const first = openCodeViewerSidePane(null, {
+      type: "file",
+      title: "scene.glb",
+      path: "/workspace/models/scene.glb",
+      workspaceIdentity: "ssh:a:/workspace",
+    });
+    const second = openCodeViewerSidePane(first, {
+      type: "file",
+      title: "scene.glb",
+      path: "/workspace/models/scene.glb",
+      workspaceIdentity: "ssh:b:/workspace",
+    });
+
+    expect(second.tabs).toHaveLength(2);
+  });
+});
+
 describe("IM（消息）侧栏 tab", () => {
   it("打开后是可用的全局 tab，重复打开只保留一个", () => {
     const first = openMessagesSidePane(null, { workspacePath: "/tmp/ws", workspaceKey: "/tmp/ws" });
