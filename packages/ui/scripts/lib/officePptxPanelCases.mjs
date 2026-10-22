@@ -36,7 +36,7 @@ export async function runPptxPanelCases({ page, check }) {
   const initial = await read();
   check(!initial.taskPane, "右侧设置窗格默认收起（把画布让出来）");
 
-  // ② 在画布上点中形状 → 窗格自动打开；点 ✕ → 收起
+  // ①b 点中形状**不再自动弹出**（真机反馈："只要弹出，主编辑界面就太小了"）
   const point = await page.evaluate(() => {
     const api = window.__pptxPane;
     const box = api.shapeBox("标题 1");
@@ -49,7 +49,50 @@ export async function runPptxPanelCases({ page, check }) {
   });
   await page.mouse.click(point.x, point.y);
   await page.waitForTimeout(400);
-  const opened = await read();
+  const afterSelect = await read();
+  check(
+    afterSelect.taskPane === false,
+    `点中形状只选中、不自动弹窗格（窗格开着=${afterSelect.taskPane}）`,
+  );
+
+  // ①c 显式开：顶部的「设置形状格式」（功能区）→ 中间的 ✕ 收起；再过一遍底部那个按钮
+  const openedByRibbon = await page.evaluate(async () => {
+    // 先确认命令本身通（按钮找不到时能区分"命令没接上"与"按钮点不到"）
+    const before = Boolean(document.querySelector("[data-pptx-task-pane]"));
+    window.__pptxPane.runCommand("pptxToggleFormatPane");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const afterCommand = Boolean(document.querySelector("[data-pptx-task-pane]"));
+    if (afterCommand) {
+      // 命令开了就关回来，后面的按钮断言从"关着"开始
+      window.__pptxPane.runCommand("pptxToggleFormatPane");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    window.__pptxToggleProbe = { before, afterCommand };
+    const tab = [...document.querySelectorAll("[data-office-ribbon-tab]")].find(
+      (node) => (node.textContent ?? "").trim() === "视图",
+    );
+    tab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const find = () =>
+      [...document.querySelectorAll("button")].find((item) =>
+        (item.getAttribute("title") ?? "").startsWith("开/关右侧"),
+      );
+    let node = find();
+    if (!node) {
+      // 面板窄 → 这一组会收进「»」菜单（它自己的 toggle 语义：连点两次能回到打开状态）
+      for (let attempt = 0; attempt < 2 && !node; attempt += 1) {
+        document.querySelector("[data-office-ribbon-more]")?.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        node = find();
+      }
+    }
+    if (!node) return false;
+    node.click();
+    return true;
+  });
+  await page.waitForTimeout(500);
+  const afterRibbon = await read();
+  const probe = await page.evaluate(() => window.__pptxToggleProbe ?? null);
   const closedByButton = await page.evaluate(() => {
     const close = document.querySelector("[data-pptx-close-format]");
     if (!close) return false;
@@ -59,8 +102,48 @@ export async function runPptxPanelCases({ page, check }) {
   await page.waitForTimeout(300);
   const closed = await read();
   check(
-    opened.taskPane && closedByButton && !closed.taskPane,
-    `选中形状自动弹出、点 ✕ 收起（弹出 ${opened.taskPane} → 收起 ${!closed.taskPane}）`,
+    openedByRibbon && afterRibbon.taskPane && closedByButton && !closed.taskPane,
+    `功能区「设置形状格式」能开、✕ 能收（命令：${JSON.stringify(probe)}｜开 ${afterRibbon.taskPane} → 收 ${!closed.taskPane}）`,
+  );
+
+  // ①d 右键画布上的对象 → 菜单里能开窗格、也能复制/删除（不用再为这些动作开窗格）
+  const byRightClick = await page.evaluate(async () => {
+    const api = window.__pptxPane;
+    const box = api.shapeBox("标题 1");
+    const canvas = api.canvas();
+    const layer = canvas.layer;
+    const x = layer.left + ((box.x + box.width / 2) / 9525) * canvas.scale;
+    const y = layer.top + ((box.y + box.height / 2) / 9525) * canvas.scale;
+    const target = document.elementFromPoint(x, y);
+    if (!target) return { ok: false, why: "没有元素" };
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, clientX: x, clientY: y, button: 2 }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const menu = document.querySelector("[data-pptx-canvas-menu]");
+    const items = menu
+      ? [...menu.querySelectorAll("[data-pptx-canvas-menu-item]")].map((node) =>
+          node.getAttribute("data-pptx-canvas-menu-item"),
+        )
+      : [];
+    const formatItem = menu?.querySelector('[data-pptx-canvas-menu-item="format"]');
+    formatItem?.click();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      ok: true,
+      items,
+      paneOpen: Boolean(document.querySelector("[data-pptx-task-pane]")),
+      menuGone: !document.querySelector("[data-pptx-canvas-menu]"),
+    };
+  });
+  check(
+    byRightClick.ok &&
+      byRightClick.items.includes("format") &&
+      byRightClick.items.includes("duplicate") &&
+      byRightClick.items.includes("delete") &&
+      byRightClick.paneOpen &&
+      byRightClick.menuGone,
+    `右键菜单能开窗格与形状操作（项 ${JSON.stringify(byRightClick.items)}，点完窗格=${byRightClick.paneOpen}、菜单收起=${byRightClick.menuGone}）`,
   );
 
   // ②b 打开窗格后**整页仍然可见**（缩放跟着可用区域走）。
@@ -161,5 +244,168 @@ export async function runPptxPanelCases({ page, check }) {
   check(
     frameGrew <= 2 && Math.abs(after.page.width - expectedPageWidth) <= 4,
     `缩放不把画布框撑宽（框 ${Math.round(before.frame.width)} → ${Math.round(after.frame.width)}px，页面 ${Math.round(after.page.width)}px ≈ 框宽×${after.zoom}%）`,
+  );
+}
+
+/**
+ * PPT 备注（讲稿备注）的**界面断言**：窗格里的备注框 ↔ 包里的 `notesSlideN.xml`。
+ * 数据层的读写已经由 check-office-pptx.mjs 的 ⑬ 盯着；这里盯的是**接线**：
+ * 框里打字 → 失焦提交 → 真的落到包里那一个部件（而且是**只**动那一个部件）。
+ */
+export async function runPptxNotesPanelCases({ page, check }) {
+  const clickShapeLive = async (name) => {
+    // 点击点必须**现读**画布矩形与缩放：前面别的用例滚过/缩放过，挂载时那份早就失效
+    const point = await page.evaluate((shapeName) => {
+      const api = window.__pptxPane;
+      const box = api.shapeBox(shapeName);
+      const canvas = api.canvas();
+      if (!box || !canvas) return null;
+      return {
+        x: canvas.layer.left + ((box.x + box.width / 2) / 9525) * canvas.scale,
+        y: canvas.layer.top + ((box.y + box.height / 2) / 9525) * canvas.scale,
+      };
+    }, name);
+    if (!point) return false;
+    await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(400);
+    return true;
+  };
+  /** 点窗格标题那条空白带 = 让备注框失焦（不在画布上点，免得顺手取消选择把窗格关掉）。 */
+  const blurByPaneHeader = async () => {
+    const point = await page.evaluate(() => {
+      const box = document.querySelector("[data-pptx-task-pane]")?.getBoundingClientRect();
+      return box ? { x: box.left + box.width / 2, y: box.top + 8 } : null;
+    });
+    if (point) await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(600);
+  };
+  const readNotes = () =>
+    page.evaluate(() => {
+      const area = document.querySelector("textarea[data-pptx-notes]");
+      const section = area?.parentElement?.textContent ?? "";
+      return {
+        present: Boolean(area),
+        value: area?.value ?? null,
+        hint: section.includes("已保存进这一页")
+          ? "已保存进这一页"
+          : section.includes("还没有备注")
+            ? "还没有备注"
+            : null,
+        status: document.querySelector("[data-office-toolbar]")?.textContent?.slice(-52) ?? "",
+      };
+    });
+  /**
+   * 模型字节（喂给渲染器的那份）里每个部件的内容指纹 + 每个备注部件的正文。
+   * 正文用**产品自己的读取函数**取：备注页里还有页码占位符，它里面也有 a:t（页码那个数字），
+   * 拿正则把所有 a:t 都收进来会把页码当备注（这个坑本身就是回归要盯的东西）。
+   */
+  const snapshot = () =>
+    page.evaluate(async () => {
+      const bytes = window.__pptxPane?.previewBytes?.() ?? null;
+      if (!bytes) return null;
+      const parts = await window.__pptx.parts(bytes);
+      const zip = await window.JSZip.loadAsync(bytes.slice(0));
+      const notes = {};
+      const fields = {};
+      for (const name of Object.keys(parts)) {
+        if (!/notesSlides\/notesSlide\d+\.xml$/.test(name)) continue;
+        const xml = (await zip.file(name)?.async("string")) ?? "";
+        notes[name] = window.__pptx.readNotesText(xml);
+        // 页码占位符里的字段：改备注**不许**碰它
+        fields[name] = /<a:fld[^>]*type="slidenum"[^>]*>\s*<a:t>1<\/a:t>/.test(xml);
+      }
+      return { parts, notes, fields };
+    });
+  const changedParts = (before, after) =>
+    Object.keys(after.parts).filter((name) => before.parts[name] !== after.parts[name]);
+
+  await page.evaluate(async () => {
+    const { bytes } = await window.__pptx.fixture();
+    await window.__pptx.mountPane(bytes.slice(0));
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (window.__pptxPane?.canvas?.()?.ready) break;
+    }
+  });
+
+  // ① 选中形状 + **显式**开窗格（不再自动弹）→ 有备注框，内容是这一页已有的备注
+  await clickShapeLive("标题 1");
+  await page.evaluate(() => {
+    if (!document.querySelector("[data-pptx-task-pane]")) {
+      document.querySelector("[data-pptx-open-format]")?.click();
+    }
+  });
+  await page.waitForTimeout(500);
+  const opened = await readNotes();
+  check(
+    opened.present && opened.value === "讲稿备注" && opened.hint === "已保存进这一页",
+    `窗格里的备注框读的是这一页的备注（${JSON.stringify(opened.value)}｜${opened.hint}）`,
+  );
+
+  // ② 改字 → 点别处失焦 = 提交，且**只**动备注部件（幻灯片 XML 一个字节都不该变）
+  const before1 = await snapshot();
+  await page.fill("textarea[data-pptx-notes]", "开场先讲结论");
+  await blurByPaneHeader();
+  const after1 = await snapshot();
+  const changed1 = changedParts(before1, after1);
+  check(
+    after1.notes["ppt/notesSlides/notesSlide1.xml"]?.join("|") === "开场先讲结论" &&
+      after1.fields["ppt/notesSlides/notesSlide1.xml"] === true &&
+      changed1.length === 1,
+    `改备注只动备注部件、也不碰页码占位符（改动：${changed1.join("、") || "无"}｜页码字段还在 ${
+      after1.fields["ppt/notesSlides/notesSlide1.xml"]
+    }｜备注 ${JSON.stringify(after1.notes["ppt/notesSlides/notesSlide1.xml"])}）`,
+  );
+  const shown = await readNotes();
+  check(
+    shown.value === "开场先讲结论" && shown.status.includes("备注"),
+    `提交后备注框与状态栏都跟上（${JSON.stringify(shown.value)}｜${shown.status}）`,
+  );
+
+  // ③ 换到第 2 页：空备注；写一点 → 新建备注部件（rel + Content_Types 一起补上）
+  const switched = await page.evaluate(() => {
+    const host = document.querySelector("[data-pptx-thumb-host='1']");
+    const button = host?.closest("button");
+    if (!button) return false;
+    button.click();
+    return true;
+  });
+  await page.waitForTimeout(600);
+  const second = await readNotes();
+  check(
+    switched && second.value === "" && second.hint === "还没有备注",
+    `换到没备注的第 2 页：空框（${JSON.stringify(second.value)}｜${second.hint}）`,
+  );
+  await page.fill("textarea[data-pptx-notes]", "第二页的讲稿");
+  await blurByPaneHeader();
+  const after2 = await snapshot();
+  const wired = await page.evaluate(async () => {
+    const zip = await window.JSZip.loadAsync(window.__pptxPane.previewBytes().slice(0));
+    const rels = (await zip.file("ppt/slides/_rels/slide2.xml.rels")?.async("string")) ?? "";
+    const types = (await zip.file("[Content_Types].xml")?.async("string")) ?? "";
+    return {
+      rel: /relationships\/notesSlide"/.test(rels),
+      types: types.includes("/ppt/notesSlides/notesSlide2.xml"),
+    };
+  });
+  check(
+    after2.notes["ppt/notesSlides/notesSlide2.xml"]?.join("|") === "第二页的讲稿" &&
+      wired.rel &&
+      wired.types,
+    `给没备注的页写备注会新建部件并补 rel 与 Content_Types（rel=${wired.rel} 登记=${wired.types}）`,
+  );
+  check(
+    after2.notes["ppt/notesSlides/notesSlide1.xml"]?.join("|") === "开场先讲结论",
+    `第 1 页的备注不受影响（${JSON.stringify(after2.notes["ppt/notesSlides/notesSlide1.xml"])}）`,
+  );
+  // ④ 产物仍是合法的 pptx：渲染器认它，幻灯片数不变
+  const rendered = await page.evaluate(async () =>
+    window.__pptx.render(window.__pptxPane.previewBytes()),
+  );
+  check(
+    rendered.slides === 2,
+    `加了备注之后 deck 仍然打得开、渲染器认（${rendered.slides} 页，文字 ${JSON.stringify(
+      rendered.text?.slice(0, 30),
+    )}）`,
   );
 }

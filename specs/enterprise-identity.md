@@ -246,6 +246,8 @@ sequenceDiagram
 - main/host/preload 与 renderer 生产构建曾通过。隔离 Electron 实例在数据库准备阶段发生 transport_closed，未进入 Root，桌面 E2E 未通过，未替换已安装应用。
 - 真实企业微信扫码、服务端续期/吊销、跨窗口认证和远程 attachment 真实传输尚未验证。
 
+> 状态更新（2026-10-09）：真实扫码登录已在 3.16.0 的生产环境跑通（三家域名各自的 `appid` 与回调，桌面端 handoff 登记 201、认领回传）。登录流程中的后置 refresh 校验随真实登录执行；**服务端仍不提供 Token 吊销端点**，退出只清设备会话，不宣称远端已吊销。
+
 ## 当前增量验证（2026-09-29）
 
 - 真实扫码测试先定位到 needsEmailAuth 标记导致客户端拒绝；兼容实现随后完成 login 交换、refresh 校验、姓名校验和设备加密会话提交，测试进程输出 VERIFIED 并以 0 退出。
@@ -277,7 +279,7 @@ sequenceDiagram
 | 记忆的偏好   | `identityOrganizationStore`                                               | 仅设备偏好，不参与任何授权判断                         |
 | 身份与资源   | ucas-proxy（org 行 + `userId` 维度）                                      | 客户端不做跨组织资源访问                               |
 
-**服务端前置（另一仓库，本增量不含）**：① `organizations.wecom_corp_id`/`custom_domain` 加唯一约束；② 空/缺失 Host 直接 404；③ `/api/review` 补齐组织校验。多公司铺开（尤其给分公司设 `org_admin`）前必须完成。
+**服务端前置（另一仓库 ucas-proxy）**：① `organizations.wecom_corp_id`/`custom_domain` 加唯一约束；② 空/缺失 Host 直接 404；③ `/api/review` 补齐组织校验。**2026-10-09 全部完成并上线**：唯一约束用部分索引（`WHERE <> ''`，放过未配置的组织）并在路由层映射成 409；`/api/review` 的 records/export 按目标用户所属组织校验，content 按 `audit_meta.key_hash` 归属判定、查不到归属即拒绝；随后又补了 handoff 登记的组织校验与 `/api/review/models` 的按组织收敛。生产 192.168.100.143 已部署并实测，明细见文末「状态回填」。
 
 **验收**
 
@@ -350,3 +352,23 @@ sequenceDiagram
   Id->>Store: generation + revision CAS
   Store-->>Id: 接受或拒绝，不复活已取消尝试
 ```
+
+## 状态回填（2026-10-09）
+
+服务端多租户前置与随后的清扫已在 ucas-proxy 完成并部署到生产（192.168.100.143，只重建 control-plane）：
+
+| 项                                     | 位置                                                                                              | 线上实测（2026-10-09）                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 一家公司 = 一个企微应用 = 一个入口域名 | `organizations` 的 `wecom_corp_id`/`custom_domain` 部分唯一索引；`PUT /api/orgs/:id` 冲突返回 409 | 两个索引在真实 4 组织 / 252 用户上建成；重复配置返回 409                                                          |
+| 空/缺失 Host 不再回落                  | `/api/auth/authorize` 无 Host 直接 404                                                            | 裸请求 404；三家域名各自返回自己的 `appid`；陌生域名 404                                                          |
+| 审计读取按组织                         | `/api/review` 的 records/export/content                                                           | 北京 org_admin 按南京用户的 wecom_userid / 内部 id / 姓名过滤全部 403，读南京 blob 403，本组织与 super_admin 正常 |
+| handoff 登记的组织必须存在             | `POST /api/auth/handoff/start`                                                                    | 不存在的组织 404 且不留登记行；真实组织与不传 `org_id` 均 201                                                     |
+| 模型下拉按组织收敛                     | `GET /api/review/models`（含按组织的缓存键）                                                      | 三家分别 8/7/6 个模型，无缺失、无越界；仅北京用过的模型未泄漏；super_admin 见全库 14 个                           |
+
+**仍开放（不属于本增量验收，但要记得）**
+
+- 服务端没有 Token 吊销端点：退出登录只清设备会话。
+- MCP 的服务清单过滤只在 mcp-gateway 进程内，控制面 `/internal/mcp/servers` 返回全部启用项（含解密 env）。生产当前只有 1 个全局 server（`ucas-rag`），暂无实害；给某家公司配专属 server 前必须先修。
+- AIHub 账号绑定 / 私有技能（见 `aihub-skill-source.md` 3.4）仍未做，前提是服务端先有 join（L2）。
+- 组织级计费边界未落地：三家 `new_api_group` 同为 `beijing`、`channel_ids` 为空、`monthly_budget=0`，控制面算不出"每家花了多少"；南京/厦门也没有 `default_plan_id` 兜底（职位未匹配的新员工不会被自动订阅）。要不要按子公司核算由业务定。
+- 小项：`desktop_login_handoffs` 只有 `expires_at` 索引、没有过期行清理（登记行会累积，无安全影响）。

@@ -16,7 +16,7 @@ import { startOfficeHarness } from "./lib/officeEditorHarness.mjs";
 import { runPptxCanvasCases } from "./lib/officePptxCanvasCases.mjs";
 import { runPptxCellCases } from "./lib/officePptxCellCases.mjs";
 import { runPptxHandleCases } from "./lib/officePptxHandleCases.mjs";
-import { runPptxPanelCases } from "./lib/officePptxPanelCases.mjs";
+import { runPptxNotesPanelCases, runPptxPanelCases } from "./lib/officePptxPanelCases.mjs";
 import { runPptxPicturePipelineCases } from "./lib/officePptxPicturePipelineCases.mjs";
 import { runPptxRibbonCases } from "./lib/officePptxRibbonCases.mjs";
 import { runPptxStyledCanvasCases } from "./lib/officePptxStyledCanvasCases.mjs";
@@ -51,7 +51,9 @@ async function main() {
           "pptShapes.ts",
           "pptSlides.ts",
           "pptPicture.ts",
+          "pptNotes.ts",
           "pptTable.ts",
+          "pptTableCellFormat.ts",
           "pptTableInsert.ts",
           "pptxValidate.ts",
           "usePptxDocument.ts",
@@ -360,6 +362,7 @@ async function main() {
   await runPptxStyledCanvasCases({ repoRoot, editorDir, check });
   await runPptxRibbonCases({ page, check });
   await runPptxPanelCases({ page, check });
+  await runPptxNotesPanelCases({ page, check });
   await runPptxHandleCases({ page, check });
   await runPptxCellCases({ page, check });
   await runPptxPicturePipelineCases({

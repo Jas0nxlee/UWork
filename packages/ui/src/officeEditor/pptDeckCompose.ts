@@ -53,3 +53,44 @@ export async function buildPreviewBytes(input: {
     return null;
   }
 }
+
+/** 读某个部件的 XML（拷贝语义：JSZip 会消费 buffer，所以入口一律切片）。 */
+export async function readPartXml(bytes: ArrayBuffer, partName: string): Promise<string> {
+  return readSlidePart(bytes, partName);
+}
+
+/** 把某个部件的内容替换进包，返回新的整份字节（其余部件逐字节保留）。 */
+export async function writePartIntoZip(
+  source: ArrayBuffer,
+  partName: string,
+  xml: string,
+): Promise<ArrayBuffer> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(source.slice(0));
+  zip.file(partName, xml);
+  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+}
+
+/**
+ * 拿到这一页的备注部件名：**没有就建一个**（新建 notesSlide + 这一页的 rel + Content_Types 登记）。
+ * 建完把"哪一页用哪个备注部件"记进 `notesPartRef`，后续改备注就按"改已有备注"那条路走。
+ */
+export async function ensureNotesPart(
+  source: ArrayBuffer,
+  slidePart: string,
+  notesPartRef: { current: Map<string, string> },
+  addNotes: (
+    bytes: ArrayBuffer,
+    slide: string,
+    template: string | null,
+  ) => Promise<{ bytes: ArrayBuffer; partName: string }>,
+  updateSource: (bytes: ArrayBuffer) => void,
+): Promise<string> {
+  const existing = notesPartRef.current.get(slidePart);
+  if (existing) return existing;
+  const template = notesPartRef.current.values().next().value ?? null;
+  const created = await addNotes(source.slice(0), slidePart, template);
+  notesPartRef.current.set(slidePart, created.partName);
+  updateSource(created.bytes);
+  return created.partName;
+}

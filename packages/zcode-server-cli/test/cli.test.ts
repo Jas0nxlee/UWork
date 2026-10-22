@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { join } from "node:path";
@@ -191,7 +191,7 @@ describe("Server CLI routing", () => {
     await expect(access(layout.pendingFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it.each([false, true])("reports online update progress only when requested (%s) and waits for convergence", async (progress) => {
+  it.each([false, true])("reports archive update progress only when requested (%s) and waits for convergence", async (progress) => {
     const root = await mkdtemp(join(process.platform === "win32" ? tmpdir() : "/tmp", "zuh-"));
     const serverRoot = join(root, "server");
     const layout = resolveServerLayout(serverRoot);
@@ -454,37 +454,23 @@ describe("Server CLI routing", () => {
     expect(errors.join("")).toContain("--server-root must be an absolute path");
   });
 
-  it("rejects update before fetching or installing when tasks are running", async () => {
+  // 产品规则：远端 Server 只能由桌面客户端推送归档升级，daemon 不允许自升级。
+  // 这条用例同时锁住三个事实：明确的运维文案、零控制请求、零 catalog 访问。
+  it("refuses a self-upgrade from the release catalog and points operators at the desktop app", async () => {
     const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-cli-update-guard-"),
+      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-cli-update-desktop-only-"),
     );
     const layout = resolveServerLayout(join(root, ".zcode", "server"));
     const commands: string[] = [];
     const control = await createControlServer(layout.controlEndpoint, async (request) => {
       commands.push(request.command);
-      if (request.command === "prepare-update") return { status: "blocked", runningTaskCount: 1 };
-      throw new Error(`Unexpected control command: ${request.command}`);
+      return { status: "ready", runningTaskCount: 0 };
     });
     let catalogRequests = 0;
     const catalogServer = createServer((_request, response) => {
       catalogRequests += 1;
-      const address = catalogServer.address();
-      if (!address || typeof address === "string")
-        throw new Error("catalog server is not listening");
       response.setHeader("content-type", "application/json");
-      response.end(
-        JSON.stringify({
-          schemaVersion: 1,
-          releases: [
-            {
-              version: "4.0.0",
-              target: currentServerTarget(),
-              archiveUrl: `http://127.0.0.1:${address.port}/unused.tar.gz`,
-              archiveSha256: "b".repeat(64),
-            },
-          ],
-        }),
-      );
+      response.end(JSON.stringify({ schemaVersion: 1, releases: [] }));
     });
     await new Promise<void>((resolve) => catalogServer.listen(0, "127.0.0.1", resolve));
     const address = catalogServer.address();
@@ -497,320 +483,23 @@ describe("Server CLI routing", () => {
     try {
       const exit = await runServerCli(
         ["update", "--server-root", layout.serverRoot, "--json"],
-        {
-          stdout: { write: (value) => output.push(value) },
-        },
+        { stdout: { write: (value) => output.push(value) } },
         { updateDaemonHandoff: noUpdateDaemonHandoff },
       );
 
       expect(exit).toBe(1);
       expect(JSON.parse(output.at(-1) ?? "{}")).toEqual({
         ok: false,
-        code: "source-server-update-running-tasks",
-        retryable: false,
-        error: "Running tasks require --force for update",
+        error:
+          "Remote UWork Server is updated by the desktop app only. Reconnect from UWork to push a new version (or pass --from-archive <path>).",
       });
-      expect(commands).toEqual(["prepare-update"]);
+      expect(commands).toEqual([]);
       expect(catalogRequests).toBe(0);
       await expect(access(layout.pendingFile)).rejects.toMatchObject({ code: "ENOENT" });
-      await expect(access(layout.releasesDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       vi.unstubAllEnvs();
       await control.close();
       await new Promise<void>((resolve) => catalogServer.close(() => resolve()));
-    }
-  });
-
-  it("discards a prepared release when a task starts during preparation", async () => {
-    const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-cli-update-race-"),
-    );
-    const layout = resolveServerLayout(join(root, "server"));
-    const release = await createTestReleaseArchive(root, "4.0.0");
-    const commands: string[] = [];
-    let prepareCalls = 0;
-    const control = await createControlServer(layout.controlEndpoint, async (request) => {
-      commands.push(request.command);
-      if (request.command !== "prepare-update")
-        throw new Error(`Unexpected control command: ${request.command}`);
-      prepareCalls += 1;
-      return prepareCalls === 1
-        ? { status: "ready", runningTaskCount: 0 }
-        : { status: "blocked", runningTaskCount: 1 };
-    });
-    const catalogServer = createServer(async (request, response) => {
-      const address = catalogServer.address();
-      if (!address || typeof address === "string")
-        throw new Error("catalog server is not listening");
-      response.setHeader(
-        "content-type",
-        request.url === "/catalog.json" ? "application/json" : "application/gzip",
-      );
-      if (request.url === "/catalog.json") {
-        response.end(
-          JSON.stringify({
-            schemaVersion: 1,
-            releases: [
-              {
-                version: "4.0.0",
-                target: currentServerTarget(),
-                archiveUrl: `http://127.0.0.1:${address.port}/release.tar.gz`,
-                archiveSha256: release.archiveSha256,
-              },
-            ],
-          }),
-        );
-      } else {
-        response.end(await readFile(release.archivePath));
-      }
-    });
-    await new Promise<void>((resolve) => catalogServer.listen(0, "127.0.0.1", resolve));
-    const address = catalogServer.address();
-    if (!address || typeof address === "string") throw new Error("catalog server is not listening");
-    vi.stubEnv(
-      "ZCODE_SERVER_RELEASE_MANIFEST_URL",
-      `http://127.0.0.1:${address.port}/catalog.json`,
-    );
-    const errors: string[] = [];
-    try {
-      const exit = await runServerCli(["update", "--server-root", layout.serverRoot], {
-        stderr: { write: (value) => errors.push(value) },
-      });
-
-      expect(exit).toBe(1);
-      expect(errors.join("")).toContain("Running tasks require --force for update");
-      expect(commands).toEqual(["prepare-update", "prepare-update"]);
-      await expect(access(layout.pendingFile)).rejects.toMatchObject({ code: "ENOENT" });
-      expect(await readdir(layout.releasesDir)).toEqual([]);
-    } finally {
-      vi.unstubAllEnvs();
-      await control.close();
-      await new Promise<void>((resolve) => catalogServer.close(() => resolve()));
-    }
-  });
-
-  it("discards a prepared release when apply-update observes a late task", async () => {
-    const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-cli-update-late-guard-"),
-    );
-    const layout = resolveServerLayout(join(root, "server"));
-    const release = await createTestReleaseArchive(root, "4.0.1");
-    const commands: string[] = [];
-    const control = await createControlServer(layout.controlEndpoint, async (request) => {
-      commands.push(request.command);
-      if (request.command === "prepare-update") return { status: "ready", runningTaskCount: 0 };
-      if (request.command === "apply-update")
-        throw new Error("Running tasks require --force for update");
-      throw new Error(`Unexpected control command: ${request.command}`);
-    });
-    const catalogServer = createServer(async (request, response) => {
-      const address = catalogServer.address();
-      if (!address || typeof address === "string")
-        throw new Error("catalog server is not listening");
-      response.setHeader(
-        "content-type",
-        request.url === "/catalog.json" ? "application/json" : "application/gzip",
-      );
-      if (request.url === "/catalog.json") {
-        response.end(
-          JSON.stringify({
-            schemaVersion: 1,
-            releases: [
-              {
-                version: "4.0.1",
-                target: currentServerTarget(),
-                archiveUrl: `http://127.0.0.1:${address.port}/release.tar.gz`,
-                archiveSha256: release.archiveSha256,
-              },
-            ],
-          }),
-        );
-      } else {
-        response.end(await readFile(release.archivePath));
-      }
-    });
-    await new Promise<void>((resolve) => catalogServer.listen(0, "127.0.0.1", resolve));
-    const address = catalogServer.address();
-    if (!address || typeof address === "string") throw new Error("catalog server is not listening");
-    vi.stubEnv(
-      "ZCODE_SERVER_RELEASE_MANIFEST_URL",
-      `http://127.0.0.1:${address.port}/catalog.json`,
-    );
-    const errors: string[] = [];
-    try {
-      const exit = await runServerCli(["update", "--server-root", layout.serverRoot], {
-        stderr: { write: (value) => errors.push(value) },
-      });
-
-      expect(exit).toBe(1);
-      expect(errors.join("")).toContain("Running tasks require --force for update");
-      expect(commands).toEqual(["prepare-update", "prepare-update", "apply-update"]);
-      await expect(access(layout.pendingFile)).rejects.toMatchObject({ code: "ENOENT" });
-      expect(await readdir(layout.releasesDir)).toEqual([]);
-    } finally {
-      vi.unstubAllEnvs();
-      await control.close();
-      await new Promise<void>((resolve) => catalogServer.close(() => resolve()));
-    }
-  });
-
-  it("returns a successful up-to-date outcome without sending apply-update", async () => {
-    const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-cli-up-to-date-"),
-    );
-    const layout = resolveServerLayout(join(root, ".zcode", "server"));
-    const releases = new ReleaseManager(layout);
-    await releases.ensure();
-    const releaseDir = join(layout.releasesDir, "current");
-    await mkdir(releaseDir, { recursive: true });
-    await releases.writePending({
-      version: "3.0.0",
-      releaseDir,
-      target: currentServerTarget(),
-      archiveSha256: "a".repeat(64),
-    });
-    await releases.applyPending();
-    const staleReleaseDir = join(layout.releasesDir, "stale");
-    await mkdir(staleReleaseDir, { recursive: true });
-    await releases.writePending({
-      version: "2.0.0",
-      releaseDir: staleReleaseDir,
-      target: currentServerTarget(),
-      archiveSha256: "b".repeat(64),
-    });
-    const catalogServer = createServer((_request, response) => {
-      const address = catalogServer.address();
-      if (!address || typeof address === "string")
-        throw new Error("catalog server is not listening");
-      response.setHeader("content-type", "application/json");
-      response.end(
-        JSON.stringify({
-          schemaVersion: 1,
-          releases: [
-            {
-              version: "3.0.0",
-              target: currentServerTarget(),
-              archiveUrl: `http://127.0.0.1:${address.port}/unused.tar.gz`,
-              archiveSha256: "a".repeat(64),
-            },
-          ],
-        }),
-      );
-    });
-    await new Promise<void>((resolve) => catalogServer.listen(0, "127.0.0.1", resolve));
-    const address = catalogServer.address();
-    if (!address || typeof address === "string") throw new Error("catalog server is not listening");
-    vi.stubEnv(
-      "ZCODE_SERVER_RELEASE_MANIFEST_URL",
-      `http://127.0.0.1:${address.port}/catalog.json`,
-    );
-    const commands: string[] = [];
-    const control = await createControlServer(layout.controlEndpoint, async (request) => {
-      commands.push(request.command);
-      return { status: "ready", runningTaskCount: 0 };
-    });
-    const output: string[] = [];
-    try {
-      const exit = await runServerCli(
-        ["update", "--server-root", layout.serverRoot, "--json"],
-        { stdout: { write: (value) => output.push(value) } },
-        { updateDaemonHandoff: noUpdateDaemonHandoff },
-      );
-      expect(exit).toBe(0);
-      expect(JSON.parse(output.join(""))).toMatchObject({ status: "up-to-date", version: "3.0.0" });
-      expect(commands).toEqual(["prepare-update"]);
-      await expect(access(layout.pendingFile)).rejects.toMatchObject({ code: "ENOENT" });
-
-      const futureReleaseDir = join(layout.releasesDir, "future");
-      await mkdir(futureReleaseDir, { recursive: true });
-      await releases.writePending({
-        version: "4.0.0",
-        releaseDir: futureReleaseDir,
-        target: currentServerTarget(),
-        archiveSha256: "c".repeat(64),
-      });
-      output.length = 0;
-      await expect(
-        runServerCli(["update", "--server-root", layout.serverRoot, "--json"], {
-          stdout: { write: (value) => output.push(value) },
-        }),
-      ).resolves.toBe(0);
-      await expect(access(layout.pendingFile)).resolves.toBeUndefined();
-    } finally {
-      vi.unstubAllEnvs();
-      await control.close();
-      await new Promise<void>((resolve) => catalogServer.close(() => resolve()));
-    }
-  });
-
-  it("reports a clear source error when neither catalog nor pending release exists", async () => {
-    const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-cli-no-source-"),
-    );
-    const layout = resolveServerLayout(join(root, ".zcode", "server"));
-    const errors: string[] = [];
-    vi.stubEnv("ZCODE_SERVER_RELEASE_MANIFEST_URL", "");
-    const control = await createControlServer(layout.controlEndpoint, async (request) => {
-      if (request.command === "prepare-update") return { status: "ready", runningTaskCount: 0 };
-      throw new Error(`Unexpected control command: ${request.command}`);
-    });
-    try {
-      const exit = await runServerCli(["update", "--server-root", layout.serverRoot], {
-        stderr: { write: (value) => errors.push(value) },
-      });
-      expect(exit).toBe(1);
-      expect(errors.join("")).toContain("release source is not configured");
-    } finally {
-      vi.unstubAllEnvs();
-      await control.close();
-    }
-  });
-
-  it("applies an offline pending release when no catalog is configured", async () => {
-    const root = await mkdtemp(
-      join(process.platform === "win32" ? tmpdir() : "/tmp", "zcode-r2-offline-"),
-    );
-    const layout = resolveServerLayout(join(root, ".zcode", "server"));
-    const releases = new ReleaseManager(layout);
-    await releases.ensure();
-    const releaseDir = join(layout.releasesDir, "offline");
-    await mkdir(releaseDir, { recursive: true });
-    await releases.writePending({ version: "3.1.0", releaseDir });
-    const commands: string[] = [];
-    const control = await createControlServer(layout.controlEndpoint, async (request) => {
-      commands.push(request.command);
-      if (request.command === "prepare-update") return { status: "ready", runningTaskCount: 0 };
-      if (await releases.readPending()) await releases.applyPending();
-      return { applied: true, version: "3.1.0" };
-    });
-    const output: string[] = [];
-    vi.stubEnv("ZCODE_SERVER_RELEASE_MANIFEST_URL", "");
-    try {
-      const exit = await runServerCli(
-        ["update", "--server-root", layout.serverRoot, "--json"],
-        { stdout: { write: (value) => output.push(value) } },
-        { updateDaemonHandoff: noUpdateDaemonHandoff },
-      );
-      expect(exit).toBe(0);
-      expect(commands).toEqual(["prepare-update", "apply-update"]);
-      expect(JSON.parse(output.join(""))).toMatchObject({ applied: true, version: "3.1.0" });
-
-      commands.length = 0;
-      await releases.writePending({ version: "3.1.0", releaseDir });
-      const forcedOutput: string[] = [];
-      const forcedExit = await runServerCli(
-        ["update", "--server-root", layout.serverRoot, "--json", "--force"],
-        {
-          stdout: { write: (value) => forcedOutput.push(value) },
-        },
-        { updateDaemonHandoff: noUpdateDaemonHandoff },
-      );
-      expect(forcedExit).toBe(0);
-      expect(commands).toEqual(["apply-update"]);
-      expect(JSON.parse(forcedOutput.join(""))).toMatchObject({ applied: true, version: "3.1.0" });
-    } finally {
-      vi.unstubAllEnvs();
-      await control.close();
     }
   });
 

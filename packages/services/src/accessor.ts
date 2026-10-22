@@ -28,6 +28,7 @@ import type { IFileWatcherService } from "./fileWatcher/fileWatcher.js";
 import type { IOAuthService } from "./oauth/oauth.js";
 import type { IEnterpriseIdentityService } from "./enterprise-identity/contract.js";
 import type { IUcasGatewayService } from "./ucas-gateway/contract.js";
+import type { IImService } from "./im/contract.js";
 import type {
   IModelSelectionService,
   IProviderSettingsService,
@@ -90,6 +91,8 @@ export interface IServiceAccessor {
   readonly enterpriseIdentityService?: IEnterpriseIdentityService;
   /** 企业网关自动配置、套餐与用量；旧 Host / 测试替身可不提供。 */
   readonly ucasGatewayService?: IUcasGatewayService;
+  /** 基础 IM（单聊/群聊/频道）；旧 Host / 测试替身可不提供，UI 据此隐藏入口。 */
+  readonly imService?: IImService;
   /** 当前 Environment 的 Provider 配置与设置视图。 */
   readonly providerSettingsService: IProviderSettingsService;
   /** 当前 Environment Registry 发布的唯一模型选择 View。 */

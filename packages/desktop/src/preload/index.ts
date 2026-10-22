@@ -88,6 +88,8 @@ import type {
   WindowControlsOverlayMetrics,
   WindowControlsOverlayReadyPayload,
   CreateTempTextAttachmentRequest,
+  SaveImAttachmentRequest,
+  SetImBadgeCountRequest,
   MaterializeWorkflowArtifactFileRequest,
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
@@ -353,6 +355,12 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 长文本粘贴落盘为真正的本地附件，避免正文和 prompt payload 被撑大 */
   createTempTextAttachment: (payload: CreateTempTextAttachmentRequest) =>
     ipcRenderer.invoke(PlatformChannels.CreateTempTextAttachment, payload),
+  /** 应用角标（未读总数）：桌面宿主负责 Dock/任务栏 */
+  setImBadgeCount: (payload: SetImBadgeCountRequest) =>
+    ipcRenderer.invoke(PlatformChannels.SetImBadgeCount, payload),
+  /** IM 附件下载：字节落本机（下载目录/UWork），返回路径 */
+  saveImAttachment: (payload: SaveImAttachmentRequest) =>
+    ipcRenderer.invoke(PlatformChannels.SaveImAttachment, payload),
   /** dwf 产物「作为文件打开」：把某一版的字节落成本机副本 */
   materializeWorkflowArtifactFile: (payload: MaterializeWorkflowArtifactFileRequest) =>
     ipcRenderer.invoke(PlatformChannels.MaterializeWorkflowArtifactFile, payload),

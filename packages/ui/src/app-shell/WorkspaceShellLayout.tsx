@@ -285,6 +285,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   onWorkspaceMainViewChange,
   onOpenAutomationConsumed,
   handleOpenAutomations,
+  handleOpenMessages,
   handleOpenPluginStore,
   onConnectRemote,
   onSelectRemoteProject,
@@ -1947,6 +1948,12 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
       onOpenCodeViewer={handleOpenCodeViewer}
       onOpenBrowserUrl={handleOpenBrowserUrl}
       fileTreeOpenRequest={fileTreeOpenRequest}
+      onOpenMessages={() =>
+        handleOpenMessages({
+          workspacePath: workspaceAbsPath,
+          ...(workspaceRemoteSessionId ? { remoteSessionId: workspaceRemoteSessionId } : {}),
+        })
+      }
       onCreateTask={handleCreateTaskInChat}
       onCreateConversationTask={onCreateConversationTask ?? handleCreateTaskInChat}
       onCreateConversationTaskOnSource={onCreateConversationTaskOnSource}

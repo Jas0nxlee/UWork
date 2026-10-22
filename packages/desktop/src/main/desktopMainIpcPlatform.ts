@@ -21,6 +21,8 @@ import {
   type SaveCliMcpToUserDirectoryRequest,
   type CreateTempTextAttachmentRequest,
   type MaterializeWorkflowArtifactFileRequest,
+  type SaveImAttachmentRequest,
+  type SetImBadgeCountRequest,
   type UpdateStatePayload,
   type WebRemoteControlWorkspaceTarget,
   type WindowControlsOverlayReadyPayload,
@@ -56,6 +58,8 @@ import {
   migrateLegacyCommonMcp,
   saveCliMcpToUserDirectory,
 } from "./mcpUserDirectory/index.js";
+import { setImUnreadBadgeCount } from "./appBadge.js";
+import { saveImAttachment } from "./imAttachmentFile.js";
 import { createTempTextAttachment } from "./tempTextAttachment.js";
 import { materializeWorkflowArtifactFile } from "./workflowArtifactFile.js";
 import { registerDesktopSaveFileIpcHandler } from "./desktopSaveFile.js";
@@ -158,6 +162,22 @@ export function registerPlatformIpcHandlers(options: {
     PlatformChannels.CreateTempTextAttachment,
     async (_event, payload: CreateTempTextAttachmentRequest) => {
       return createTempTextAttachment(payload);
+    },
+  );
+
+  ipcMain.handle(
+    PlatformChannels.SetImBadgeCount,
+    async (_event, payload: SetImBadgeCountRequest) => {
+      // 角标数字 = 任务未读 + IM 未读，由 appBadge 求和后写回宿主（见那里的说明）。
+      const count = Number.isFinite(payload?.count) ? Math.max(0, Math.floor(payload.count)) : 0;
+      return setImUnreadBadgeCount(count);
+    },
+  );
+
+  ipcMain.handle(
+    PlatformChannels.SaveImAttachment,
+    async (_event, payload: SaveImAttachmentRequest) => {
+      return saveImAttachment(payload);
     },
   );
 

@@ -115,10 +115,38 @@ async function fixture() {
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>' +
+      // 备注页要挂在**这一页的 rels** 上（真实 deck 都是这样；早先 fixture 漏了这条，
+      // 于是"按 rels 找备注"的代码看起来像坏的——其实是被测样本不真实）
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide1.xml"/>' +
       '</Relationships>',
   );
   zip.file("ppt/media/image1.png", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]));
-  zip.file("ppt/notesSlides/notesSlide1.xml", slide(textBox(4, "备注", para("讲稿备注"))));
+  // 备注页**长得像真的**：幻灯片图像占位符（无字）+ **页码占位符（里面有字）** + 备注正文占位符。
+  // 页码那个故意排在正文前面，专门盯"第一个有字的 txBody 当成正文"这个坑——真文件里它是
+  // a:fld type="slidenum" 里面挂着一个 a:t，认错就会把页码当备注、写回去还会把备注塞进
+  // 页码占位符（悄悄改坏用户这一页）。（这块在模板字符串里，注释里别写反引号。）
+  zip.file(
+    "ppt/notesSlides/notesSlide1.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<p:notes xmlns:p="' +
+      P_NS +
+      '" xmlns:a="' +
+      A_NS +
+      '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      "<p:cSld><p:spTree>" +
+      '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="2" name="幻灯片图像占位符 1"/><p:cNvSpPr/>' +
+      '<p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="3" name="页码占位符 1"/><p:cNvSpPr/>' +
+      '<p:nvPr><p:ph type="sldNum" sz="quarter" idx="2"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+      '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:fld id="{9B1A0C6E-4E55-4A4E-9E4B-000000000001}" type="slidenum"><a:t>1</a:t></a:fld></a:p></p:txBody></p:sp>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="4" name="备注占位符 1"/><p:cNvSpPr/>' +
+      '<p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+      '<p:txBody><a:bodyPr/><a:lstStyle/>' +
+      para("讲稿备注") +
+      "</p:txBody></p:sp>" +
+      "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>",
+  );
   zip.file("ppt/slideMasters/slideMaster1.xml", slide(textBox(5, "母版文字", para("母版"))));
   zip.file("ppt/slideLayouts/slideLayout1.xml", slide(textBox(6, "版式文字", para("版式"))));
   zip.file("ppt/theme/theme1.xml", '<a:theme xmlns:a="' + A_NS + '" name="Office"/>');
@@ -148,12 +176,35 @@ window.__pptx = {
     }
     return 'data:image/png;base64,' + btoa(binary);
   },
+  // —— 备注（pptNotes.ts）——
+  notesPartOf: (bytes, slidePart) => window.app.notesPartOf(bytes, slidePart),
+  readNotesText: (xml) => window.app.readNotesText(xml),
+  notesBodyIndex: (xml) => window.app.notesBodyIndex(xml),
+  addNotesSlide: (bytes, slidePart, template) =>
+    window.app.addNotesSlide(bytes, slidePart, template),
+  // —— 单元格格式（pptTableCellFormat.ts）——
+  setCellAnchor: (xml, table, row, col, anchor) =>
+    window.app.setCellAnchor(xml, table, row, col, anchor),
+  setCellAlign: (xml, table, row, col, align) =>
+    window.app.setCellAlign(xml, table, row, col, align),
+  cellFormatOf: (xml, table, row, col) => window.app.cellFormatOf(xml, table, row, col),
+  setTableGrid: (xml, table, on, options) => window.app.setTableGrid(xml, table, on, options),
+  tableGridOn: (xml, table) => window.app.tableGridOn(xml, table),
   // —— 表格（pptTable.ts）——
   cellBlockIndexOf: (xml, table, row, col) => window.app.cellBlockIndexOf(xml, table, row, col),
   isTableShape: (xml, name) => window.app.isTableShape(xml, name),
   tableSizeOf: (xml, name) => window.app.tableSizeOf(xml, name),
   applyTableStructureEdit: (xml, name, row, col, op) =>
     window.app.applyTableStructureEdit(xml, name, row, col, op),
+  mergeCell: (xml, name, row, col, direction) =>
+    window.app.mergeCell(xml, name, row, col, direction),
+  splitCell: (xml, name, row, col) => window.app.splitCell(xml, name, row, col),
+  setCellFill: (xml, name, row, col, color) => window.app.setCellFill(xml, name, row, col, color),
+  setCellBorder: (xml, name, row, col, options) =>
+    window.app.setCellBorder(xml, name, row, col, options),
+  mergeCellRange: (xml, table, from, to) => window.app.mergeCellRange(xml, table, from, to),
+  setTableOptions: (xml, name, options) => window.app.setTableOptions(xml, name, options),
+  tableOptionsOf: (xml, name) => window.app.tableOptionsOf(xml, name),
   // —— 表格插入（pptTableInsert.ts）——
   insertTable: (xml, input) => window.app.insertTable(xml, input),
   // —— 画布几何（pptCanvasGeometry.ts）——
@@ -223,6 +274,7 @@ window.__pptx = {
   },
   /** 把编辑位挂起来（界面断言用）。 */
   async mountPane(bytes) {
+    window.__pptxWrites = [];
     window.__pptxService = {
       readBinaryPreview: async () => ({
         path: "/tmp/deck.pptx",
@@ -230,7 +282,11 @@ window.__pptx = {
         totalBytes: bytes.byteLength,
       }),
       stat: async () => ({ mtimeMs: 1700000000000 }),
-      writeBinaryFile: async () => ({ revision: { size: 1, mtimeMs: 2 }, bytes: 1 }),
+      // 写盘留痕：回归要能断言"真的写了"，以及**写进去的字节里有那处改动**
+      writeBinaryFile: async (input) => {
+        window.__pptxWrites.push({ path: input.path, dataBase64: input.dataBase64 });
+        return { revision: { size: 1, mtimeMs: 2 }, bytes: 1 };
+      },
     };
     const host = document.getElementById("host");
     host.replaceChildren();

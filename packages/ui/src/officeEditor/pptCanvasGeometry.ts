@@ -131,6 +131,7 @@ export function measuredBoxesOf(
   return boxes;
 }
 
+/** 拖动形状（移动/拉角/旋转）：`start` 是按下那一刻的几何。 */
 export interface CanvasDragState {
   mode: "move" | "resize" | "rotate";
   corner: CanvasCorner;
@@ -207,4 +208,29 @@ export function angleFromCenter(
 /** 形状带旋转时，选框与手柄要一起转（度数）。 */
 export function rotationOf(box: CanvasBox): number {
   return box.rotation ?? 0;
+}
+
+/** 表格的"边框带"宽度（显示像素）：靠边这么宽以内算"抓表格"，不算"选格子"。 */
+export const TABLE_EDGE_PX = 6;
+
+/**
+ * 点是不是落在盒子的**边框带**里（纯几何，单位都是显示像素）。
+ *
+ * 为什么需要它：表格的框就是单元格的并集，早先"拖表格要抓边框"在表格上等于**没有可抓的地方**
+ * （真机反馈"表格无法拖动"）。现在靠边 `band` 像素以内算边框 → 那颗点走"移动形状"。
+ */
+export function nearBoxEdge(
+  point: { x: number; y: number },
+  box: { left: number; top: number; right: number; bottom: number },
+  band: number = TABLE_EDGE_PX,
+): boolean {
+  if (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom) {
+    return false;
+  }
+  return (
+    point.x - box.left < band ||
+    box.right - point.x < band ||
+    point.y - box.top < band ||
+    box.bottom - point.y < band
+  );
 }
