@@ -479,6 +479,7 @@ modules:
   - id: desktop-web-remote-relay
     roots:
       - packages/desktop/src/main/web-remote-relay
+      - packages/desktop/src/main/desktopMobileRemoteControlConfig.ts
     managed: true
     requires:
       - client
@@ -489,6 +490,7 @@ modules:
     publicEntrypoints:
       - packages/desktop/src/main/web-remote-relay/index.ts
       - packages/desktop/src/main/web-remote-relay/contract.ts
+      - packages/desktop/src/main/desktopMobileRemoteControlConfig.ts
     layers:
       contract: [contract.ts, contracts]
       adapters: .
@@ -808,6 +810,101 @@ modules:
     layers:
       ui: .
     owner: conversation
+
+  # im-ui：由 architecture:adopt 登记
+  - id: im-ui
+    roots:
+      - packages/ui/src/im
+    managed: true
+    requires:
+      - services
+      - shared
+      - ui
+    publicEntrypoints:
+      - packages/ui/src/im/contract.ts
+      - packages/ui/src/im/MessagesSidePane.tsx
+      - packages/ui/src/im/useImSidebar.ts
+      - packages/ui/src/im/useImNotifications.ts
+    layers:
+      contract: contract.ts
+      ui: .
+    owner: messaging
+    layerOrder:
+      - contract
+      - ui
+  # model-preview：由 architecture:adopt 登记
+  - id: model-preview
+    roots:
+      - packages/ui/src/modelPreview
+      - packages/ui/src/hooks/useModelViewerLabels.ts
+      - packages/ui/src/lib/modelPreview.ts
+      - packages/ui/src/previewPaneModelContent.tsx
+    managed: true
+    requires:
+      - ui
+    publicEntrypoints:
+      - packages/ui/src/modelPreview/contract.ts
+      - packages/ui/src/modelPreview/ModelPreviewViewer.tsx
+      - packages/ui/src/hooks/useModelViewerLabels.ts
+      - packages/ui/src/lib/modelPreview.ts
+      - packages/ui/src/previewPaneModelContent.tsx
+    layers:
+      ui: .
+    owner: preview
+  # im-service：由 architecture:adopt 登记
+  - id: im-service
+    roots:
+      - packages/services/src/im
+    managed: true
+    requires:
+      - rpc
+      - services
+      - shared
+    publicEntrypoints:
+      - packages/services/src/im/contract.ts
+      - packages/services/src/im/imService.ts
+      - packages/services/src/im/imHttpClient.ts
+    layers:
+      contract:
+        - contract.ts
+        - contracts
+      adapters: .
+    owner: messaging
+    layerOrder:
+      - contract
+      - adapters
+  # im-protocol：由 architecture:adopt 登记
+  - id: im-protocol
+    roots:
+      - packages/shared/src/im-protocol
+      - packages/shared/src/im.ts
+      - packages/shared/src/imCard.ts
+    managed: true
+    requires: []
+    publicEntrypoints:
+      - packages/shared/src/im-protocol/contract.ts
+      - packages/shared/src/im.ts
+      - packages/shared/src/imCard.ts
+    layers:
+      domain: .
+    owner: messaging
+  # desktop-im：由 architecture:adopt 登记
+  - id: desktop-im
+    roots:
+      - packages/desktop/src/main/im-adapters
+      - packages/desktop/src/main/appBadge.ts
+      - packages/desktop/src/main/imAttachmentFile.ts
+    managed: true
+    requires:
+      - desktop
+      - shared
+    publicEntrypoints:
+      - packages/desktop/src/main/im-adapters/contract.ts
+      - packages/desktop/src/main/appBadge.ts
+      - packages/desktop/src/main/imAttachmentFile.ts
+    layers:
+      adapters: .
+    owner: messaging
 
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。

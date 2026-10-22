@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImConversationSummary, ImDirectoryUser } from "@zcode/shared";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type { ImDirectoryUser } from "@zcode/shared";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";

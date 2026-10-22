@@ -3,5 +3,5 @@ export const desktopWebRemoteRelayModule = {
   id: "desktop-web-remote-relay",
   requires: ["client", "desktop", "services", "shared", "web-remote-relay"],
   provides: ["desktop-web-remote-relay"],
-  publicEntrypoints: ["index.ts", "contract.ts"],
+  publicEntrypoints: ["index.ts", "contract.ts", "../desktopMobileRemoteControlConfig.ts"],
 } as const;

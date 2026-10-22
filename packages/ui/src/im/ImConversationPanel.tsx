@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import type {
   ImConversation,
   ImConversationSummary,
@@ -138,7 +138,6 @@ export const ImConversationPanel = memo(function ImConversationPanel({
     setSearchOpen(false);
     search.reset();
     // search 是每次渲染新建的对象，故意不放进依赖（只在会话切换时清）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   const weekdays = useMemo(

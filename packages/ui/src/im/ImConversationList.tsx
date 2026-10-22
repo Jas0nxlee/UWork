@@ -97,7 +97,6 @@ export const ImConversationList = memo(function ImConversationList({
 
   const weekdays = useMemo(
     () => [0, 1, 2, 3, 4, 5, 6].map((day) => t(`im.weekday.${day}`)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [intl],
   );
   const now = Date.now();

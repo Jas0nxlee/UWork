@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { IImService, ImRealtimeEvent, ImView } from "@zcode/services";
+import type { IImService, ImRealtimeEvent, ImView } from "./contract.js";
 import type { ImMessage } from "@zcode/shared";
 import { useOptionalBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { logger } from "@/logger.js";

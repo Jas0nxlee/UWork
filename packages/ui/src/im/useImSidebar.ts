@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ImView } from "@zcode/services";
+import type { ImView } from "./contract.js";
 import { useOptionalBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { logger } from "@/logger.js";
 import { sumUnread, useImPreferences } from "./imPreferences.js";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { IImService, ImRealtimeEvent } from "@zcode/services";
+import type { IImService, ImRealtimeEvent } from "./contract.js";
 
 /** 输入中提示的滞留时间：服务端只转发"正在输入"，停下来的撤销由这里做（超时即消失）。 */
 const TYPING_TTL_MS = 4000;

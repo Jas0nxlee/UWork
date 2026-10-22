@@ -2,7 +2,7 @@
 
 将 Main 的 HTTP、存储和 device WebSocket 与 manager 装配隔离。
 
-仅 index.ts/contract.ts 供外部消费。manager 仍唯一拥有 window runtime 与 attachment；transport 唯一拥有 socket/generation。storage 只保存非敏感身份，clearLegacy 合并并发且失败可重试。凭据从注入端口读取，HTTP 错误只返回分类。
+index.ts/contract.ts 与既有 desktopMobileRemoteControlConfig.ts 配置入口供外部消费。随包配置只提供 relay 与手机页入口值，不持有 attachment 或会话状态；其解析、路径和覆盖优先级由 desktopMobileRemoteControlConfig.test.ts 验证。manager 仍唯一拥有 window runtime 与 attachment；transport 唯一拥有 socket/generation。storage 只保存非敏感身份，clearLegacy 合并并发且失败可重试。凭据从注入端口读取，HTTP 错误只返回分类。
 
 完整语义见 [Relay V2 spec](../../../../../docs/web-remote-control/relay-v2-pairing.md)。
 

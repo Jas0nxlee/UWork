@@ -5,7 +5,8 @@
  * （对 .glb/.stl 这类几十兆的资产够用），因此这里不需要额外的大小边界，只负责"哪些扩展名
  * 算 3D 模型"以及它对应哪个解析器。
  */
-export type ModelPreviewFormat = "gltf" | "obj" | "stl" | "ply" | "3mf";
+import type { ModelPreviewFormat } from "@/modelPreview/contract.js";
+export type { ModelPreviewFormat } from "@/modelPreview/contract.js";
 
 const MODEL_PREVIEW_EXTENSIONS: Record<string, ModelPreviewFormat> = {
   "3mf": "3mf",

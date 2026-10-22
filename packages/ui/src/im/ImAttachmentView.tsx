@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import type { IImService } from "@zcode/services";
+import type { IImService } from "./contract.js";
 import { isInlineImageMime, parseImAttachmentBody } from "@zcode/shared";
 import { DownloadIcon, FileIcon, LoaderCircleIcon } from "lucide-react";
 import {

@@ -10,7 +10,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { logger } from "@/logger.js";
-import type { ModelPreviewFormat } from "@/lib/modelPreview.js";
 import {
   disposeObject3D,
   loadModelObject,
@@ -19,18 +18,8 @@ import {
 } from "@/modelPreview/modelPreviewLoaders.js";
 import { createScene } from "@/modelPreview/modelPreviewScene.js";
 
-export interface ModelPreviewViewerLabels {
-  loading: string;
-  resetView: string;
-  unavailable: string;
-  invalidData: string;
-  emptyModel: string;
-  unsupportedExtension: (extensions: string) => string;
-  missingResource: (uri: string) => string;
-  webglUnavailable: string;
-  /** 一行模型信息：三角面数与包围盒尺寸。 */
-  summary: (values: { triangles: string; size: string }) => string;
-}
+import type { ModelPreviewViewerLabels, ModelPreviewViewerProps } from "./contract.js";
+export type { ModelPreviewViewerLabels } from "./contract.js";
 
 function formatDimension(value: number): string {
   const absolute = Math.abs(value);
@@ -63,14 +52,7 @@ export function ModelPreviewViewer({
   modelPath,
   readBytes,
   resolvedTheme,
-}: {
-  data: Uint8Array;
-  format: ModelPreviewFormat;
-  labels: ModelPreviewViewerLabels;
-  modelPath: string;
-  readBytes: (path: string) => Promise<Uint8Array>;
-  resolvedTheme: "light" | "dark";
-}) {
+}: ModelPreviewViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<ReturnType<typeof createScene>>(null);
   // 读取函数每次渲染都可能是新引用；用 ref 承接，避免把"读取函数变了"误当成"换了模型"。
