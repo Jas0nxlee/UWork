@@ -1788,6 +1788,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - tar-stream@2.2.0 — MIT
 
+- three@0.186.1 — MIT
+
 - tiny-emitter@2.1.0 — MIT
 
 - tiny-invariant@1.3.3 — MIT
@@ -31125,6 +31127,94 @@ SOFTWARE.
 # License
 
 MIT
+
+````
+
+### Notice efb8d086373013cdf54ed748e7690f044260efc540b7fad06378ab1b95892506
+
+- three@0.186.1: examples/jsm/libs/basis/README.md (license section)
+
+
+
+````text
+## License
+
+[Apache License 2.0](https://github.com/BinomialLLC/basis_universal/blob/master/LICENSE)
+
+````
+
+### Notice 70bf1bdf865606913b7be81f8ed6e6590567ed8459f5cadd4c42fc964f669bb8
+
+- three@0.186.1: examples/jsm/libs/draco/README.md (license section)
+
+
+
+````text
+## License
+
+[Apache License 2.0](https://github.com/google/draco/blob/master/LICENSE)
+
+````
+
+### Notice 70b74463fd09d1332bf5bcbe8da333ce6e06eb17eaab4c3bb03b852377fdeb18
+
+- three@0.186.1: examples/jsm/misc/SculptGL.LICENSE.txt
+
+
+
+````text
+MIT License
+
+Copyright (c) 2019 Stéphane GINIER
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+````
+
+### Notice 8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc
+
+- three@0.186.1: LICENSE
+
+
+
+````text
+The MIT License
+
+Copyright © 2010-2026 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 ````
 

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputHashEncoding": "UTF-8 with CRLF normalized to LF; notice and source snapshot hashes remain byte-exact",
   "scope": "Production dependency union across current workspace projects, copied source/assets and native tools; not a per-installer SBOM or a certification of all licensing obligations.",
-  "noticesSha256": "bc370c01f823037eb33d6602691ab2fd141090dc04898d81c1837629b689c0a6",
+  "noticesSha256": "ef7597c708a4e6fa51630b68ff282d1bad04987333fea657c67ba55b228f4152",
   "inputs": {
     ".agents/skills/agent-browser/references/authentication.md": "e2c3b0f4a1dc1368dee821f03c000d818a48421d09f3872525dddffe73f2112b",
     ".agents/skills/agent-browser/references/commands.md": "17522fc56d742663f47231ff06c4811abc87e12c7f78e11f94d253ddd540a909",
@@ -433,7 +433,7 @@
     "docs/knip/docs/src/styles/theme-light.css": "e2e85900fd43b5b563f56b9ce7e2a09f07d7420a78e80f0133efffeb8fce2aa0",
     "docs/knip/docs/src/util/post.ts": "6d7c45bd29035a73f1b67d24524760c7e317f367d32216de2c9a240dda7a40d1",
     "docs/knip/docs/tsconfig.json": "662b1f10a5e572b49a45669e4be9ee46c22f987dcf277c204948777b367df1cd",
-    "package.json": "c67b8129a10619c5730faf3b901e84957e7040fb2e2f48f99f0625649efe32a3",
+    "package.json": "d83f8565f091fbf8bd5aeab38c325e4f3e6a4833a6c84849ec4b4eeb96680056",
     "packages/client/package.json": "e76f441549130dc3e5e68072a36b6cb9044e19a6625f1e813f19a4def2b1b689",
     "packages/desktop/package.json": "6bdadcbf9dc361062932faa5b067084bfe278713c586f0106b2f786667557c75",
     "packages/desktop/src/renderer/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
@@ -1587,6 +1587,7 @@
     "packages/model-option-map/package.json": "9ba8537bca94b388eca39307ebb3ab85c473f01fa51368162be5b3bc303315ee",
     "packages/provider-node/package.json": "b9b475a0f8cd0822980e64013f8b41139082ede376868051480702ead2913cb8",
     "packages/provider/package.json": "0f52edde6ef9712efc10dfccf12a918255f5be4a0379b5c8693fab79abacf2fc",
+    "packages/relay/package.json": "b1b92b91c377c9f1b383eff2a22a166976d12cc34ca6e5838c161ed6487526ce",
     "packages/rpc/examples/01-basic-ipc.ts": "bb4423c1642918846010f9307262c379536ca9541d79df6ebba120b5cf792f3e",
     "packages/rpc/examples/02-proxy-channel.ts": "66dda9aec12cd46da8a56560cb765a3de590917bbc40f329185e6fd05a388fff",
     "packages/rpc/examples/03-ipc-server-client.ts": "9b873f565b4a3426ee3a5338a975cb6ab76e29af094cf6bbee4f7030f872f758",
@@ -1615,7 +1616,7 @@
     "packages/shared/package.json": "e73faa3f9855fb7e1c9b60f2ebe1d39d68f2437575724f5936d2d24be1f7e79e",
     "packages/shared/src/zcode-protocol-v4/wire-codec.ts": "ac2494a3acc795c809c94ee9393f50271a9c2a0fd33813459e5ab93842ceef75",
     "packages/stream-animate/package.json": "31cb25ed87e64dbcd695bbc932729ac30499107d45f747b96a5c3de832afdc28",
-    "packages/ui/package.json": "beb4f9ede38811effde3f43953eef1d937a78ad4838700d7817f78d612b8d1e6",
+    "packages/ui/package.json": "5a8d861cef6a1ae17b153cc3e53b7657dc93e022368913b1d4763542501384e5",
     "packages/ui/src/components/ai-elements/agent.tsx": "830e7ea9e927de1524851337f1d35bda0e5690e3e4fa307fff854b60006b16c7",
     "packages/ui/src/components/ai-elements/artifact.tsx": "7d73f08864d6280ac86c77d32e56d0e702f8aa6208e5910820139d0fb08ce64c",
     "packages/ui/src/components/ai-elements/attachments.tsx": "7a847ce6c8ac9dc630481a82dd20a5e9e00949bf710a41fea1d32a18123011d8",
@@ -2900,7 +2901,7 @@
     "plugins/office-editor/ui/vendor/superdoc/LICENSE-AGPL-3.0.txt": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
     "plugins/office-editor/ui/vendor/superdoc/superdoc.min.css": "0c1fd0ae51215b4fe5573858190c97ac971f888c63875970979e72018daef33f",
     "plugins/office-editor/ui/vendor/superdoc/superdoc.min.js": "360490e362af6623eae40cc5aa82efcc5d9dedf5455195b9c373c48220c232ad",
-    "pnpm-lock.yaml": "bad6a42ed201fa0e9c48f18376a241e3a13e65e2272b58c465e9976626b05eeb",
+    "pnpm-lock.yaml": "c3adcb23615e4acdf5df7a66e9c024ac47d0f52e840f6eed3c0f1d724848ad2f",
     "pnpm-workspace.yaml": "b4d4c2b5c2163f735a46932878577048ae0b6de3b91f557925d78407c8e0f463",
     "scripts/license-texts/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "scripts/native-search-tools-config.mjs": "06e9d2b066a22f4bb731fb7356d786b52cf08e20dd6faf91e1a82b167d7462e8",
@@ -15175,6 +15176,30 @@
         {
           "member": "README.md (license section)",
           "sha256": "98bb58f02f63428bdcf9153ac14c74149b50d3995e363c17a3faea9f8248858c"
+        }
+      ]
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "license": "MIT",
+      "repository": "https://github.com/mrdoob/three.js",
+      "notices": [
+        {
+          "member": "examples/jsm/libs/basis/README.md (license section)",
+          "sha256": "efb8d086373013cdf54ed748e7690f044260efc540b7fad06378ab1b95892506"
+        },
+        {
+          "member": "examples/jsm/libs/draco/README.md (license section)",
+          "sha256": "70bf1bdf865606913b7be81f8ed6e6590567ed8459f5cadd4c42fc964f669bb8"
+        },
+        {
+          "member": "examples/jsm/misc/SculptGL.LICENSE.txt",
+          "sha256": "70b74463fd09d1332bf5bcbe8da333ce6e06eb17eaab4c3bb03b852377fdeb18"
+        },
+        {
+          "member": "LICENSE",
+          "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
         }
       ]
     },
